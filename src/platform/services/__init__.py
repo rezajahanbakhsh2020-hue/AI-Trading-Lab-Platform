@@ -12,6 +12,10 @@ __all__ = [
     "MarketQuoteConsistencyService",
     "MarketQuoteResult",
     "InconsistentMarketQuoteError",
+    "ProviderCapability",
+    "ProviderHealth",
+    "ProviderInspection",
+    "ProviderInspectionService",
     "ProviderOperations",
     "CandleOperationResult",
     "QuoteOperationResult",
@@ -46,6 +50,12 @@ from .market_quote_consistency import (
     InconsistentMarketQuoteError,
     MarketQuoteConsistencyService,
     MarketQuoteResult,
+)
+from .provider_inspection import (
+    ProviderCapability,
+    ProviderHealth,
+    ProviderInspection,
+    ProviderInspectionService,
 )
 from .provider_operations import (
     CandleOperationResult,

@@ -16,6 +16,8 @@ __all__ = [
     "ProviderHealth",
     "ProviderInspection",
     "ProviderInspectionService",
+    "ProviderMonitor",
+    "DataFreshnessSnapshot",
     "ProviderOperations",
     "CandleOperationResult",
     "QuoteOperationResult",
@@ -57,6 +59,7 @@ from .provider_inspection import (
     ProviderInspection,
     ProviderInspectionService,
 )
+from .provider_monitoring import DataFreshnessSnapshot, ProviderMonitor
 from .provider_operations import (
     CandleOperationResult,
     InvalidOperationError,

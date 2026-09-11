@@ -7,6 +7,7 @@ platform. Presentation/UI code must not live here.
 from .availability import Availability
 from .instrument import Instrument
 from .market import Candle
+from .freshness import DataFreshness
 from .market_overview import MarketOverview
 from .quote import Quote
 from .signal import Signal
@@ -16,6 +17,7 @@ from .trade_setup import TradeSetup
 __all__ = [
     "Availability",
     "Candle",
+    "DataFreshness",
     "Instrument",
     "MarketOverview",
     "Quote",

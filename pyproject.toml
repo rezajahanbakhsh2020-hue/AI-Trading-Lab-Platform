@@ -1,0 +1,8 @@
+[project]
+name = "ai_trading_lab_platform"
+version = "0.1.0"
+description = "Foundation package for AI-Trading-Lab-Platform"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+addopts = "-q"

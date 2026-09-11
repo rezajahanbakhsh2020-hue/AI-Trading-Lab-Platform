@@ -1,7 +1,9 @@
 __all__ = [
     "MarketDataService",
     "QuoteService",
-    "ProviderAccess",
+    "AlertEvaluation",
+"AlertService",
+"ProviderAccess",
     "ProviderWorkflow",
     "MarketDataHandle",
     "QuoteHandle",
@@ -38,6 +40,7 @@ __all__ = [
 
 from .market_data import MarketDataService
 from .quote import QuoteService
+from .alert_service import AlertEvaluation, AlertService
 from .provider_access import ProviderAccess
 from .provider_workflow import (
     CandleResult,

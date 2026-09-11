@@ -7,6 +7,12 @@ __all__ = [
     "QuoteHandle",
     "CandleResult",
     "QuoteResult",
+    "ProviderOperations",
+    "CandleOperationResult",
+    "QuoteOperationResult",
+    "ProviderOperationError",
+    "InvalidOperationError",
+    "ProviderOperationFailure",
     "ProviderRegistry",
     "ProviderResolver",
     "ProviderRecord",
@@ -29,6 +35,15 @@ from .provider_workflow import (
     QuoteHandle,
     QuoteResult,
 )
+from .provider_operations import (
+    CandleOperationResult,
+    InvalidOperationError,
+    ProviderOperationError,
+    ProviderOperationFailure,
+    ProviderOperations,
+    QuoteOperationResult,
+)
+
 from .provider_registry import (
     CATEGORY_MARKET_DATA,
     CATEGORY_QUOTE,

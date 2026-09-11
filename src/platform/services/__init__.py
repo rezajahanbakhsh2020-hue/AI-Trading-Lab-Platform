@@ -9,6 +9,9 @@ __all__ = [
     "QuoteResult",
     "LabArtifactService",
     "MarketOverviewService",
+    "MarketQuoteConsistencyService",
+    "MarketQuoteResult",
+    "InconsistentMarketQuoteError",
     "ProviderOperations",
     "CandleOperationResult",
     "QuoteOperationResult",
@@ -39,6 +42,11 @@ from .provider_workflow import (
 )
 from .lab_artifacts import LabArtifactService
 from .market_overview import MarketOverviewService
+from .market_quote_consistency import (
+    InconsistentMarketQuoteError,
+    MarketQuoteConsistencyService,
+    MarketQuoteResult,
+)
 from .provider_operations import (
     CandleOperationResult,
     InvalidOperationError,

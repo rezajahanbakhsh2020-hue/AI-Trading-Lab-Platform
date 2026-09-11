@@ -42,6 +42,11 @@ def test_constructor_accepts_market_data_provider():
     assert adapter is not None
 
 
+def test_none_provider_rejected():
+    with pytest.raises(ValueError):
+        ProviderAdapter(None)  # type: ignore
+
+
 def test_connect_and_close_delegate_once():
     p = FakeMarketDataProvider([])
     adapter = ProviderAdapter(p)

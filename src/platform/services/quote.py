@@ -4,7 +4,7 @@ Validates inputs, fetches a raw quote through QuoteAdapter, and converts
 the record into a Quote domain object. Does not fabricate missing prices.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from src.platform.adapters.quote_adapter import QuoteAdapter
 from src.platform.domain.availability import Availability

@@ -117,6 +117,18 @@ def test_invalid_limit_type_raises():
         svc.get_candles("SYM", "1d", "100")  # type: ignore
 
 
+def test_bool_limit_raises():
+    adapter = FakeAdapter([])
+    svc = MarketDataService(adapter)
+    with pytest.raises(ValueError):
+        svc.get_candles("SYM", "1d", True)  # type: ignore
+
+
+def test_none_adapter_rejected():
+    with pytest.raises(ValueError):
+        MarketDataService(None)  # type: ignore
+
+
 @pytest.mark.parametrize("bad_limit", [0, -1])
 def test_non_positive_limit_raises(bad_limit):
     adapter = FakeAdapter([])

@@ -56,8 +56,10 @@ class FakeHTTPResponse:
     def __init__(self, body: bytes) -> None:
         self._body = body
 
-    def read(self) -> bytes:
-        return self._body
+    def read(self, amt: int = None) -> bytes:
+        if amt is None:
+            return self._body
+        return self._body[:amt]
 
     def __enter__(self) -> "FakeHTTPResponse":
         return self
@@ -256,3 +258,36 @@ def test_invalid_constructor_arguments():
         BiQuoteProvider(timeout=0)
     with pytest.raises(ValueError):
         BiQuoteProvider(timeout=-1)
+
+
+@patch("src.platform.providers.biquote.urllib.request.urlopen")
+def test_construction_and_describe_do_not_network(mock_urlopen):
+    provider = BiQuoteProvider()
+    provider.describe()
+    mock_urlopen.assert_not_called()
+
+
+@patch("src.platform.providers.biquote.urllib.request.urlopen")
+def test_fetch_after_close_raises_until_reconnect(mock_urlopen):
+    mock_urlopen.return_value = FakeHTTPResponse(_json_bytes(_payload(_newest_first_bars())))
+    provider = BiQuoteProvider()
+    provider.close()
+    with pytest.raises(RuntimeError, match="closed"):
+        provider.fetch_candles("XAUUSD", "1h", 1)
+    mock_urlopen.assert_not_called()
+    provider.close()
+    provider.connect()
+    out = provider.fetch_candles("XAUUSD", "1h", 3)
+    assert len(out) == 3
+
+
+@patch("src.platform.providers.biquote.urllib.request.urlopen")
+def test_already_oldest_first_is_not_reversed(mock_urlopen):
+    bars = [
+        {"openTime": "t1", "open": 1, "high": 1, "low": 1, "close": 1},
+        {"openTime": "t2", "open": 2, "high": 2, "low": 2, "close": 2},
+        {"openTime": "t3", "open": 3, "high": 3, "low": 3, "close": 3},
+    ]
+    mock_urlopen.return_value = FakeHTTPResponse(_json_bytes(_payload(bars)))
+    out = BiQuoteProvider().fetch_candles("XAUUSD", "1h", 3)
+    assert [item["timestamp"] for item in out] == ["t1", "t2", "t3"]

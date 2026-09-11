@@ -11,6 +11,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List
 
+from .http import MAX_RESPONSE_BYTES, read_limited
 from .market_data import MarketDataProvider
 
 SUPPORTED_INTERVALS = ("1m", "5m", "15m", "30m", "1h", "4h", "1d")
@@ -42,10 +43,13 @@ class BiQuoteProvider(MarketDataProvider):
         self._closed = False
 
     def connect(self) -> None:
+        """Mark the provider ready. Does not open a network connection."""
         self._connected = True
         self._closed = False
 
     def fetch_candles(self, symbol: str, timeframe: str, limit: int = 100) -> List[Dict[str, Any]]:
+        if self._closed:
+            raise RuntimeError("BiQuoteProvider is closed")
         normalized_symbol = self._validate_symbol(symbol)
         normalized_timeframe = self._validate_timeframe(timeframe)
         normalized_limit = self._validate_limit(limit)
@@ -54,12 +58,13 @@ class BiQuoteProvider(MarketDataProvider):
         payload = self._get_json(url)
         bars = self._extract_bars(payload)
         records = [self._normalize_bar(bar) for bar in bars]
-        chronological = list(reversed(records))
+        chronological = self._oldest_first(records)
         if len(chronological) > normalized_limit:
             chronological = chronological[-normalized_limit:]
         return chronological
 
     def close(self) -> None:
+        """Idempotent close. Subsequent fetches fail until connect()."""
         self._connected = False
         self._closed = True
 
@@ -121,11 +126,15 @@ class BiQuoteProvider(MarketDataProvider):
         )
         try:
             with urllib.request.urlopen(request, timeout=self._timeout) as response:
-                body = response.read()
+                body = read_limited(response)
         except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
+            try:
+                detail = read_limited(exc, max_bytes=min(4096, MAX_RESPONSE_BYTES))
+                text = detail.decode("utf-8", errors="replace")
+            except Exception:
+                text = ""
             raise RuntimeError(
-                f"BiQuote HTTP {exc.code} while fetching candles: {detail}"
+                f"BiQuote HTTP {exc.code} while fetching candles: {text}"
             ) from exc
         except urllib.error.URLError as exc:
             raise RuntimeError(
@@ -165,3 +174,23 @@ class BiQuoteProvider(MarketDataProvider):
         if "volume" in bar:
             record["volume"] = bar["volume"]
         return record
+
+    def _oldest_first(self, records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Return chronological candles without fabricating or dropping bars.
+
+        BiQuote documents newest-first bars. If timestamps show newest-first,
+        reverse once. If already oldest-first, or timestamps cannot be compared,
+        keep the original sequence.
+        """
+        if len(records) < 2:
+            return records
+        first = records[0].get("timestamp")
+        last = records[-1].get("timestamp")
+        if first is None or last is None:
+            return records
+        try:
+            if last < first:
+                return list(reversed(records))
+        except TypeError:
+            return records
+        return records

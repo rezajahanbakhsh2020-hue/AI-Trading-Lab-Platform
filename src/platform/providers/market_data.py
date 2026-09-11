@@ -14,6 +14,12 @@ class MarketDataProvider(ABC):
     - fetch_candles must return a list of plain dictionaries. Each dict
       MUST contain the required keys: 'timestamp', 'open', 'high', 'low', 'close'.
     - 'volume' is optional and may be omitted when not available.
+    - Returned candle lists SHOULD be oldest-first (chronological). Concrete
+      providers that receive newest-first upstream data MUST normalize order
+      at the provider boundary without fabricating, dropping, or inventing bars.
+    - Network access MUST be explicit. Construction, import, and describe()
+      MUST NOT perform I/O. connect()/close() control lifecycle; close() is
+      idempotent; fetch after close MUST fail rather than silently reopen.
     - Providers MUST NOT fabricate missing market-data fields or silently
       repair malformed values. Validation and conversion into domain
       Candle objects is the responsibility of the application/service

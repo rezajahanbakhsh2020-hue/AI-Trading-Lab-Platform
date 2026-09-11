@@ -66,3 +66,23 @@ def test_timestamp_not_changed():
     ts = 1234567890
     c = Candle(timestamp=ts, open=1, high=2, low=0, close=1)
     assert c.timestamp == ts
+
+
+def test_bool_timestamp_rejected():
+    with pytest.raises(ValueError):
+        Candle(timestamp=True, open=1, high=2, low=0, close=1)
+
+
+def test_blank_timestamp_string_rejected():
+    with pytest.raises(ValueError):
+        Candle(timestamp="  ", open=1, high=2, low=0, close=1)
+
+
+def test_bool_ohlc_rejected():
+    with pytest.raises(ValueError):
+        Candle(timestamp=1, open=True, high=2, low=0, close=1)
+
+
+def test_bool_volume_rejected():
+    with pytest.raises(ValueError):
+        Candle(timestamp=1, open=1, high=2, low=0, close=1, volume=True)

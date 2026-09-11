@@ -14,6 +14,8 @@ class ProviderAdapter(Adapter):
     """
 
     def __init__(self, provider: MarketDataProvider) -> None:
+        if provider is None:
+            raise ValueError("provider is required")
         self._provider = provider
 
     def connect(self) -> None:

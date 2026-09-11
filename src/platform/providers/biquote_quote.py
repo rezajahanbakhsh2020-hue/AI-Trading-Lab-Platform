@@ -11,6 +11,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict
 
+from .http import MAX_RESPONSE_BYTES, read_limited
 from .quote import QuoteProvider
 
 DEFAULT_BASE_URL = "https://biquote.io"
@@ -39,16 +40,20 @@ class BiQuoteQuoteProvider(QuoteProvider):
         self._closed = False
 
     def connect(self) -> None:
+        """Mark the provider ready. Does not open a network connection."""
         self._connected = True
         self._closed = False
 
     def fetch_quote(self, symbol: str) -> Dict[str, Any]:
+        if self._closed:
+            raise RuntimeError("BiQuoteQuoteProvider is closed")
         normalized_symbol = self._validate_symbol(symbol)
         url = self._build_url(normalized_symbol)
         payload = self._get_json(url)
         return self._normalize_tick(payload)
 
     def close(self) -> None:
+        """Idempotent close. Subsequent fetches fail until connect()."""
         self._connected = False
         self._closed = True
 
@@ -84,11 +89,15 @@ class BiQuoteQuoteProvider(QuoteProvider):
         )
         try:
             with urllib.request.urlopen(request, timeout=self._timeout) as response:
-                body = response.read()
+                body = read_limited(response)
         except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
+            try:
+                detail = read_limited(exc, max_bytes=min(4096, MAX_RESPONSE_BYTES))
+                text = detail.decode("utf-8", errors="replace")
+            except Exception:
+                text = ""
             raise RuntimeError(
-                f"BiQuote HTTP {exc.code} while fetching quote: {detail}"
+                f"BiQuote HTTP {exc.code} while fetching quote: {text}"
             ) from exc
         except urllib.error.URLError as exc:
             raise RuntimeError(

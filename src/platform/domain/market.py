@@ -26,12 +26,16 @@ class Candle:
     def __post_init__(self) -> None:
         # Timestamp must be one of the accepted input types. We store it as
         # provided to avoid fabricating or altering the original value.
-        if not isinstance(self.timestamp, (int, float, str)):
+        if isinstance(self.timestamp, bool) or not isinstance(self.timestamp, (int, float, str)):
             raise ValueError("timestamp must be an int, float, or ISO-formatted string")
+        if isinstance(self.timestamp, str) and not self.timestamp.strip():
+            raise ValueError("timestamp string must not be empty or whitespace")
+        if isinstance(self.timestamp, (int, float)) and not math.isfinite(self.timestamp):
+            raise ValueError("numeric timestamp must be finite")
 
         # Validate OHLC are numeric real values and finite
         for name, val in (("open", self.open), ("high", self.high), ("low", self.low), ("close", self.close)):
-            if not isinstance(val, numbers.Real):
+            if isinstance(val, bool) or not isinstance(val, numbers.Real):
                 raise ValueError(f"{name} must be a numeric real value")
             if not math.isfinite(val):
                 raise ValueError(f"{name} must be a finite number")
@@ -44,7 +48,7 @@ class Candle:
 
         # Volume validation
         if self.volume is not None:
-            if not isinstance(self.volume, numbers.Real):
+            if isinstance(self.volume, bool) or not isinstance(self.volume, numbers.Real):
                 raise ValueError("volume must be numeric if provided")
             if not math.isfinite(self.volume) or self.volume < 0:
                 raise ValueError("volume must be finite and non-negative")

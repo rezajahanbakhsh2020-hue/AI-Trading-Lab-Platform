@@ -10,6 +10,9 @@ class QuoteProvider(ABC):
     and MUST NOT convert records into domain Quote objects.
 
     Quote contract (summary):
+    - Network access MUST be explicit. Construction, import, and describe()
+      MUST NOT perform I/O. close() is idempotent; fetch after close MUST fail
+      rather than silently reopen.
     - fetch_quote must return a plain dictionary.
     - Required keys: 'symbol', 'timestamp'.
     - At least one price key should be present when the upstream source

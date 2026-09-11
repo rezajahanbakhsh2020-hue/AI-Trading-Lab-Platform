@@ -41,8 +41,10 @@ class FakeHTTPResponse:
     def __init__(self, body: bytes) -> None:
         self._body = body
 
-    def read(self) -> bytes:
-        return self._body
+    def read(self, amt: int = None) -> bytes:
+        if amt is None:
+            return self._body
+        return self._body[:amt]
 
     def __enter__(self):
         return self
@@ -182,3 +184,23 @@ def test_invalid_constructor_arguments():
         BiQuoteQuoteProvider(base_url="")
     with pytest.raises(ValueError):
         BiQuoteQuoteProvider(timeout=0)
+
+
+@patch("src.platform.providers.biquote_quote.urllib.request.urlopen")
+def test_construction_and_describe_do_not_network(mock_urlopen):
+    provider = BiQuoteQuoteProvider()
+    provider.describe()
+    mock_urlopen.assert_not_called()
+
+
+@patch("src.platform.providers.biquote_quote.urllib.request.urlopen")
+def test_fetch_after_close_raises_until_reconnect(mock_urlopen):
+    mock_urlopen.return_value = FakeHTTPResponse(_json_bytes(_tick()))
+    provider = BiQuoteQuoteProvider()
+    provider.close()
+    with pytest.raises(RuntimeError, match="closed"):
+        provider.fetch_quote("XAUUSD")
+    mock_urlopen.assert_not_called()
+    provider.connect()
+    out = provider.fetch_quote("XAUUSD")
+    assert out["symbol"] == "XAUUSD"

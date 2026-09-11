@@ -4,10 +4,12 @@ Provides MarketDataService which orchestrates adapter fetches and converts
 adapter records into Candle domain objects while performing input and data
 validation according to Phase 3 requirements.
 """
-from typing import Any, Dict, Iterable, List
+from typing import Iterable, List
 
 from src.platform.adapter import Adapter
 from src.platform.domain.market import Candle
+
+MAX_CANDLES = 10000
 
 
 class MarketDataService:
@@ -22,6 +24,8 @@ class MarketDataService:
     """
 
     def __init__(self, adapter: Adapter) -> None:
+        if adapter is None:
+            raise ValueError("adapter is required")
         self._adapter = adapter
 
     def get_candles(self, symbol: str, timeframe: str, limit: int = 100) -> List[Candle]:
@@ -36,10 +40,12 @@ class MarketDataService:
         if timeframe.strip() == "":
             raise ValueError("timeframe must not be empty or whitespace")
 
-        if not isinstance(limit, int):
+        if isinstance(limit, bool) or not isinstance(limit, int):
             raise ValueError("limit must be an integer")
         if limit <= 0:
             raise ValueError("limit must be greater than zero")
+        if limit > MAX_CANDLES:
+            raise ValueError(f"limit must be at most {MAX_CANDLES}")
 
         # Fetch data from adapter. Let adapter exceptions propagate.
         raw = self._adapter.fetch_market_data(symbol=symbol, timeframe=timeframe, limit=limit)
@@ -52,6 +58,8 @@ class MarketDataService:
         required_fields = ("timestamp", "open", "high", "low", "close")
 
         for idx, rec in enumerate(raw):
+            if idx >= MAX_CANDLES:
+                raise ValueError("adapter returned too many candle records")
             if not isinstance(rec, dict):
                 raise ValueError(f"adapter returned a non-dict candle record at index {idx}")
 

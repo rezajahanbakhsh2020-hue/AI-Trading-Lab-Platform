@@ -8,6 +8,7 @@ __all__ = [
     "CandleResult",
     "QuoteResult",
     "LabArtifactService",
+    "MarketOverviewService",
     "ProviderOperations",
     "CandleOperationResult",
     "QuoteOperationResult",
@@ -37,6 +38,7 @@ from .provider_workflow import (
     QuoteResult,
 )
 from .lab_artifacts import LabArtifactService
+from .market_overview import MarketOverviewService
 from .provider_operations import (
     CandleOperationResult,
     InvalidOperationError,

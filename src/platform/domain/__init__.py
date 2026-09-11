@@ -7,6 +7,7 @@ platform. Presentation/UI code must not live here.
 from .availability import Availability
 from .instrument import Instrument
 from .market import Candle
+from .market_overview import MarketOverview
 from .quote import Quote
 from .signal import Signal
 from .stability import Stability
@@ -16,6 +17,7 @@ __all__ = [
     "Availability",
     "Candle",
     "Instrument",
+    "MarketOverview",
     "Quote",
     "Signal",
     "Stability",

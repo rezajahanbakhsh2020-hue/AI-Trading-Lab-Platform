@@ -2,8 +2,8 @@ __all__ = [
     "MarketDataService",
     "QuoteService",
     "AlertEvaluation",
-"AlertService",
-"ProviderAccess",
+    "AlertService",
+    "ProviderAccess",
     "ProviderWorkflow",
     "MarketDataHandle",
     "QuoteHandle",
@@ -20,6 +20,8 @@ __all__ = [
     "ProviderInspectionService",
     "ProviderMonitor",
     "DataFreshnessSnapshot",
+    "SignalEngineResult",
+    "SignalEngineService",
     "ProviderOperations",
     "CandleOperationResult",
     "QuoteOperationResult",
@@ -63,6 +65,7 @@ from .provider_inspection import (
     ProviderInspectionService,
 )
 from .provider_monitoring import DataFreshnessSnapshot, ProviderMonitor
+from .signal_engine import SignalEngineResult, SignalEngineService
 from .provider_operations import (
     CandleOperationResult,
     InvalidOperationError,

@@ -30,6 +30,7 @@ __all__ = [
     "ProviderOperationFailure",
     "TradeReadinessResult",
     "TradeReadinessService",
+    "TradeSignalService",
     "ProviderRegistry",
     "ProviderResolver",
     "ProviderRecord",
@@ -77,7 +78,7 @@ from .provider_operations import (
     QuoteOperationResult,
 )
 from .trade_readiness import TradeReadinessResult, TradeReadinessService
-
+from .trade_signal import TradeSignalService
 from .provider_registry import (
     CATEGORY_MARKET_DATA,
     CATEGORY_QUOTE,

@@ -17,7 +17,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, Optional, Tuple, Type
+from types import MappingProxyType
+from typing import Any, Dict, Mapping, Optional, Tuple, Type
 
 from src.platform.providers.market_data import MarketDataProvider
 from src.platform.providers.quote import QuoteProvider
@@ -25,10 +26,12 @@ from src.platform.providers.quote import QuoteProvider
 CATEGORY_MARKET_DATA = "market_data"
 CATEGORY_QUOTE = "quote"
 
-DEFAULT_PROVIDER_CATEGORIES: Dict[str, Type[Any]] = {
-    CATEGORY_MARKET_DATA: MarketDataProvider,
-    CATEGORY_QUOTE: QuoteProvider,
-}
+DEFAULT_PROVIDER_CATEGORIES: Mapping[str, Type[Any]] = MappingProxyType(
+    {
+        CATEGORY_MARKET_DATA: MarketDataProvider,
+        CATEGORY_QUOTE: QuoteProvider,
+    }
+)
 
 _TOKEN_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 
@@ -110,6 +113,10 @@ class ProviderRegistry:
                 )
             for raw_category, port_type in extra_categories.items():
                 category = _normalize_token(raw_category, "category")
+                if category in categories:
+                    raise InvalidProviderRegistrationError(
+                        f"cannot replace existing category {category!r}"
+                    )
                 if not isinstance(port_type, type):
                     raise InvalidProviderRegistrationError(
                         f"category {category!r} must map to a type"
@@ -117,6 +124,9 @@ class ProviderRegistry:
                 categories[category] = port_type
         self._categories = categories
         self._entries: Dict[Tuple[str, str], ProviderRecord] = {}
+
+    def __len__(self) -> int:
+        return len(self._entries)
 
     def supported_categories(self) -> Tuple[str, ...]:
         return tuple(sorted(self._categories))
@@ -175,6 +185,16 @@ class ProviderRegistry:
             )
         return self._copy_record(record)
 
+    def contains(self, category: str, provider_id: str) -> bool:
+        """Return whether category/id is registered. Never falls back."""
+        normalized_id = _normalize_token(provider_id, "provider_id")
+        normalized_category = _normalize_token(category, "category")
+        if normalized_category not in self._categories:
+            raise UnknownProviderCategoryError(
+                f"unsupported provider category {normalized_category!r}"
+            )
+        return (normalized_category, normalized_id) in self._entries
+
     def list_providers(self, category: Optional[str] = None) -> Tuple[ProviderRecord, ...]:
         if category is None:
             records = list(self._entries.values())
@@ -210,7 +230,12 @@ class ProviderRegistry:
         describe = getattr(provider, "describe", None)
         if not callable(describe):
             return {}
-        snapshot = describe()
+        try:
+            snapshot = describe()
+        except Exception as exc:
+            raise InvalidProviderRegistrationError(
+                f"provider describe() failed: {exc}"
+            ) from exc
         return _copy_metadata(snapshot)
 
 
@@ -235,11 +260,22 @@ class ProviderResolver:
 
     def resolve_market_data(self, provider_id: str) -> MarketDataProvider:
         provider = self.resolve(CATEGORY_MARKET_DATA, provider_id)
+        if not isinstance(provider, MarketDataProvider):
+            raise InvalidProviderRegistrationError(
+                "resolved market-data provider must be MarketDataProvider"
+            )
         return provider
 
     def resolve_quote(self, provider_id: str) -> QuoteProvider:
         provider = self.resolve(CATEGORY_QUOTE, provider_id)
+        if not isinstance(provider, QuoteProvider):
+            raise InvalidProviderRegistrationError(
+                "resolved quote provider must be QuoteProvider"
+            )
         return provider
+
+    def contains(self, category: str, provider_id: str) -> bool:
+        return self._registry.contains(category, provider_id)
 
     def list_records(
         self, category: Optional[str] = None

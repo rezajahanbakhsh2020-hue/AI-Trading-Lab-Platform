@@ -269,3 +269,79 @@ def test_lifecycle_remains_caller_owned_after_resolution():
     assert provider.connect_calls == 1
     assert provider.fetch_calls == 1
     assert provider.close_calls == 1
+
+
+def test_contains_and_len_are_explicit_and_isolated():
+    first = ProviderRegistry()
+    second = ProviderRegistry()
+    assert len(first) == 0
+    assert first.contains(CATEGORY_MARKET_DATA, "biquote") is False
+    first.register("biquote", CATEGORY_MARKET_DATA, FakeMarketDataProvider())
+    assert len(first) == 1
+    assert first.contains("MARKET_DATA", "BIQUOTE") is True
+    assert second.contains(CATEGORY_MARKET_DATA, "biquote") is False
+    assert len(second) == 0
+    resolver = ProviderResolver(first)
+    assert resolver.contains(CATEGORY_MARKET_DATA, "biquote") is True
+    assert resolver.contains(CATEGORY_QUOTE, "biquote") is False
+
+
+def test_contains_unknown_category_fails_without_fallback():
+    registry = ProviderRegistry()
+    with pytest.raises(UnknownProviderCategoryError):
+        registry.contains("news", "wire")
+
+
+def test_builtin_categories_cannot_be_replaced():
+    class OtherPort:
+        pass
+
+    with pytest.raises(InvalidProviderRegistrationError, match="existing category"):
+        ProviderRegistry(extra_categories={CATEGORY_MARKET_DATA: OtherPort})
+    with pytest.raises(InvalidProviderRegistrationError, match="existing category"):
+        ProviderRegistry(extra_categories={"News": OtherPort, "news": OtherPort})
+
+
+def test_extra_categories_must_be_a_mapping_of_types():
+    with pytest.raises(InvalidProviderRegistrationError, match="mapping"):
+        ProviderRegistry(extra_categories=["news"])  # type: ignore[arg-type]
+    with pytest.raises(InvalidProviderRegistrationError, match="type"):
+        ProviderRegistry(extra_categories={"news": object()})  # type: ignore[arg-type]
+
+
+def test_describe_failure_is_registration_error_and_does_not_register():
+    class BrokenDescribe(FakeMarketDataProvider):
+        def describe(self) -> Dict[str, Any]:
+            raise RuntimeError("describe exploded")
+
+    registry = ProviderRegistry()
+    with pytest.raises(InvalidProviderRegistrationError, match="describe"):
+        registry.register("biquote", CATEGORY_MARKET_DATA, BrokenDescribe())
+    assert len(registry) == 0
+    with pytest.raises(UnknownProviderError):
+        registry.get(CATEGORY_MARKET_DATA, "biquote")
+
+
+def test_default_categories_are_immutable():
+    with pytest.raises(TypeError):
+        from src.platform.services.provider_registry import DEFAULT_PROVIDER_CATEGORIES
+
+        DEFAULT_PROVIDER_CATEGORIES["extra"] = object  # type: ignore[index]
+    registry = ProviderRegistry()
+    assert registry.supported_categories() == ("market_data", "quote")
+
+
+def test_real_provider_ports_register_without_io():
+    from src.platform.providers.biquote import BiQuoteProvider
+    from src.platform.providers.biquote_quote import BiQuoteQuoteProvider
+
+    candles = BiQuoteProvider()
+    quotes = BiQuoteQuoteProvider()
+    registry = ProviderRegistry()
+    registry.register("biquote", CATEGORY_MARKET_DATA, candles)
+    registry.register("biquote_quote", CATEGORY_QUOTE, quotes)
+    resolver = ProviderResolver(registry)
+    assert resolver.resolve_market_data("biquote") is candles
+    assert resolver.resolve_quote("biquote_quote") is quotes
+    listed = resolver.list_records()
+    assert [item.provider_id for item in listed] == ["biquote", "biquote_quote"]

@@ -48,6 +48,8 @@ __all__ = [
     "REASON_PROVIDER_NOT_READY",
     "BacktestAssessmentService",
     "StrategyValidationService",
+    "UserAuthorizationService",
+    "TelegramDeliveryService",
     "REASON_VALIDATED",
     "REASON_NO_BACKTEST",
     "REASON_NO_TRADES",
@@ -130,6 +132,8 @@ from .strategy_validation import (
     REASON_VALIDATED,
     StrategyValidationService,
 )
+from .user_authorization import UserAuthorizationService
+from .telegram_delivery import TelegramDeliveryService
 from .provider_registry import (
     CATEGORY_MARKET_DATA,
     CATEGORY_QUOTE,

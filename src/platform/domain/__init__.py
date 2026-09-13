@@ -12,6 +12,7 @@ from .autonomous_authorization import (
     AutonomousAuthorization,
 )
 from .availability import Availability
+from .backtest import BacktestResult
 from .freshness import DataFreshness
 from .instrument import Instrument
 from .market import Candle
@@ -50,6 +51,7 @@ __all__ = [
     "VALID_AUTHORIZATION_STATUSES",
     "AutonomousAuthorization",
     "Availability",
+    "BacktestResult",
     "MarketAlert",
     "Candle",
     "DataFreshness",

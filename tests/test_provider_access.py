@@ -12,6 +12,7 @@ from src.platform.services import (
     CATEGORY_MARKET_DATA,
     CATEGORY_QUOTE,
     DuplicateProviderError,
+    InvalidProviderRegistrationError,
     MarketDataService,
     ProviderAccess,
     ProviderRegistry,
@@ -192,3 +193,123 @@ def test_domain_and_integration_boundaries_remain_intact():
     assert "ProviderRegistry" not in dir(lab_module)
     assert "ProviderAccess" not in dir(market_module)
     assert "ProviderWorkflow" not in dir(market_module)
+
+
+def test_access_requires_registry():
+    with pytest.raises(ValueError, match="ProviderRegistry"):
+        ProviderAccess(None)
+    with pytest.raises(ValueError, match="ProviderRegistry"):
+        ProviderAccess(object())
+
+
+def test_access_is_not_a_singleton():
+    first_registry = ProviderRegistry()
+    second_registry = ProviderRegistry()
+    first = ProviderAccess(first_registry)
+    second = ProviderAccess(second_registry)
+    first_registry.register("md_one", CATEGORY_MARKET_DATA, FakeMarketDataProvider())
+    assert first.market_data_provider("md_one") is not None
+    with pytest.raises(UnknownProviderError):
+        second.market_data_provider("md_one")
+    assert first is not second
+
+
+def test_repeated_resolution_is_deterministic():
+    access, md, qt = _build_access()
+    assert access.market_data_provider("md_one") is md
+    assert access.market_data_provider("md_one") is md
+    assert access.quote_provider("qt_one") is qt
+    assert access.quote_provider("qt_one") is qt
+    assert access.resolve_provider(CATEGORY_MARKET_DATA, "md_one") is md
+    assert access.resolve_provider(CATEGORY_QUOTE, "qt_one") is qt
+
+
+def test_no_automatic_provider_switching():
+    registry = ProviderRegistry()
+    first = FakeMarketDataProvider("first")
+    second = FakeMarketDataProvider("second")
+    registry.register("first", CATEGORY_MARKET_DATA, first)
+    registry.register("second", CATEGORY_MARKET_DATA, second)
+    access = ProviderAccess(registry)
+    assert access.market_data_provider("first") is first
+    assert access.market_data_provider("second") is second
+    assert access.market_data_provider("first") is not second
+    with pytest.raises(UnknownProviderError):
+        access.market_data_provider("third")
+
+
+def test_contains_is_explicit_and_does_not_fallback():
+    access, _, _ = _build_access()
+    assert access.contains(CATEGORY_MARKET_DATA, "md_one") is True
+    assert access.contains(CATEGORY_QUOTE, "qt_one") is True
+    assert access.contains(CATEGORY_MARKET_DATA, "qt_one") is False
+    assert access.contains(CATEGORY_QUOTE, "md_one") is False
+    assert access.contains(CATEGORY_MARKET_DATA, "nonexistent") is False
+
+
+def test_contains_unknown_category_fails():
+    access, _, _ = _build_access()
+    with pytest.raises(UnknownProviderCategoryError, match="news"):
+        access.contains("news", "wire")
+
+
+def test_invalid_provider_id_propagates_existing_error():
+    access, _, _ = _build_access()
+    with pytest.raises(InvalidProviderRegistrationError):
+        access.market_data_provider("bi-quote")
+    with pytest.raises(InvalidProviderRegistrationError):
+        access.quote_provider("")
+    with pytest.raises(InvalidProviderRegistrationError):
+        access.resolve_provider(CATEGORY_MARKET_DATA, "   ")
+
+
+def test_resolution_does_not_call_describe_or_lifecycle():
+    access, md, qt = _build_access()
+    describe_md = md.describe_calls
+    describe_qt = qt.describe_calls
+    access.market_data_provider("md_one")
+    access.quote_provider("qt_one")
+    access.resolve_provider(CATEGORY_MARKET_DATA, "md_one")
+    access.contains(CATEGORY_MARKET_DATA, "md_one")
+    access.list_providers()
+    access.supported_categories()
+    assert md.describe_calls == describe_md
+    assert qt.describe_calls == describe_qt
+    assert md.connect_calls == 0
+    assert md.fetch_calls == 0
+    assert md.close_calls == 0
+    assert qt.connect_calls == 0
+    assert qt.fetch_calls == 0
+    assert qt.close_calls == 0
+
+
+def test_list_providers_is_sorted_and_does_not_activate():
+    registry = ProviderRegistry()
+    zeta = FakeQuoteProvider("zeta")
+    alpha = FakeMarketDataProvider("alpha")
+    mid = FakeMarketDataProvider("mid")
+    registry.register("zeta", CATEGORY_QUOTE, zeta)
+    registry.register("alpha", CATEGORY_MARKET_DATA, alpha)
+    registry.register("mid", CATEGORY_MARKET_DATA, mid)
+    access = ProviderAccess(registry)
+    listed = access.list_providers()
+    assert [(item.category, item.provider_id) for item in listed] == [
+        ("market_data", "alpha"),
+        ("market_data", "mid"),
+        ("quote", "zeta"),
+    ]
+    assert [item.provider_id for item in access.list_providers(CATEGORY_QUOTE)] == ["zeta"]
+    assert alpha.connect_calls == 0
+    assert zeta.fetch_calls == 0
+
+
+def test_same_id_in_different_categories_stays_explicit():
+    registry = ProviderRegistry()
+    candles = FakeMarketDataProvider("shared")
+    quotes = FakeQuoteProvider("shared")
+    registry.register("shared", CATEGORY_MARKET_DATA, candles)
+    registry.register("shared", CATEGORY_QUOTE, quotes)
+    access = ProviderAccess(registry)
+    assert access.market_data_provider("shared") is candles
+    assert access.quote_provider("shared") is quotes
+    assert access.market_data_provider("shared") is not quotes

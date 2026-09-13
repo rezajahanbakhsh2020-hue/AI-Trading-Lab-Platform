@@ -35,6 +35,27 @@ __all__ = [
     "TradeReadinessResult",
     "TradeReadinessService",
     "TradeSignalService",
+    "AutonomousAuthorizationService",
+    "REASON_AUTHORIZED",
+    "REASON_SIGNAL_NOT_TRADABLE",
+    "REASON_PROVIDER_REQUIRED",
+    "REASON_PROVIDER_NOT_SELECTED",
+    "REASON_LEVELS_INSANE",
+    "REASON_INSUFFICIENT_RR",
+    "TradingWorkflowService",
+    "REASON_WORKFLOW_EXECUTED",
+    "REASON_WORKFLOW_DENIED",
+    "REASON_PROVIDER_NOT_READY",
+    "BacktestAssessmentService",
+    "StrategyValidationService",
+    "UserAuthorizationService",
+    "TelegramDeliveryService",
+    "REASON_VALIDATED",
+    "REASON_NO_BACKTEST",
+    "REASON_NO_TRADES",
+    "REASON_HIGH_DRAWDOWN",
+    "REASON_LOW_WIN_RATE",
+    "REASON_UNSTABLE_RISK",
     "ProviderRegistry",
     "ProviderResolver",
     "ProviderRecord",
@@ -86,6 +107,33 @@ from .provider_operations import (
 )
 from .trade_readiness import TradeReadinessResult, TradeReadinessService
 from .trade_signal import TradeSignalService
+from .autonomous_authorization import (
+    REASON_AUTHORIZED,
+    REASON_INSUFFICIENT_RR,
+    REASON_LEVELS_INSANE,
+    REASON_PROVIDER_NOT_SELECTED,
+    REASON_PROVIDER_REQUIRED,
+    REASON_SIGNAL_NOT_TRADABLE,
+    AutonomousAuthorizationService,
+)
+from .trading_workflow import (
+    REASON_PROVIDER_NOT_READY,
+    REASON_WORKFLOW_DENIED,
+    REASON_WORKFLOW_EXECUTED,
+    TradingWorkflowService,
+)
+from .backtest_assessment import BacktestAssessmentService
+from .strategy_validation import (
+    REASON_HIGH_DRAWDOWN,
+    REASON_LOW_WIN_RATE,
+    REASON_NO_BACKTEST,
+    REASON_NO_TRADES,
+    REASON_UNSTABLE_RISK,
+    REASON_VALIDATED,
+    StrategyValidationService,
+)
+from .user_authorization import UserAuthorizationService
+from .telegram_delivery import TelegramDeliveryService
 from .provider_registry import (
     CATEGORY_MARKET_DATA,
     CATEGORY_QUOTE,

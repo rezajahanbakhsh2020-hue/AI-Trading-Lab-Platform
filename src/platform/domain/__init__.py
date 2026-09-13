@@ -4,12 +4,20 @@ This package contains simple, dependency-light domain models used across the
 platform. Presentation/UI code must not live here.
 """
 
+from .alert import MarketAlert
+from .autonomous_authorization import (
+    AUTHORIZATION_STATUS_AUTHORIZED,
+    AUTHORIZATION_STATUS_REJECTED,
+    VALID_AUTHORIZATION_STATUSES,
+    AutonomousAuthorization,
+)
 from .availability import Availability
+from .backtest import BacktestResult
+from .freshness import DataFreshness
 from .instrument import Instrument
 from .market import Candle
-from .alert import MarketAlert
-from .freshness import DataFreshness
 from .market_overview import MarketOverview
+from .presented_signal import PresentedSignal
 from .provider_readiness import (
     PROVIDER_STATUS_NOT_READY,
     PROVIDER_STATUS_READY,
@@ -30,14 +38,35 @@ from .strategy_result import StrategyResult
 from .trade_readiness import TradeReadiness
 from .trade_setup import TradeSetup
 from .trade_signal import TradeSignal
+from .trading_workflow import (
+    VALID_WORKFLOW_STATUSES,
+    WORKFLOW_STATUS_DENIED,
+    WORKFLOW_STATUS_EXECUTED,
+    WORKFLOW_STATUS_NOT_READY,
+    TradingWorkflowResult,
+)
+from .user_authorization import UserAuthorization
+from .validated_strategy import (
+    STRATEGY_STATUS_REJECTED,
+    STRATEGY_STATUS_UNVALIDATED,
+    STRATEGY_STATUS_VALIDATED,
+    VALID_STRATEGY_STATUSES,
+    ValidatedStrategyState,
+)
 
 __all__ = [
+    "AUTHORIZATION_STATUS_AUTHORIZED",
+    "AUTHORIZATION_STATUS_REJECTED",
+    "VALID_AUTHORIZATION_STATUSES",
+    "AutonomousAuthorization",
     "Availability",
+    "BacktestResult",
     "MarketAlert",
     "Candle",
     "DataFreshness",
     "Instrument",
     "MarketOverview",
+    "PresentedSignal",
     "PROVIDER_STATUS_NOT_READY",
     "PROVIDER_STATUS_READY",
     "VALID_PROVIDER_READINESS_STATUSES",
@@ -54,4 +83,15 @@ __all__ = [
     "TradeReadiness",
     "TradeSetup",
     "TradeSignal",
+    "VALID_WORKFLOW_STATUSES",
+    "WORKFLOW_STATUS_DENIED",
+    "WORKFLOW_STATUS_EXECUTED",
+    "WORKFLOW_STATUS_NOT_READY",
+    "TradingWorkflowResult",
+    "UserAuthorization",
+    "STRATEGY_STATUS_REJECTED",
+    "STRATEGY_STATUS_UNVALIDATED",
+    "STRATEGY_STATUS_VALIDATED",
+    "VALID_STRATEGY_STATUSES",
+    "ValidatedStrategyState",
 ]

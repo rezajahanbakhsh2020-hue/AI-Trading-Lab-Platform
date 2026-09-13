@@ -47,6 +47,13 @@ __all__ = [
     "REASON_WORKFLOW_DENIED",
     "REASON_PROVIDER_NOT_READY",
     "BacktestAssessmentService",
+    "StrategyValidationService",
+    "REASON_VALIDATED",
+    "REASON_NO_BACKTEST",
+    "REASON_NO_TRADES",
+    "REASON_HIGH_DRAWDOWN",
+    "REASON_LOW_WIN_RATE",
+    "REASON_UNSTABLE_RISK",
     "ProviderRegistry",
     "ProviderResolver",
     "ProviderRecord",
@@ -114,6 +121,15 @@ from .trading_workflow import (
     TradingWorkflowService,
 )
 from .backtest_assessment import BacktestAssessmentService
+from .strategy_validation import (
+    REASON_HIGH_DRAWDOWN,
+    REASON_LOW_WIN_RATE,
+    REASON_NO_BACKTEST,
+    REASON_NO_TRADES,
+    REASON_UNSTABLE_RISK,
+    REASON_VALIDATED,
+    StrategyValidationService,
+)
 from .provider_registry import (
     CATEGORY_MARKET_DATA,
     CATEGORY_QUOTE,

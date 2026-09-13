@@ -26,10 +26,11 @@ from src.platform.domain.market import Candle
 from src.platform.domain.quote import Quote
 from src.platform.services.market_data import MarketDataService, MAX_CANDLES
 from src.platform.services.provider_access import ProviderAccess
+from src.platform.services.provider_registry import (
+    CATEGORY_MARKET_DATA,
+    CATEGORY_QUOTE,
+)
 from src.platform.services.quote import QuoteService
-
-CATEGORY_MARKET_DATA = "market_data"
-CATEGORY_QUOTE = "quote"
 
 
 class ProviderOperationError(Exception):

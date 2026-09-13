@@ -43,6 +43,7 @@ class SeededMarketDataProvider(RecordingMarketDataProvider):
     def fetch_candles(self, symbol: str, timeframe: str, limit: int = 100) -> List[Dict[str, Any]]:
         self.last_symbol = symbol
         self.last_timeframe = timeframe
+        self.last_limit = limit
         self.fetch_calls += 1
         records: List[Dict[str, Any]] = []
         for i in range(limit):
@@ -208,3 +209,110 @@ def test_compatible_with_existing_services():
     qt_service = QuoteService(QuoteAdapter(qt))
     direct_quote = qt_service.get_quote("XAUUSD")
     assert quote_result.quote == direct_quote
+
+
+def test_operations_is_not_a_singleton():
+    first_ops, first_md, _ = _build_ops()
+    second_ops, second_md, _ = _build_ops()
+    first_ops.fetch_candles("md_one", "XAUUSD", "1h", 1)
+    assert first_md.fetch_calls == 1
+    assert second_md.fetch_calls == 0
+    assert first_ops is not second_ops
+
+
+def test_repeated_fetch_is_deterministic():
+    registry = ProviderRegistry()
+    md = SeededMarketDataProvider("md_one")
+    qt = RecordingQuoteProvider("qt_one")
+    registry.register("md_one", CATEGORY_MARKET_DATA, md)
+    registry.register("qt_one", CATEGORY_QUOTE, qt)
+    ops = ProviderOperations(ProviderAccess(registry))
+    first = ops.fetch_candles("md_one", "XAUUSD", "1h", 2)
+    second = ops.fetch_candles("md_one", "XAUUSD", "1h", 2)
+    assert first.candles == second.candles
+    assert first.provider_id == second.provider_id
+    assert md.fetch_calls == 2
+    first_quote = ops.fetch_quote("qt_one", "XAUUSD")
+    second_quote = ops.fetch_quote("qt_one", "XAUUSD")
+    assert first_quote.quote == second_quote.quote
+    assert qt.fetch_calls == 2
+
+
+def test_no_automatic_provider_switching():
+    registry = ProviderRegistry()
+    first = SeededMarketDataProvider("first")
+    second = SeededMarketDataProvider("second")
+    registry.register("first", CATEGORY_MARKET_DATA, first)
+    registry.register("second", CATEGORY_MARKET_DATA, second)
+    ops = ProviderOperations(ProviderAccess(registry))
+    result = ops.fetch_candles("first", "XAUUSD", "1h", 1)
+    assert result.provider_id == "first"
+    assert first.fetch_calls == 1
+    assert second.fetch_calls == 0
+    with pytest.raises(UnknownProviderError):
+        ops.fetch_candles("third", "XAUUSD", "1h", 1)
+    assert first.fetch_calls == 1
+    assert second.fetch_calls == 0
+
+
+def test_wrong_category_does_not_fallback():
+    ops, md, qt = _build_ops()
+    with pytest.raises(UnknownProviderError):
+        ops.fetch_candles("qt_one", "XAUUSD", "1h", 1)
+    with pytest.raises(UnknownProviderError):
+        ops.fetch_quote("md_one", "XAUUSD")
+    assert md.fetch_calls == 0
+    assert qt.fetch_calls == 0
+    assert md.connect_calls == 0
+    assert qt.connect_calls == 0
+
+
+def test_empty_registry_has_no_implicit_fallback():
+    ops = ProviderOperations(ProviderAccess(ProviderRegistry()))
+    with pytest.raises(UnknownProviderError):
+        ops.fetch_candles("md_one", "XAUUSD", "1h", 1)
+    with pytest.raises(UnknownProviderError):
+        ops.fetch_quote("qt_one", "XAUUSD")
+
+
+def test_invalid_types_are_rejected_without_io():
+    ops, md, qt = _build_ops()
+    with pytest.raises(InvalidOperationError):
+        ops.fetch_candles(None, "XAUUSD", "1h", 1)
+    with pytest.raises(InvalidOperationError):
+        ops.fetch_candles("md_one", "XAUUSD", "1h", True)
+    with pytest.raises(InvalidOperationError):
+        ops.fetch_quote(123, "XAUUSD")
+    assert md.fetch_calls == 0
+    assert qt.fetch_calls == 0
+
+
+def test_fetch_passes_explicit_limit_to_selected_provider():
+    registry = ProviderRegistry()
+    md = SeededMarketDataProvider("md_one")
+    registry.register("md_one", CATEGORY_MARKET_DATA, md)
+    ops = ProviderOperations(ProviderAccess(registry))
+    result = ops.fetch_candles("md_one", "XAUUSD", "4h", 7)
+    assert result.limit == 7
+    assert result.timeframe == "4h"
+    assert md.last_symbol == "XAUUSD"
+    assert md.last_timeframe == "4h"
+    assert md.last_limit == 7
+    assert md.connect_calls == 0
+    assert md.close_calls == 0
+
+
+def test_biquote_registers_through_operations_without_io():
+    from src.platform.providers.biquote import BiQuoteProvider
+    from src.platform.providers.biquote_quote import BiQuoteQuoteProvider
+
+    registry = ProviderRegistry()
+    md = BiQuoteProvider()
+    qt = BiQuoteQuoteProvider()
+    registry.register("biquote", CATEGORY_MARKET_DATA, md)
+    registry.register("biquote_quote", CATEGORY_QUOTE, qt)
+    ops = ProviderOperations(ProviderAccess(registry))
+    ops.validate_candles_request("biquote", "XAUUSD", "1h", 5)
+    ops.validate_quote_request("biquote_quote", "XAUUSD")
+    assert ops._access.market_data_provider("biquote") is md
+    assert ops._access.quote_provider("biquote_quote") is qt

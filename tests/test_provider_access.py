@@ -313,3 +313,83 @@ def test_same_id_in_different_categories_stays_explicit():
     assert access.market_data_provider("shared") is candles
     assert access.quote_provider("shared") is quotes
     assert access.market_data_provider("shared") is not quotes
+
+
+def test_get_record_preserves_explicit_identity():
+    access, md, qt = _build_access()
+    record = access.get_record(CATEGORY_MARKET_DATA, "md_one")
+    assert record.provider_id == "md_one"
+    assert record.category == "market_data"
+    assert record.provider is md
+    quote_record = access.get_record(CATEGORY_QUOTE, "qt_one")
+    assert quote_record.provider_id == "qt_one"
+    assert quote_record.category == "quote"
+    assert quote_record.provider is qt
+
+
+def test_get_record_unknown_provider_fails_without_fallback():
+    access, _, _ = _build_access()
+    with pytest.raises(UnknownProviderError, match="nonexistent"):
+        access.get_record(CATEGORY_MARKET_DATA, "nonexistent")
+    with pytest.raises(UnknownProviderError):
+        access.get_record(CATEGORY_MARKET_DATA, "qt_one")
+    with pytest.raises(UnknownProviderCategoryError, match="news"):
+        access.get_record("news", "wire")
+
+
+def test_get_record_repeated_resolution_is_deterministic():
+    access, md, _ = _build_access()
+    first = access.get_record(CATEGORY_MARKET_DATA, "md_one")
+    second = access.get_record(CATEGORY_MARKET_DATA, "md_one")
+    assert first.provider is md
+    assert second.provider is md
+    assert first.provider is second.provider
+    assert first.provider_id == second.provider_id
+    assert first.category == second.category
+
+
+def test_get_record_does_not_activate_providers():
+    access, md, qt = _build_access()
+    access.get_record(CATEGORY_MARKET_DATA, "md_one")
+    access.get_record(CATEGORY_QUOTE, "qt_one")
+    assert md.connect_calls == 0
+    assert md.fetch_calls == 0
+    assert md.close_calls == 0
+    assert qt.connect_calls == 0
+    assert qt.fetch_calls == 0
+    assert qt.close_calls == 0
+
+
+def test_resolver_errors_propagate_through_access():
+    access, _, _ = _build_access()
+    with pytest.raises(InvalidProviderRegistrationError):
+        access.get_record(CATEGORY_MARKET_DATA, "1bad")
+    with pytest.raises(UnknownProviderCategoryError):
+        access.list_providers("news")
+
+
+def test_extra_category_resolves_through_access_without_fallback():
+    class NewsProvider:
+        def describe(self):
+            return {"name": "wire"}
+
+    news = NewsProvider()
+    registry = ProviderRegistry(extra_categories={"news": NewsProvider})
+    registry.register("wire", "news", news)
+    access = ProviderAccess(registry)
+    assert access.resolve_provider("news", "wire") is news
+    record = access.get_record("news", "wire")
+    assert record.provider is news
+    assert record.category == "news"
+    assert record.provider_id == "wire"
+    with pytest.raises(UnknownProviderError):
+        access.resolve_provider("news", "missing")
+    with pytest.raises(UnknownProviderError):
+        access.market_data_provider("wire")
+
+
+def test_access_module_does_not_import_concrete_providers():
+    import src.platform.services.provider_access as access_module
+
+    assert "BiQuoteProvider" not in dir(access_module)
+    assert "BiQuoteQuoteProvider" not in dir(access_module)

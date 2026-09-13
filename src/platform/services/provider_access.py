@@ -62,6 +62,10 @@ class ProviderAccess:
         """Generic explicit resolution by category/id."""
         return self._resolver.resolve(category, provider_id)
 
+    def get_record(self, category: str, provider_id: str) -> ProviderRecord:
+        """Resolve the explicit provider record. Raises on unknown id/category."""
+        return self._resolver.get_record(category, provider_id)
+
     def contains(self, category: str, provider_id: str) -> bool:
         """Return whether category/id is registered. Never falls back."""
         return self._resolver.contains(category, provider_id)

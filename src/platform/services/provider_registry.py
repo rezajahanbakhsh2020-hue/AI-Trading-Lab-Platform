@@ -255,8 +255,12 @@ class ProviderResolver:
             )
         self._registry = registry
 
+    def get_record(self, category: str, provider_id: str) -> ProviderRecord:
+        """Resolve the explicit registry record. Never falls back or activates."""
+        return self._registry.get(category, provider_id)
+
     def resolve(self, category: str, provider_id: str) -> Any:
-        return self._registry.get(category, provider_id).provider
+        return self.get_record(category, provider_id).provider
 
     def resolve_market_data(self, provider_id: str) -> MarketDataProvider:
         provider = self.resolve(CATEGORY_MARKET_DATA, provider_id)

@@ -90,6 +90,10 @@ def test_register_and_resolve_market_data_and_quote():
     assert resolver.resolve_market_data("biquote") is candles
     assert resolver.resolve_quote("biquote_quote") is quotes
     assert resolver.resolve("MARKET_DATA", "BIQUOTE") is candles
+    record = resolver.get_record("MARKET_DATA", "BIQUOTE")
+    assert record.provider is candles
+    assert record.provider_id == "biquote"
+    assert record.category == "market_data"
 
 
 def test_ids_and_categories_are_normalized():

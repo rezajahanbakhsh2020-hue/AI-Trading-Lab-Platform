@@ -4,11 +4,17 @@ This package contains simple, dependency-light domain models used across the
 platform. Presentation/UI code must not live here.
 """
 
+from .alert import MarketAlert
+from .autonomous_authorization import (
+    AUTHORIZATION_STATUS_AUTHORIZED,
+    AUTHORIZATION_STATUS_REJECTED,
+    VALID_AUTHORIZATION_STATUSES,
+    AutonomousAuthorization,
+)
 from .availability import Availability
+from .freshness import DataFreshness
 from .instrument import Instrument
 from .market import Candle
-from .alert import MarketAlert
-from .freshness import DataFreshness
 from .market_overview import MarketOverview
 from .provider_readiness import (
     PROVIDER_STATUS_NOT_READY,
@@ -32,6 +38,10 @@ from .trade_setup import TradeSetup
 from .trade_signal import TradeSignal
 
 __all__ = [
+    "AUTHORIZATION_STATUS_AUTHORIZED",
+    "AUTHORIZATION_STATUS_REJECTED",
+    "VALID_AUTHORIZATION_STATUSES",
+    "AutonomousAuthorization",
     "Availability",
     "MarketAlert",
     "Candle",

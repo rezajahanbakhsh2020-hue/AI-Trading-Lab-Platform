@@ -35,6 +35,13 @@ __all__ = [
     "TradeReadinessResult",
     "TradeReadinessService",
     "TradeSignalService",
+    "AutonomousAuthorizationService",
+    "REASON_AUTHORIZED",
+    "REASON_SIGNAL_NOT_TRADABLE",
+    "REASON_PROVIDER_REQUIRED",
+    "REASON_PROVIDER_NOT_SELECTED",
+    "REASON_LEVELS_INSANE",
+    "REASON_INSUFFICIENT_RR",
     "ProviderRegistry",
     "ProviderResolver",
     "ProviderRecord",
@@ -86,6 +93,15 @@ from .provider_operations import (
 )
 from .trade_readiness import TradeReadinessResult, TradeReadinessService
 from .trade_signal import TradeSignalService
+from .autonomous_authorization import (
+    REASON_AUTHORIZED,
+    REASON_INSUFFICIENT_RR,
+    REASON_LEVELS_INSANE,
+    REASON_PROVIDER_NOT_SELECTED,
+    REASON_PROVIDER_REQUIRED,
+    REASON_SIGNAL_NOT_TRADABLE,
+    AutonomousAuthorizationService,
+)
 from .provider_registry import (
     CATEGORY_MARKET_DATA,
     CATEGORY_QUOTE,

@@ -50,6 +50,12 @@ __all__ = [
     "StrategyValidationService",
     "UserAuthorizationService",
     "TelegramDeliveryService",
+    "SignalDeliveryService",
+    "REASON_DELIVERED",
+    "REASON_CONSUMER_NOT_AUTHORIZED",
+    "REASON_DELIVERY_DISABLED",
+    "REASON_POLICY_DENIED",
+    "REASON_CHANNEL_FAILED",
     "REASON_VALIDATED",
     "REASON_NO_BACKTEST",
     "REASON_NO_TRADES",
@@ -134,6 +140,14 @@ from .strategy_validation import (
 )
 from .user_authorization import UserAuthorizationService
 from .telegram_delivery import TelegramDeliveryService
+from .signal_delivery import (
+    REASON_CHANNEL_FAILED,
+    REASON_CONSUMER_NOT_AUTHORIZED,
+    REASON_DELIVERED,
+    REASON_DELIVERY_DISABLED,
+    REASON_POLICY_DENIED,
+    SignalDeliveryService,
+)
 from .provider_registry import (
     CATEGORY_MARKET_DATA,
     CATEGORY_QUOTE,

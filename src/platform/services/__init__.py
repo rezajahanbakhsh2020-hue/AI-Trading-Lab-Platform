@@ -46,6 +46,7 @@ __all__ = [
     "REASON_WORKFLOW_EXECUTED",
     "REASON_WORKFLOW_DENIED",
     "REASON_PROVIDER_NOT_READY",
+    "BacktestAssessmentService",
     "ProviderRegistry",
     "ProviderResolver",
     "ProviderRecord",
@@ -112,6 +113,7 @@ from .trading_workflow import (
     REASON_WORKFLOW_EXECUTED,
     TradingWorkflowService,
 )
+from .backtest_assessment import BacktestAssessmentService
 from .provider_registry import (
     CATEGORY_MARKET_DATA,
     CATEGORY_QUOTE,

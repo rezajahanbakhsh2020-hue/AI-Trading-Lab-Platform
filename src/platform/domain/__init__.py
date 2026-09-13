@@ -17,6 +17,7 @@ from .freshness import DataFreshness
 from .instrument import Instrument
 from .market import Candle
 from .market_overview import MarketOverview
+from .presented_signal import PresentedSignal
 from .provider_readiness import (
     PROVIDER_STATUS_NOT_READY,
     PROVIDER_STATUS_READY,
@@ -44,6 +45,7 @@ from .trading_workflow import (
     WORKFLOW_STATUS_NOT_READY,
     TradingWorkflowResult,
 )
+from .user_authorization import UserAuthorization
 from .validated_strategy import (
     STRATEGY_STATUS_REJECTED,
     STRATEGY_STATUS_UNVALIDATED,
@@ -64,6 +66,7 @@ __all__ = [
     "DataFreshness",
     "Instrument",
     "MarketOverview",
+    "PresentedSignal",
     "PROVIDER_STATUS_NOT_READY",
     "PROVIDER_STATUS_READY",
     "VALID_PROVIDER_READINESS_STATUSES",
@@ -85,6 +88,7 @@ __all__ = [
     "WORKFLOW_STATUS_EXECUTED",
     "WORKFLOW_STATUS_NOT_READY",
     "TradingWorkflowResult",
+    "UserAuthorization",
     "STRATEGY_STATUS_REJECTED",
     "STRATEGY_STATUS_UNVALIDATED",
     "STRATEGY_STATUS_VALIDATED",

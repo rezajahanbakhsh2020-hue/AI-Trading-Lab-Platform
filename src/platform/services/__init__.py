@@ -18,6 +18,8 @@ __all__ = [
     "ProviderHealth",
     "ProviderInspection",
     "ProviderInspectionService",
+    "ProviderValidationResult",
+    "ProviderValidationService",
     "ProviderMonitor",
     "DataFreshnessSnapshot",
     "SignalEngineResult",
@@ -67,6 +69,7 @@ from .provider_inspection import (
     ProviderInspection,
     ProviderInspectionService,
 )
+from .provider_validation import ProviderValidationResult, ProviderValidationService
 from .provider_monitoring import DataFreshnessSnapshot, ProviderMonitor
 from .signal_engine import SignalEngineResult, SignalEngineService
 from .provider_operations import (

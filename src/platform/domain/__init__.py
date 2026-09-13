@@ -16,6 +16,12 @@ from .provider_readiness import (
     VALID_PROVIDER_READINESS_STATUSES,
     ProviderReadiness,
 )
+from .provider_selection import (
+    SELECTION_STATUS_NOT_AVAILABLE,
+    SELECTION_STATUS_SELECTED,
+    VALID_SELECTION_STATUSES,
+    ProviderSelection,
+)
 from .quote import Quote
 from .readiness import Readiness
 from .signal import Signal
@@ -36,6 +42,10 @@ __all__ = [
     "PROVIDER_STATUS_READY",
     "VALID_PROVIDER_READINESS_STATUSES",
     "ProviderReadiness",
+    "SELECTION_STATUS_NOT_AVAILABLE",
+    "SELECTION_STATUS_SELECTED",
+    "VALID_SELECTION_STATUSES",
+    "ProviderSelection",
     "Quote",
     "Readiness",
     "Signal",

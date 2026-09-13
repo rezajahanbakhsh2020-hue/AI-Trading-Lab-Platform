@@ -76,6 +76,11 @@ class ProviderReadinessService:
         self._monitor = monitor
         self._operations = ProviderOperations(access)
 
+    @property
+    def access(self) -> ProviderAccess:
+        """Return injected ProviderAccess."""
+        return self._access
+
     def assess(
         self,
         category: str,

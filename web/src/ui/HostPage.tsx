@@ -17,6 +17,8 @@ import { INITIAL_NOTIFICATIONS, type NotificationItem } from "../architecture/ma
 type HostPageProps = {
   pageId: string;
   snapshot: HostSnapshot;
+  onSync?: () => void;
+  onToggleConnection?: () => void;
 };
 
 function MetricCard({
@@ -44,7 +46,7 @@ function MetricCard({
   );
 }
 
-export function HostPage({ pageId, snapshot }: HostPageProps) {
+export function HostPage({ pageId, snapshot, onSync, onToggleConnection }: HostPageProps) {
   const normalizedPageId =
     pageId === "market"
       ? "markets"
@@ -64,20 +66,33 @@ export function HostPage({ pageId, snapshot }: HostPageProps) {
           <h2>{copy.title}</h2>
           <p className="lede">{copy.summary}</p>
         </div>
-        <span className="chip">
-          <span className="dot warn" />
-          Integration-ready
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {onToggleConnection && (
+            <button
+              className={`btn ${snapshot.project1.connected ? "btn-secondary" : "btn-primary"}`}
+              onClick={onToggleConnection}
+              style={{ fontSize: 13, padding: "6px 12px" }}
+            >
+              {snapshot.project1.connected
+                ? "Use Disconnected Adapter"
+                : "Connect Project 1 Port"}
+            </button>
+          )}
+          <span className="chip">
+            <span className={`dot ${snapshot.project1.connected ? "ready" : "warn"}`} />
+            {snapshot.project1.connected ? "Project 1 Connected" : "Integration-ready"}
+          </span>
+        </div>
       </div>
 
       {(normalizedPageId === "dashboard" || pageId === "dashboard") && (
-        <DashboardPage snapshot={snapshot} />
+        <DashboardPage snapshot={snapshot} onSync={onSync} />
       )}
       {(normalizedPageId === "markets" || pageId === "market") && (
         <MarketsPage snapshot={snapshot} />
       )}
       {normalizedPageId === "watchlist" && <WatchlistPage />}
-      {normalizedPageId === "signals" && <SignalsPage snapshot={snapshot} />}
+      {normalizedPageId === "signals" && <SignalsPage snapshot={snapshot} onSync={onSync} />}
       {(normalizedPageId === "strategies" || pageId === "strategy") && (
         <StrategiesPage snapshot={snapshot} />
       )}
@@ -92,7 +107,9 @@ export function HostPage({ pageId, snapshot }: HostPageProps) {
       {normalizedPageId === "settings" && <SettingsPage snapshot={snapshot} />}
 
       <p className="footer-status">
-        Presentation layer only. Values stay unavailable until Project 1 and platform adapters supply them.
+        {snapshot.project1.connected
+          ? `Connected to ${snapshot.project1.adapterName} (${snapshot.project1.port}). Real Project 1 output active.`
+          : "Presentation layer only. Values stay unavailable until Project 1 and platform adapters supply them."}
       </p>
     </div>
   );
@@ -100,7 +117,7 @@ export function HostPage({ pageId, snapshot }: HostPageProps) {
 
 /* Page Subviews */
 
-function DashboardPage({ snapshot }: { snapshot: HostSnapshot }) {
+function DashboardPage({ snapshot, onSync }: { snapshot: HostSnapshot; onSync?: () => void }) {
   return (
     <div className="dashboard-view">
       <MarketPulse />
@@ -114,7 +131,7 @@ function DashboardPage({ snapshot }: { snapshot: HostSnapshot }) {
         />
         <MetricCard
           title="Project 1"
-          value="Disconnected"
+          value={snapshot.project1.connected ? "Connected" : "Disconnected"}
           status={snapshot.project1.status}
           message={snapshot.project1.message}
         />
@@ -126,7 +143,7 @@ function DashboardPage({ snapshot }: { snapshot: HostSnapshot }) {
         />
         <MetricCard
           title="Latest Signal"
-          value="No signal"
+          value={snapshot.signal.action || "No signal"}
           status={snapshot.signal.status}
           message={snapshot.signal.message}
         />
@@ -135,10 +152,13 @@ function DashboardPage({ snapshot }: { snapshot: HostSnapshot }) {
       <div className="grid cols-2" style={{ marginTop: 16 }}>
         <InteractiveChart
           symbol={snapshot.market.symbol}
+          entryPrice={snapshot.risk.entry}
+          stopLossPrice={snapshot.risk.stopLoss}
+          takeProfits={snapshot.risk.takeProfits}
           isProviderConnected={snapshot.project1.connected}
         />
 
-        <SignalCard snapshot={snapshot} />
+        <SignalCard snapshot={snapshot} onSync={onSync} />
       </div>
 
       <div className="grid cols-2" style={{ marginTop: 16 }}>
@@ -191,7 +211,9 @@ function MarketsPage({ snapshot }: { snapshot: HostSnapshot }) {
                   onClick={() => setSelectedSymbol(sym)}
                 >
                   <strong>{sym}</strong>
-                  <span className="status disconnected">Disconnected</span>
+                  <span className={`status ${snapshot.project1.connected && sym === "XAUUSD" ? "ready" : "disconnected"}`}>
+                    {snapshot.project1.connected && sym === "XAUUSD" ? "Connected" : "Disconnected"}
+                  </span>
                 </button>
               ))}
             </div>
@@ -201,14 +223,16 @@ function MarketsPage({ snapshot }: { snapshot: HostSnapshot }) {
         <div className="card">
           <div className="card-head">
             <h3>{selectedSymbol} Real-Time Quote</h3>
-            <span className="status unavailable">Disconnected</span>
+            <span className={`status ${snapshot.project1.connected && selectedSymbol === "XAUUSD" ? "ready" : "unavailable"}`}>
+              {snapshot.project1.connected && selectedSymbol === "XAUUSD" ? "Connected" : "Disconnected"}
+            </span>
           </div>
           <div className="card-body">
             <table className="table">
               <tbody>
                 <tr>
                   <th>Current Price</th>
-                  <td>Unavailable</td>
+                  <td>{snapshot.risk.entry ? `${snapshot.risk.entry} USD` : "Unavailable"}</td>
                 </tr>
                 <tr>
                   <th>24h Change</th>
@@ -220,7 +244,7 @@ function MarketsPage({ snapshot }: { snapshot: HostSnapshot }) {
                 </tr>
                 <tr>
                   <th>Timeframe</th>
-                  <td>Provider Session Inactive</td>
+                  <td>{snapshot.signal.timeframe || "Provider Session Inactive"}</td>
                 </tr>
               </tbody>
             </table>
@@ -231,6 +255,9 @@ function MarketsPage({ snapshot }: { snapshot: HostSnapshot }) {
       <div style={{ marginTop: 16 }}>
         <InteractiveChart
           symbol={selectedSymbol}
+          entryPrice={selectedSymbol === snapshot.market.symbol ? snapshot.risk.entry : null}
+          stopLossPrice={selectedSymbol === snapshot.market.symbol ? snapshot.risk.stopLoss : null}
+          takeProfits={selectedSymbol === snapshot.market.symbol ? snapshot.risk.takeProfits : []}
           isProviderConnected={snapshot.project1.connected}
         />
       </div>
@@ -246,10 +273,10 @@ function WatchlistPage() {
   );
 }
 
-function SignalsPage({ snapshot }: { snapshot: HostSnapshot }) {
+function SignalsPage({ snapshot, onSync }: { snapshot: HostSnapshot; onSync?: () => void }) {
   return (
     <div className="signals-view">
-      <SignalCard snapshot={snapshot} />
+      <SignalCard snapshot={snapshot} onSync={onSync} />
     </div>
   );
 }
@@ -315,14 +342,18 @@ function RiskPage({ snapshot }: { snapshot: HostSnapshot }) {
         <section className="card">
           <div className="card-head">
             <h3>Trade Risk Breakdown</h3>
-            <span className="status unavailable">Unavailable</span>
+            <span className={`status ${snapshot.risk.status === "available" ? "ready" : "unavailable"}`}>
+              {snapshot.risk.status === "available" ? "Active Setup" : "Unavailable"}
+            </span>
           </div>
           <div className="card-body">
             <div className="levels">
               {levels.map(([label, value]) => (
                 <div className="level" key={label}>
                   <span>{label}</span>
-                  <b>{value == null ? "Unavailable" : value}</b>
+                  <b className={label.includes("Stop") ? "text-red" : label.includes("Take") ? "text-green" : ""}>
+                    {value == null ? "Unavailable" : value}
+                  </b>
                 </div>
               ))}
             </div>
@@ -364,21 +395,21 @@ function MonitoringPage({ snapshot }: { snapshot: HostSnapshot }) {
       <div className="grid cols-3">
         <MetricCard
           title="Freshness"
-          value="Unavailable"
+          value={snapshot.monitoring.freshness || "Unavailable"}
           status={snapshot.monitoring.status}
           message={snapshot.monitoring.message}
         />
         <MetricCard
           title="Health"
-          value="Unavailable"
-          status="unavailable"
+          value={snapshot.monitoring.health || "Unavailable"}
+          status={snapshot.project1.connected ? "ready" : "unavailable"}
           message="Provider health is evaluated by the existing operational gate."
         />
         <MetricCard
           title="Live Observer"
-          value="Idle"
-          status="unavailable"
-          message="No live observations are currently active."
+          value={snapshot.project1.connected ? "Active" : "Idle"}
+          status={snapshot.project1.connected ? "ready" : "unavailable"}
+          message={snapshot.project1.connected ? "Monitoring Project 1 integration port." : "No live observations active."}
         />
       </div>
     </div>
@@ -391,7 +422,9 @@ function ProvidersPage({ snapshot }: { snapshot: HostSnapshot }) {
       <section className="card">
         <div className="card-head">
           <h3>Provider Slots & Registry</h3>
-          <span className="status unavailable">Unconnected</span>
+          <span className={`status ${snapshot.project1.connected ? "ready" : "unavailable"}`}>
+            {snapshot.project1.connected ? "Port Connected" : "Unconnected"}
+          </span>
         </div>
         <div className="card-body">
           <div className="table-responsive">
@@ -404,6 +437,11 @@ function ProvidersPage({ snapshot }: { snapshot: HostSnapshot }) {
                 </tr>
               </thead>
               <tbody>
+                <tr>
+                  <td>Project 1 Integration Port</td>
+                  <td>{snapshot.project1.connected ? "Connected" : "Disconnected"}</td>
+                  <td>{snapshot.project1.adapterName}</td>
+                </tr>
                 <tr>
                   <td>Market Data Feed</td>
                   <td>{snapshot.providers.marketData}</td>
@@ -515,6 +553,10 @@ function SettingsPage({ snapshot }: { snapshot: HostSnapshot }) {
                 <tr>
                   <th>Signal Intelligence Source</th>
                   <td>Project 1 via Project1IntegrationPort Contract</td>
+                </tr>
+                <tr>
+                  <th>Active Adapter</th>
+                  <td>{snapshot.project1.adapterName}</td>
                 </tr>
                 <tr>
                   <th>Primary Market Asset</th>

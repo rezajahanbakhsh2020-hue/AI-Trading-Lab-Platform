@@ -2,9 +2,10 @@ import { HostSnapshot } from "../../architecture/hostView";
 
 type SignalCardProps = {
   snapshot: HostSnapshot;
+  onSync?: () => void;
 };
 
-export function SignalCard({ snapshot }: SignalCardProps) {
+export function SignalCard({ snapshot, onSync }: SignalCardProps) {
   const signal = snapshot.signal;
   const isConnected = snapshot.project1.connected;
 
@@ -29,9 +30,21 @@ export function SignalCard({ snapshot }: SignalCardProps) {
           <h3>Project 1 Signal Feed</h3>
           <p className="hint">Validated signals emitted via Project1IntegrationPort.</p>
         </div>
-        <span className={`status ${isConnected ? "ready" : "disconnected"}`}>
-          {isConnected ? "Connected" : "Project 1 Disconnected"}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {onSync && (
+            <button
+              className="btn btn-secondary"
+              onClick={onSync}
+              style={{ fontSize: 12, padding: "4px 10px" }}
+              title="Re-fetch latest signal from Project 1"
+            >
+              Sync Port
+            </button>
+          )}
+          <span className={`status ${isConnected ? "ready" : "disconnected"}`}>
+            {isConnected ? "Connected" : "Project 1 Disconnected"}
+          </span>
+        </div>
       </div>
 
       <div className="card-body">
@@ -65,7 +78,26 @@ export function SignalCard({ snapshot }: SignalCardProps) {
               <span className={getActionBadgeClass(signal.action)}>
                 {signal.action ?? "NO SIGNAL"}
               </span>
-              <span className="timestamp-tag">{signal.timestamp ?? "N/A"}</span>
+              <span className="timestamp-tag">
+                {signal.timestamp ? `Timestamp: ${signal.timestamp}` : "N/A"}
+              </span>
+            </div>
+
+            <div className="grid cols-2" style={{ marginTop: 14 }}>
+              <div className="flow-step">
+                <span>Strategy Identity</span>
+                <strong>{signal.strategyName ?? "Project 1 Strategy"}</strong>
+                <p className="hint">Timeframe: {signal.timeframe ?? "1h"}</p>
+              </div>
+              <div className="flow-step">
+                <span>Confidence Score</span>
+                <strong>
+                  {signal.confidence != null
+                    ? `${Math.round(signal.confidence * 100)}%`
+                    : "Unavailable"}
+                </strong>
+                <p className="hint">Signal ID: {signal.signalId ?? "N/A"}</p>
+              </div>
             </div>
 
             <div className="levels" style={{ marginTop: 16 }}>
@@ -89,6 +121,10 @@ export function SignalCard({ snapshot }: SignalCardProps) {
                 <span>Target TP3</span>
                 <b className="text-green">{snapshot.risk.takeProfits[2] ?? "Unavailable"}</b>
               </div>
+            </div>
+
+            <div className="hint" style={{ marginTop: 12, fontSize: 11 }}>
+              Adapter: {snapshot.project1.adapterName} | Port: {snapshot.project1.port}
             </div>
           </div>
         )}

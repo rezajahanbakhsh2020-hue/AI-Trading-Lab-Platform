@@ -1,3 +1,5 @@
+import type { Candle, ProviderMetadata, Quote, MarketDataStatus } from "./marketData";
+
 export const PLATFORM_NAME = "AI Trading Lab Platform";
 export const PLATFORM_ROLE = "Host application for AI-Trading-Lab";
 export const PRIMARY_MARKET = "XAUUSD";
@@ -67,6 +69,17 @@ export interface PortDescriptionPayload {
   source?: Record<string, unknown>;
 }
 
+export interface MarketStateSnapshot {
+  symbol: string;
+  timeframe: string;
+  provider: ProviderMetadata | null;
+  quote: Quote | null;
+  candles: readonly Candle[];
+  status: MarketDataStatus;
+  message: string;
+  lastFetchedAt: string | null;
+}
+
 export interface HostSnapshot {
   generatedAt: string | null;
   platform: {
@@ -81,16 +94,7 @@ export interface HostSnapshot {
     adapterName: string;
     message: string;
   };
-  market: {
-    symbol: string;
-    timeframe: string | null;
-    quote: number | null;
-    change: number | null;
-    volume: number | null;
-    candles: readonly never[];
-    status: string;
-    message: string;
-  };
+  market: MarketStateSnapshot;
   strategy: {
     name: string | null;
     stability: number | null;
@@ -133,7 +137,10 @@ export interface HostSnapshot {
   activity: readonly { timestamp: string; event: string; details: string }[];
 }
 
-export function createDisconnectedHostSnapshot(): HostSnapshot {
+export function createDisconnectedHostSnapshot(
+  symbol: string = PRIMARY_MARKET,
+  timeframe: string = "1h"
+): HostSnapshot {
   return {
     generatedAt: null,
     platform: {
@@ -149,14 +156,14 @@ export function createDisconnectedHostSnapshot(): HostSnapshot {
       message: DISCONNECTED_MESSAGE,
     },
     market: {
-      symbol: PRIMARY_MARKET,
-      timeframe: null,
+      symbol,
+      timeframe,
+      provider: null,
       quote: null,
-      change: null,
-      volume: null,
       candles: [],
-      status: "unavailable",
-      message: "Market data is unavailable until a provider is connected.",
+      status: "disconnected",
+      message: "Market data provider is disconnected. Connect provider to stream live market data.",
+      lastFetchedAt: null,
     },
     strategy: {
       name: null,
@@ -193,8 +200,8 @@ export function createDisconnectedHostSnapshot(): HostSnapshot {
       message: "Monitoring has no live observations yet.",
     },
     providers: {
-      marketData: "unconnected",
-      quote: "unconnected",
+      marketData: "disconnected",
+      quote: "disconnected",
       message: "Provider slots are ready. No live provider session is attached.",
     },
     activity: [],
@@ -205,10 +212,23 @@ export function createHostSnapshotFromProject1(
   portDesc: PortDescriptionPayload,
   signal: PresentedSignalPayload | null,
   symbol: string = PRIMARY_MARKET,
-  timeframe: string = "1h"
+  timeframe: string = "1h",
+  marketState?: Partial<MarketStateSnapshot>
 ): HostSnapshot {
+  const defaultMarketState: MarketStateSnapshot = {
+    symbol,
+    timeframe,
+    provider: null,
+    quote: null,
+    candles: [],
+    status: "disconnected",
+    message: "Market data feed relies on provider selection.",
+    lastFetchedAt: null,
+    ...marketState,
+  };
+
   if (!portDesc.connected) {
-    return createDisconnectedHostSnapshot();
+    return createDisconnectedHostSnapshot(symbol, timeframe);
   }
 
   if (!signal) {
@@ -226,16 +246,7 @@ export function createHostSnapshotFromProject1(
         adapterName: portDesc.name || "Project1LabArtifactAdapter",
         message: portDesc.message || `Project 1 connected via ${portDesc.name}.`,
       },
-      market: {
-        symbol,
-        timeframe,
-        quote: null,
-        change: null,
-        volume: null,
-        candles: [],
-        status: "unavailable",
-        message: "Market data is unavailable until a provider is connected.",
-      },
+      market: defaultMarketState,
       strategy: {
         name: null,
         stability: null,
@@ -271,9 +282,11 @@ export function createHostSnapshotFromProject1(
         message: "Project 1 engine connected.",
       },
       providers: {
-        marketData: "unconnected",
-        quote: "unconnected",
-        message: "Provider slots are ready. No live provider session is attached.",
+        marketData: defaultMarketState.provider ? defaultMarketState.provider.status : "disconnected",
+        quote: defaultMarketState.quote ? "connected" : "disconnected",
+        message: defaultMarketState.provider
+          ? `Connected to ${defaultMarketState.provider.name}`
+          : "Provider slots are ready. No live provider session is attached.",
       },
       activity: [],
     };
@@ -301,16 +314,7 @@ export function createHostSnapshotFromProject1(
       adapterName: portDesc.name || "Project1LabArtifactAdapter",
       message: `Project 1 emitting real signals via ${portDesc.name || "adapter"}.`,
     },
-    market: {
-      symbol: signal.symbol || symbol,
-      timeframe: signal.timeframe || timeframe,
-      quote: null,
-      change: null,
-      volume: null,
-      candles: [],
-      status: "unavailable",
-      message: "Market data feed relies on provider selection.",
-    },
+    market: defaultMarketState,
     strategy: {
       name: stratName,
       stability: conf != null ? Math.round(conf * 100) : null,
@@ -346,9 +350,11 @@ export function createHostSnapshotFromProject1(
       message: "Project 1 signal active and fresh.",
     },
     providers: {
-      marketData: "unconnected",
-      quote: "unconnected",
-      message: "Provider slots are ready. No live provider session is attached.",
+      marketData: defaultMarketState.provider ? defaultMarketState.provider.status : "disconnected",
+      quote: defaultMarketState.quote ? "connected" : "disconnected",
+      message: defaultMarketState.provider
+        ? `Connected to ${defaultMarketState.provider.name}`
+        : "Provider slots are ready. No live provider session is attached.",
     },
     activity: [
       {

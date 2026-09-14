@@ -11,14 +11,49 @@ import {
   createDisconnectedHostSnapshot,
   createHostSnapshotFromProject1,
 } from "../architecture/hostView";
+import {
+  SAMPLE_BIQUOTE_PROVIDER,
+  SAMPLE_BIQUOTE_CANDLES_XAUUSD,
+  SAMPLE_BIQUOTE_QUOTE_XAUUSD,
+} from "../architecture/marketData";
 
 export function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [selectedSymbol, setSelectedSymbol] = useState("XAUUSD");
+  const [selectedTimeframe, setSelectedTimeframe] = useState("1h");
+
+  const marketState = isConnected && selectedSymbol === "XAUUSD"
+    ? {
+        symbol: "XAUUSD",
+        timeframe: selectedTimeframe,
+        provider: SAMPLE_BIQUOTE_PROVIDER,
+        quote: SAMPLE_BIQUOTE_QUOTE_XAUUSD,
+        candles: SAMPLE_BIQUOTE_CANDLES_XAUUSD,
+        status: "connected" as const,
+        message: "Streaming live market data via BiQuoteProvider.",
+        lastFetchedAt: new Date().toUTCString(),
+      }
+    : {
+        symbol: selectedSymbol,
+        timeframe: selectedTimeframe,
+        provider: null,
+        quote: null,
+        candles: [],
+        status: "disconnected" as const,
+        message: `Market data provider disconnected for ${selectedSymbol}.`,
+        lastFetchedAt: null,
+      };
 
   const snapshot = isConnected
-    ? createHostSnapshotFromProject1(SAMPLE_CONNECTED_PORT, SAMPLE_REAL_PROJECT1_SIGNAL)
-    : createDisconnectedHostSnapshot();
+    ? createHostSnapshotFromProject1(
+        SAMPLE_CONNECTED_PORT,
+        SAMPLE_REAL_PROJECT1_SIGNAL,
+        selectedSymbol,
+        selectedTimeframe,
+        marketState
+      )
+    : createDisconnectedHostSnapshot(selectedSymbol, selectedTimeframe);
 
   const handleToggleConnection = () => {
     setIsConnected((prev) => !prev);
@@ -30,6 +65,14 @@ export function App() {
       setIsConnected(false);
       setTimeout(() => setIsConnected(true), 100);
     }
+  };
+
+  const handleSelectSymbol = (symbol: string) => {
+    setSelectedSymbol(symbol);
+  };
+
+  const handleSelectTimeframe = (tf: string) => {
+    setSelectedTimeframe(tf);
   };
 
   return (
@@ -53,6 +96,8 @@ export function App() {
                   snapshot={snapshot}
                   onSync={handleSync}
                   onToggleConnection={handleToggleConnection}
+                  onSelectSymbol={handleSelectSymbol}
+                  onSelectTimeframe={handleSelectTimeframe}
                 />
               }
             />
@@ -66,6 +111,8 @@ export function App() {
                 snapshot={snapshot}
                 onSync={handleSync}
                 onToggleConnection={handleToggleConnection}
+                onSelectSymbol={handleSelectSymbol}
+                onSelectTimeframe={handleSelectTimeframe}
               />
             }
           />
@@ -77,6 +124,8 @@ export function App() {
                 snapshot={snapshot}
                 onSync={handleSync}
                 onToggleConnection={handleToggleConnection}
+                onSelectSymbol={handleSelectSymbol}
+                onSelectTimeframe={handleSelectTimeframe}
               />
             }
           />
@@ -88,6 +137,8 @@ export function App() {
                 snapshot={snapshot}
                 onSync={handleSync}
                 onToggleConnection={handleToggleConnection}
+                onSelectSymbol={handleSelectSymbol}
+                onSelectTimeframe={handleSelectTimeframe}
               />
             }
           />
@@ -99,6 +150,8 @@ export function App() {
                 snapshot={snapshot}
                 onSync={handleSync}
                 onToggleConnection={handleToggleConnection}
+                onSelectSymbol={handleSelectSymbol}
+                onSelectTimeframe={handleSelectTimeframe}
               />
             }
           />

@@ -8,9 +8,9 @@ describe("Market Data & Watchlist Structures", () => {
     expect(primary?.symbol).toBe("XAUUSD");
   });
 
-  it("marks all watchlist assets as Disconnected by default when Project 1 is not connected", () => {
+  it("marks all watchlist assets as disconnected by default when Project 1 is not connected", () => {
     WATCHLIST_SYMBOLS.forEach((item) => {
-      expect(item.status).toBe("Disconnected");
+      expect(item.status).toBe("disconnected");
     });
   });
 

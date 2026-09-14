@@ -7,6 +7,7 @@ import {
   createDisconnectedHostSnapshot,
   createHostSnapshotFromProject1,
 } from "./hostView";
+import { SAMPLE_BIQUOTE_PROVIDER, SAMPLE_BIQUOTE_QUOTE_XAUUSD, SAMPLE_BIQUOTE_CANDLES_XAUUSD } from "./marketData";
 
 describe("disconnected host snapshot", () => {
   const snapshot = createDisconnectedHostSnapshot();
@@ -22,8 +23,6 @@ describe("disconnected host snapshot", () => {
   it("does not fabricate market, signal, or risk data", () => {
     expect(snapshot.market.symbol).toBe(PRIMARY_MARKET);
     expect(snapshot.market.quote).toBeNull();
-    expect(snapshot.market.change).toBeNull();
-    expect(snapshot.market.volume).toBeNull();
     expect(snapshot.market.candles).toEqual([]);
     expect(snapshot.signal.action).toBeNull();
     expect(snapshot.strategy.name).toBeNull();
@@ -34,28 +33,47 @@ describe("disconnected host snapshot", () => {
     expect(snapshot.generatedAt).toBeNull();
   });
 
-  it("marks operational surfaces unavailable instead of inventing values", () => {
-    expect(snapshot.market.status).toBe("unavailable");
+  it("marks operational surfaces unavailable/disconnected instead of inventing values", () => {
+    expect(snapshot.market.status).toBe("disconnected");
     expect(snapshot.strategy.status).toBe("unavailable");
     expect(snapshot.signal.status).toBe("unavailable");
     expect(snapshot.performance.status).toBe("unavailable");
     expect(snapshot.risk.status).toBe("unavailable");
     expect(snapshot.monitoring.status).toBe("unavailable");
-    expect(snapshot.providers.marketData).toBe("unconnected");
+    expect(snapshot.providers.marketData).toBe("disconnected");
   });
 });
 
 describe("connected Project 1 host snapshot", () => {
-  it("maps real Project 1 signal and trade setup outputs into clean host snapshot", () => {
+  it("maps real Project 1 signal, market data, and trade setup outputs into clean host snapshot", () => {
+    const marketState = {
+      symbol: "XAUUSD",
+      timeframe: "1h",
+      provider: SAMPLE_BIQUOTE_PROVIDER,
+      quote: SAMPLE_BIQUOTE_QUOTE_XAUUSD,
+      candles: SAMPLE_BIQUOTE_CANDLES_XAUUSD,
+      status: "connected" as const,
+      message: "Streaming live market data via BiQuoteProvider.",
+      lastFetchedAt: "2024-03-09T10:00:00Z",
+    };
+
     const snapshot = createHostSnapshotFromProject1(
       SAMPLE_CONNECTED_PORT,
-      SAMPLE_REAL_PROJECT1_SIGNAL
+      SAMPLE_REAL_PROJECT1_SIGNAL,
+      "XAUUSD",
+      "1h",
+      marketState
     );
 
     expect(snapshot.project1.connected).toBe(true);
     expect(snapshot.project1.status).toBe("connected");
     expect(snapshot.project1.adapterName).toBe("Project1LabArtifactAdapter");
     expect(snapshot.project1.port).toBe("Project1IntegrationPort");
+
+    expect(snapshot.market.status).toBe("connected");
+    expect(snapshot.market.provider?.name).toBe("BiQuoteProvider");
+    expect(snapshot.market.quote?.last).toBe(2663.0);
+    expect(snapshot.market.candles.length).toBe(8);
 
     expect(snapshot.signal.action).toBe("BUY");
     expect(snapshot.signal.signalId).toBe("p1_xauusd_1h_1700000000");

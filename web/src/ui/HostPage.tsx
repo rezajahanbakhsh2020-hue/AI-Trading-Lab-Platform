@@ -19,6 +19,8 @@ type HostPageProps = {
   snapshot: HostSnapshot;
   onSync?: () => void;
   onToggleConnection?: () => void;
+  onSelectSymbol?: (symbol: string) => void;
+  onSelectTimeframe?: (tf: string) => void;
 };
 
 function MetricCard({
@@ -46,7 +48,14 @@ function MetricCard({
   );
 }
 
-export function HostPage({ pageId, snapshot, onSync, onToggleConnection }: HostPageProps) {
+export function HostPage({
+  pageId,
+  snapshot,
+  onSync,
+  onToggleConnection,
+  onSelectSymbol,
+  onSelectTimeframe,
+}: HostPageProps) {
   const normalizedPageId =
     pageId === "market"
       ? "markets"
@@ -86,12 +95,24 @@ export function HostPage({ pageId, snapshot, onSync, onToggleConnection }: HostP
       </div>
 
       {(normalizedPageId === "dashboard" || pageId === "dashboard") && (
-        <DashboardPage snapshot={snapshot} onSync={onSync} />
+        <DashboardPage
+          snapshot={snapshot}
+          onSync={onSync}
+          onSelectSymbol={onSelectSymbol}
+          onSelectTimeframe={onSelectTimeframe}
+        />
       )}
       {(normalizedPageId === "markets" || pageId === "market") && (
-        <MarketsPage snapshot={snapshot} />
+        <MarketsPage
+          snapshot={snapshot}
+          onSelectSymbol={onSelectSymbol}
+          onSelectTimeframe={onSelectTimeframe}
+          onRefresh={onSync}
+        />
       )}
-      {normalizedPageId === "watchlist" && <WatchlistPage />}
+      {normalizedPageId === "watchlist" && (
+        <WatchlistPage snapshot={snapshot} onSelectSymbol={onSelectSymbol} />
+      )}
       {normalizedPageId === "signals" && <SignalsPage snapshot={snapshot} onSync={onSync} />}
       {(normalizedPageId === "strategies" || pageId === "strategy") && (
         <StrategiesPage snapshot={snapshot} />
@@ -117,10 +138,23 @@ export function HostPage({ pageId, snapshot, onSync, onToggleConnection }: HostP
 
 /* Page Subviews */
 
-function DashboardPage({ snapshot, onSync }: { snapshot: HostSnapshot; onSync?: () => void }) {
+function DashboardPage({
+  snapshot,
+  onSync,
+  onSelectSymbol,
+  onSelectTimeframe,
+}: {
+  snapshot: HostSnapshot;
+  onSync?: () => void;
+  onSelectSymbol?: (symbol: string) => void;
+  onSelectTimeframe?: (tf: string) => void;
+}) {
+  const quote = snapshot.market.quote;
+  const quotePrice = quote?.last ?? quote?.mid ?? quote?.bid ?? snapshot.risk.entry ?? null;
+
   return (
     <div className="dashboard-view">
-      <MarketPulse />
+      <MarketPulse quotePrice={quotePrice} change24hPct={quote?.changePercent} />
 
       <div className="grid cols-4" style={{ marginTop: 16 }}>
         <MetricCard
@@ -138,7 +172,7 @@ function DashboardPage({ snapshot, onSync }: { snapshot: HostSnapshot; onSync?: 
         <MetricCard
           title="Primary Market"
           value={snapshot.market.symbol}
-          status={snapshot.market.status}
+          status={snapshot.market.status === "connected" ? "ready" : snapshot.market.status}
           message={snapshot.market.message}
         />
         <MetricCard
@@ -152,17 +186,23 @@ function DashboardPage({ snapshot, onSync }: { snapshot: HostSnapshot; onSync?: 
       <div className="grid cols-2" style={{ marginTop: 16 }}>
         <InteractiveChart
           symbol={snapshot.market.symbol}
+          timeframe={snapshot.market.timeframe}
+          candles={snapshot.market.candles}
+          status={snapshot.market.status}
+          provider={snapshot.market.provider}
           entryPrice={snapshot.risk.entry}
           stopLossPrice={snapshot.risk.stopLoss}
           takeProfits={snapshot.risk.takeProfits}
-          isProviderConnected={snapshot.project1.connected}
+          isProviderConnected={snapshot.project1.connected && snapshot.market.status === "connected"}
+          onTimeframeChange={onSelectTimeframe}
+          onRefresh={onSync}
         />
 
         <SignalCard snapshot={snapshot} onSync={onSync} />
       </div>
 
       <div className="grid cols-2" style={{ marginTop: 16 }}>
-        <WatchlistWidget />
+        <WatchlistWidget quote={snapshot.market.quote} onSelectSymbol={onSelectSymbol} />
 
         <div className="card">
           <div className="card-head">
@@ -189,30 +229,46 @@ function DashboardPage({ snapshot, onSync }: { snapshot: HostSnapshot; onSync?: 
   );
 }
 
-function MarketsPage({ snapshot }: { snapshot: HostSnapshot }) {
-  const [selectedSymbol, setSelectedSymbol] = useState("XAUUSD");
+function MarketsPage({
+  snapshot,
+  onSelectSymbol,
+  onSelectTimeframe,
+  onRefresh,
+}: {
+  snapshot: HostSnapshot;
+  onSelectSymbol?: (symbol: string) => void;
+  onSelectTimeframe?: (tf: string) => void;
+  onRefresh?: () => void;
+}) {
+  const currentSymbol = snapshot.market.symbol;
+  const quote = snapshot.market.quote;
+  const isMarketConnected = snapshot.market.status === "connected";
 
   return (
     <div className="markets-view">
-      <MarketPulse />
+      <MarketPulse
+        quotePrice={quote?.last ?? quote?.mid ?? quote?.bid ?? null}
+        change24hPct={quote?.changePercent ?? null}
+      />
 
       <div className="grid cols-2" style={{ marginTop: 16 }}>
         <div className="card">
           <div className="card-head">
             <h3>Market Symbol Selector</h3>
-            <span className="chip">{selectedSymbol} Selected</span>
+            <span className="chip">{currentSymbol} Selected</span>
           </div>
           <div className="card-body">
             <div className="market-select-grid">
               {["XAUUSD", "EURUSD", "GBPUSD", "BTCUSD", "SPX500"].map((sym) => (
                 <button
                   key={sym}
-                  className={selectedSymbol === sym ? "symbol-btn active" : "symbol-btn"}
-                  onClick={() => setSelectedSymbol(sym)}
+                  className={currentSymbol === sym ? "symbol-btn active" : "symbol-btn"}
+                  onClick={() => onSelectSymbol && onSelectSymbol(sym)}
+                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", padding: "10px 12px" }}
                 >
                   <strong>{sym}</strong>
-                  <span className={`status ${snapshot.project1.connected && sym === "XAUUSD" ? "ready" : "disconnected"}`}>
-                    {snapshot.project1.connected && sym === "XAUUSD" ? "Connected" : "Disconnected"}
+                  <span className={`status ${isMarketConnected && sym === currentSymbol ? "ready" : "disconnected"}`}>
+                    {isMarketConnected && sym === currentSymbol ? "Connected" : "Disconnected"}
                   </span>
                 </button>
               ))}
@@ -222,9 +278,9 @@ function MarketsPage({ snapshot }: { snapshot: HostSnapshot }) {
 
         <div className="card">
           <div className="card-head">
-            <h3>{selectedSymbol} Real-Time Quote</h3>
-            <span className={`status ${snapshot.project1.connected && selectedSymbol === "XAUUSD" ? "ready" : "unavailable"}`}>
-              {snapshot.project1.connected && selectedSymbol === "XAUUSD" ? "Connected" : "Disconnected"}
+            <h3>{currentSymbol} Real-Time Quote</h3>
+            <span className={`status ${isMarketConnected ? "ready" : snapshot.market.status}`}>
+              {isMarketConnected ? "Connected" : snapshot.market.status}
             </span>
           </div>
           <div className="card-body">
@@ -232,19 +288,43 @@ function MarketsPage({ snapshot }: { snapshot: HostSnapshot }) {
               <tbody>
                 <tr>
                   <th>Current Price</th>
-                  <td>{snapshot.risk.entry ? `${snapshot.risk.entry} USD` : "Unavailable"}</td>
+                  <td>
+                    {quote?.last != null
+                      ? `$${quote.last.toFixed(2)} USD`
+                      : quote?.mid != null
+                      ? `$${quote.mid.toFixed(2)} USD`
+                      : snapshot.risk.entry
+                      ? `$${snapshot.risk.entry.toFixed(2)} USD`
+                      : "Unavailable"}
+                  </td>
+                </tr>
+                <tr>
+                  <th>Bid / Ask</th>
+                  <td>
+                    {quote?.bid != null && quote?.ask != null
+                      ? `$${quote.bid.toFixed(2)} / $${quote.ask.toFixed(2)}`
+                      : "Unavailable"}
+                  </td>
                 </tr>
                 <tr>
                   <th>24h Change</th>
-                  <td>Unavailable</td>
+                  <td>
+                    {quote?.changePercent != null
+                      ? `${quote.changePercent >= 0 ? "+" : ""}${quote.changePercent.toFixed(2)}%`
+                      : "Unavailable"}
+                  </td>
                 </tr>
                 <tr>
-                  <th>24h Volume</th>
-                  <td>Unavailable</td>
+                  <th>24h High / Low</th>
+                  <td>
+                    {quote?.high24h != null && quote?.low24h != null
+                      ? `$${quote.high24h.toFixed(2)} / $${quote.low24h.toFixed(2)}`
+                      : "Unavailable"}
+                  </td>
                 </tr>
                 <tr>
                   <th>Timeframe</th>
-                  <td>{snapshot.signal.timeframe || "Provider Session Inactive"}</td>
+                  <td>{snapshot.market.timeframe || "1h"}</td>
                 </tr>
               </tbody>
             </table>
@@ -254,21 +334,33 @@ function MarketsPage({ snapshot }: { snapshot: HostSnapshot }) {
 
       <div style={{ marginTop: 16 }}>
         <InteractiveChart
-          symbol={selectedSymbol}
-          entryPrice={selectedSymbol === snapshot.market.symbol ? snapshot.risk.entry : null}
-          stopLossPrice={selectedSymbol === snapshot.market.symbol ? snapshot.risk.stopLoss : null}
-          takeProfits={selectedSymbol === snapshot.market.symbol ? snapshot.risk.takeProfits : []}
-          isProviderConnected={snapshot.project1.connected}
+          symbol={currentSymbol}
+          timeframe={snapshot.market.timeframe}
+          candles={snapshot.market.candles}
+          status={snapshot.market.status}
+          provider={snapshot.market.provider}
+          entryPrice={currentSymbol === snapshot.market.symbol ? snapshot.risk.entry : null}
+          stopLossPrice={currentSymbol === snapshot.market.symbol ? snapshot.risk.stopLoss : null}
+          takeProfits={currentSymbol === snapshot.market.symbol ? snapshot.risk.takeProfits : []}
+          isProviderConnected={snapshot.project1.connected && isMarketConnected}
+          onTimeframeChange={onSelectTimeframe}
+          onRefresh={onRefresh}
         />
       </div>
     </div>
   );
 }
 
-function WatchlistPage() {
+function WatchlistPage({
+  snapshot,
+  onSelectSymbol,
+}: {
+  snapshot: HostSnapshot;
+  onSelectSymbol?: (symbol: string) => void;
+}) {
   return (
     <div className="watchlist-view">
-      <WatchlistWidget />
+      <WatchlistWidget quote={snapshot.market.quote} onSelectSymbol={onSelectSymbol} />
     </div>
   );
 }
@@ -400,10 +492,10 @@ function MonitoringPage({ snapshot }: { snapshot: HostSnapshot }) {
           message={snapshot.monitoring.message}
         />
         <MetricCard
-          title="Health"
-          value={snapshot.monitoring.health || "Unavailable"}
-          status={snapshot.project1.connected ? "ready" : "unavailable"}
-          message="Provider health is evaluated by the existing operational gate."
+          title="Market Data Provider"
+          value={snapshot.market.provider ? snapshot.market.provider.name : "Disconnected"}
+          status={snapshot.market.status === "connected" ? "ready" : snapshot.market.status}
+          message={snapshot.market.message}
         />
         <MetricCard
           title="Live Observer"
@@ -417,6 +509,8 @@ function MonitoringPage({ snapshot }: { snapshot: HostSnapshot }) {
 }
 
 function ProvidersPage({ snapshot }: { snapshot: HostSnapshot }) {
+  const providerName = snapshot.market.provider?.name || "BiQuoteProvider";
+
   return (
     <div className="providers-view">
       <section className="card">
@@ -434,23 +528,39 @@ function ProvidersPage({ snapshot }: { snapshot: HostSnapshot }) {
                   <th>Slot Category</th>
                   <th>Status</th>
                   <th>Adapter Source</th>
+                  <th>Capabilities / Details</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
                   <td>Project 1 Integration Port</td>
-                  <td>{snapshot.project1.connected ? "Connected" : "Disconnected"}</td>
+                  <td>
+                    <span className={`status ${snapshot.project1.connected ? "ready" : "disconnected"}`}>
+                      {snapshot.project1.connected ? "Connected" : "Disconnected"}
+                    </span>
+                  </td>
                   <td>{snapshot.project1.adapterName}</td>
+                  <td>Project1IntegrationPort</td>
                 </tr>
                 <tr>
-                  <td>Market Data Feed</td>
-                  <td>{snapshot.providers.marketData}</td>
-                  <td>ProviderRegistry</td>
+                  <td>Market Data Feed (OHLC)</td>
+                  <td>
+                    <span className={`status ${snapshot.market.status === "connected" ? "ready" : snapshot.market.status}`}>
+                      {snapshot.market.status}
+                    </span>
+                  </td>
+                  <td>{providerName}</td>
+                  <td>Supported Timeframes: 1m, 5m, 15m, 30m, 1h, 4h, 1d</td>
                 </tr>
                 <tr>
                   <td>Real-Time Quotes</td>
-                  <td>{snapshot.providers.quote}</td>
-                  <td>ProviderRegistry</td>
+                  <td>
+                    <span className={`status ${snapshot.market.quote ? "ready" : snapshot.market.status}`}>
+                      {snapshot.market.quote ? "connected" : snapshot.market.status}
+                    </span>
+                  </td>
+                  <td>BiQuoteQuoteProvider</td>
+                  <td>Public REST quote feed</td>
                 </tr>
               </tbody>
             </table>
@@ -560,7 +670,7 @@ function SettingsPage({ snapshot }: { snapshot: HostSnapshot }) {
                 </tr>
                 <tr>
                   <th>Primary Market Asset</th>
-                  <td>XAUUSD (Spot Gold)</td>
+                  <td>{snapshot.market.symbol}</td>
                 </tr>
                 <tr>
                   <th>Architecture Pattern</th>

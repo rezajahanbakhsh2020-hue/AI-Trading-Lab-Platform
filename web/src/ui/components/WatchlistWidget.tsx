@@ -1,13 +1,33 @@
 import { useState } from "react";
-import { WATCHLIST_SYMBOLS } from "../../architecture/marketData";
+import { WATCHLIST_SYMBOLS, type MarketSymbol, type Quote } from "../../architecture/marketData";
 
-export function WatchlistWidget() {
+type WatchlistWidgetProps = {
+  quote?: Quote | null;
+  onSelectSymbol?: (symbol: string) => void;
+};
+
+export function WatchlistWidget({ quote, onSelectSymbol }: WatchlistWidgetProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   const categories = ["All", "Commodities", "Forex", "Crypto", "Indices"];
 
-  const filteredSymbols = WATCHLIST_SYMBOLS.filter((item) => {
+  const symbolsList: MarketSymbol[] = WATCHLIST_SYMBOLS.map((sym) => {
+    if (quote && sym.symbol === quote.symbol) {
+      return {
+        ...sym,
+        status: quote.availability?.status || "connected",
+        lastPrice: quote.last ?? quote.mid ?? quote.bid ?? null,
+        change24hPct: quote.changePercent ?? null,
+        high24h: quote.high24h ?? null,
+        low24h: quote.low24h ?? null,
+        volume24h: quote.volume24h ? quote.volume24h.toLocaleString() : null,
+      };
+    }
+    return sym;
+  });
+
+  const filteredSymbols = symbolsList.filter((item) => {
     const matchesCategory =
       selectedCategory === "All" || item.category === selectedCategory;
     const matchesQuery =
@@ -23,7 +43,7 @@ export function WatchlistWidget() {
           <h3>Market Watchlist</h3>
           <p className="hint">Track primary assets across market categories.</p>
         </div>
-        <span className="chip market-chip">5 Assets</span>
+        <span className="chip market-chip">{symbolsList.length} Assets</span>
       </div>
 
       <div className="card-body">
@@ -64,35 +84,63 @@ export function WatchlistWidget() {
               </tr>
             </thead>
             <tbody>
-              {filteredSymbols.map((item) => (
-                <tr key={item.symbol}>
-                  <td>
-                    <div className="symbol-cell">
-                      <strong>{item.symbol}</strong>
-                      {item.primary && <span className="tag-primary">Primary</span>}
-                    </div>
-                  </td>
-                  <td>{item.name}</td>
-                  <td>
-                    <span className="badge-soft">{item.category}</span>
-                  </td>
-                  <td>
-                    <span className="mono-muted">
-                      {item.lastPrice != null ? `$${item.lastPrice}` : "Unavailable"}
-                    </span>
-                  </td>
-                  <td>
-                    <span className="mono-muted">
-                      {item.change24hPct != null
-                        ? `${item.change24hPct > 0 ? "+" : ""}${item.change24hPct}%`
-                        : "—"}
-                    </span>
-                  </td>
-                  <td>
-                    <span className="status disconnected">{item.status}</span>
-                  </td>
-                </tr>
-              ))}
+              {filteredSymbols.map((item) => {
+                const isConnected = item.status === "connected";
+                const isStale = item.status === "stale";
+                const priceText =
+                  item.lastPrice != null ? `$${item.lastPrice.toFixed(2)}` : "Unavailable";
+                const changeText =
+                  item.change24hPct != null
+                    ? `${item.change24hPct >= 0 ? "+" : ""}${item.change24hPct.toFixed(2)}%`
+                    : "—";
+
+                const statusClass =
+                  item.status === "connected"
+                    ? "ready"
+                    : item.status === "stale"
+                    ? "warn"
+                    : "disconnected";
+
+                return (
+                  <tr
+                    key={item.symbol}
+                    style={{ cursor: onSelectSymbol ? "pointer" : "default" }}
+                    onClick={() => onSelectSymbol && onSelectSymbol(item.symbol)}
+                  >
+                    <td>
+                      <div className="symbol-cell">
+                        <strong>{item.symbol}</strong>
+                        {item.primary && <span className="tag-primary">Primary</span>}
+                      </div>
+                    </td>
+                    <td>{item.name}</td>
+                    <td>
+                      <span className="badge-soft">{item.category}</span>
+                    </td>
+                    <td>
+                      <span className={isConnected || isStale ? "mono-bold" : "mono-muted"}>
+                        {priceText}
+                      </span>
+                    </td>
+                    <td>
+                      <span
+                        className={
+                          item.change24hPct != null && item.change24hPct > 0
+                            ? "text-green"
+                            : item.change24hPct != null && item.change24hPct < 0
+                            ? "text-red"
+                            : "mono-muted"
+                        }
+                      >
+                        {changeText}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`status ${statusClass}`}>{item.status}</span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

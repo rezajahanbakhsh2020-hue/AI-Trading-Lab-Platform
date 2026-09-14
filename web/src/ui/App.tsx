@@ -1,61 +1,28 @@
-import { NavLink, Route, Routes } from "react-router-dom";
+import { useState } from "react";
+import { Route, Routes } from "react-router-dom";
 import { HostPage } from "./HostPage";
+import { TopBar } from "./components/TopBar";
+import { DesktopSidebar } from "./components/DesktopSidebar";
+import { MobileBottomNav } from "./components/MobileBottomNav";
 import {
   NAV_ITEMS,
-  PLATFORM_NAME,
-  PLATFORM_ROLE,
-  PRIMARY_MARKET,
   createDisconnectedHostSnapshot,
 } from "../architecture/hostView";
 
 const snapshot = createDisconnectedHostSnapshot();
 
 export function App() {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <div className="brand">
-          <div className="brand-mark">P2</div>
-          <div>
-            <h1>{PLATFORM_NAME}</h1>
-            <p>{PLATFORM_ROLE}</p>
-          </div>
-        </div>
-        <div className="top-meta">
-          <span className="chip">
-            <span className="dot ready" />
-            Host ready
-          </span>
-          <span className="chip">
-            <span className="dot warn" />
-            Project 1 disconnected
-          </span>
-          <span className="chip">{PRIMARY_MARKET}</span>
-        </div>
-      </header>
-      <aside className="sidebar">
-        <div>
-          <p className="nav-label">Workspace</p>
-          <nav className="nav-list">
-            {NAV_ITEMS.map((item) => (
-              <NavLink
-                key={item.id}
-                to={item.path}
-                end={item.path === "/"}
-                className={({ isActive }) =>
-                  isActive ? "nav-link active" : "nav-link"
-                }
-              >
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
-        </div>
-        <div className="sidebar-note">
-          Project 2 hosts and presents Project 1. It does not generate signals,
-          run strategies, or execute orders.
-        </div>
-      </aside>
+      <TopBar
+        unreadNotificationsCount={2}
+        onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
+      />
+
+      <DesktopSidebar />
+
       <main className="workspace">
         <Routes>
           {NAV_ITEMS.map((item) => (
@@ -65,8 +32,31 @@ export function App() {
               element={<HostPage pageId={item.id} snapshot={snapshot} />}
             />
           ))}
+          {/* Aliases for singular/plural path compatibility */}
+          <Route
+            path="/dashboard"
+            element={<HostPage pageId="dashboard" snapshot={snapshot} />}
+          />
+          <Route
+            path="/market"
+            element={<HostPage pageId="markets" snapshot={snapshot} />}
+          />
+          <Route
+            path="/strategy"
+            element={<HostPage pageId="strategies" snapshot={snapshot} />}
+          />
+          <Route
+            path="/learning"
+            element={<HostPage pageId="academy" snapshot={snapshot} />}
+          />
         </Routes>
       </main>
+
+      <MobileBottomNav
+        isMenuOpen={isMobileMenuOpen}
+        onToggleMenu={() => setIsMobileMenuOpen((prev) => !prev)}
+        onCloseMenu={() => setIsMobileMenuOpen(false)}
+      />
     </div>
   );
 }

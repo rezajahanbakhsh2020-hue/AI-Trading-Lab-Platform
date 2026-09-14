@@ -3,17 +3,19 @@ export const PLATFORM_ROLE = "Host application for AI-Trading-Lab";
 export const PRIMARY_MARKET = "XAUUSD";
 
 export const NAV_ITEMS = [
-  { id: "dashboard", path: "/", label: "Dashboard" },
-  { id: "market", path: "/market", label: "Market" },
-  { id: "strategy", path: "/strategy", label: "Strategy" },
-  { id: "backtest", path: "/backtest", label: "Backtest" },
-  { id: "signals", path: "/signals", label: "Signals" },
-  { id: "performance", path: "/performance", label: "Performance" },
-  { id: "risk", path: "/risk", label: "Risk" },
-  { id: "monitoring", path: "/monitoring", label: "Monitoring" },
-  { id: "providers", path: "/providers", label: "Providers" },
-  { id: "logs", path: "/logs", label: "Logs" },
-  { id: "settings", path: "/settings", label: "Settings" },
+  { id: "dashboard", path: "/", label: "Dashboard", icon: "home" },
+  { id: "markets", path: "/markets", label: "Markets", icon: "bar-chart-2" },
+  { id: "watchlist", path: "/watchlist", label: "Watchlist", icon: "star" },
+  { id: "signals", path: "/signals", label: "Signals", icon: "zap" },
+  { id: "strategies", path: "/strategies", label: "Strategies", icon: "cpu" },
+  { id: "backtest", path: "/backtest", label: "Backtest", icon: "history" },
+  { id: "performance", path: "/performance", label: "Performance", icon: "trending-up" },
+  { id: "risk", path: "/risk", label: "Risk", icon: "shield" },
+  { id: "monitoring", path: "/monitoring", label: "Monitoring", icon: "activity" },
+  { id: "providers", path: "/providers", label: "Providers", icon: "layers" },
+  { id: "academy", path: "/academy", label: "Academy", icon: "book-open" },
+  { id: "notifications", path: "/notifications", label: "Notifications", icon: "bell" },
+  { id: "settings", path: "/settings", label: "Settings", icon: "settings" },
 ] as const;
 
 export const INTEGRATION_FLOW = [
@@ -115,10 +117,30 @@ export const PAGE_COPY: Record<
     kicker: "Host overview",
     summary: "Operational home for presenting Project 1 inside Project 2.",
   },
-  market: {
-    title: "Market",
+  markets: {
+    title: "Markets",
     kicker: "Primary market XAU/USD",
     summary: "Chart, quote, and volume surfaces consume provider data through existing platform ports.",
+  },
+  market: {
+    title: "Market Workspace",
+    kicker: "Primary market XAU/USD",
+    summary: "Chart, quote, and volume surfaces consume provider data through existing platform ports.",
+  },
+  watchlist: {
+    title: "Watchlist",
+    kicker: "Custom Market Overview",
+    summary: "Track primary commodities, FX pairs, and crypto assets in real time.",
+  },
+  signals: {
+    title: "Signals",
+    kicker: "Presentation and delivery",
+    summary: "Signals are presented only when Project 1 emits them through the integration port.",
+  },
+  strategies: {
+    title: "Strategies",
+    kicker: "Project 1 owned",
+    summary: "This host displays strategy identity and state. It does not generate strategies.",
   },
   strategy: {
     title: "Strategy",
@@ -129,11 +151,6 @@ export const PAGE_COPY: Record<
     title: "Backtest",
     kicker: "Assessment surface",
     summary: "Backtest results will appear here from Project 1 through the existing assessment boundary.",
-  },
-  signals: {
-    title: "Signals",
-    kicker: "Presentation and delivery",
-    summary: "Signals are presented only when Project 1 emits them through the integration port.",
   },
   performance: {
     title: "Performance",
@@ -155,13 +172,28 @@ export const PAGE_COPY: Record<
     kicker: "Data boundary",
     summary: "Market-data and quote providers attach through the existing registry and readiness gate.",
   },
+  academy: {
+    title: "Learning / Academy",
+    kicker: "Financial Education & Concepts",
+    summary: "Explore original guides, risk management strategies, walk-forward concepts, and glossary.",
+  },
+  learning: {
+    title: "Learning / Academy",
+    kicker: "Financial Education & Concepts",
+    summary: "Explore original guides, risk management strategies, walk-forward concepts, and glossary.",
+  },
+  notifications: {
+    title: "Notifications",
+    kicker: "System & Signal Feed",
+    summary: "Real-time alerts, integration status events, and system messages.",
+  },
   logs: {
     title: "Logs",
     kicker: "Host activity",
     summary: "Operational events from the host application will appear here when recorded.",
   },
   settings: {
-    title: "Settings",
+    title: "Settings & Profile",
     kicker: "Host configuration",
     summary: "This platform does not store exchange API keys or execute real-money orders.",
   },

@@ -13,6 +13,7 @@ export const NAV_ITEMS = [
   { id: "backtest", path: "/backtest", label: "Backtest", icon: "history" },
   { id: "performance", path: "/performance", label: "Performance", icon: "trending-up" },
   { id: "risk", path: "/risk", label: "Risk", icon: "shield" },
+  { id: "health", path: "/health", label: "Health Center", icon: "activity" },
   { id: "monitoring", path: "/monitoring", label: "Monitoring", icon: "activity" },
   { id: "providers", path: "/providers", label: "Providers", icon: "layers" },
   { id: "academy", path: "/academy", label: "Academy", icon: "book-open" },
@@ -496,6 +497,11 @@ export const PAGE_COPY: Record<
     title: "Risk",
     kicker: "Trade setup levels",
     summary: "Entry, stop loss, and take-profit levels stay empty until a real setup is supplied.",
+  },
+  health: {
+    title: "Health Center",
+    kicker: "Data & Connection Health",
+    summary: "Real-time, honest connection health, provider readiness, Project 1 signal-source availability, and notification pipeline status.",
   },
   monitoring: {
     title: "Monitoring",

@@ -13,6 +13,7 @@ import { StrategyCard } from "./components/StrategyCard";
 import { AcademyViewer } from "./components/AcademyViewer";
 import { EmptyState } from "./components/EmptyState";
 import { NotificationCenter } from "./components/NotificationCenter";
+import { HealthCenter } from "./components/HealthCenter";
 import {
   loadUserNotifications,
   saveUserNotifications,
@@ -141,6 +142,7 @@ export function HostPage({
       {normalizedPageId === "backtest" && <BacktestPage snapshot={snapshot} />}
       {normalizedPageId === "performance" && <PerformancePage snapshot={snapshot} />}
       {normalizedPageId === "risk" && <RiskPage snapshot={snapshot} />}
+      {normalizedPageId === "health" && <HealthCenter snapshot={snapshot} onRefresh={onSync} />}
       {normalizedPageId === "monitoring" && <MonitoringPage snapshot={snapshot} />}
       {normalizedPageId === "providers" && <ProvidersPage snapshot={snapshot} />}
       {(normalizedPageId === "academy" || pageId === "learning") && <AcademyPage />}

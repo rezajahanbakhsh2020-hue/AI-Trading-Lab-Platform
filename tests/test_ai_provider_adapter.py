@@ -206,3 +206,29 @@ def test_create_default_ai_provider_factory() -> None:
         provider = create_default_ai_provider()
         assert isinstance(provider, HttpAIProviderAdapter)
         assert provider.get_status() == AIProviderStatus.AVAILABLE
+
+
+def test_http_provider_edge_case_config_handling(
+    mock_context: AllowedIntelligenceContext, mock_request: AIRequest
+) -> None:
+    # Placeholder API Key check
+    adapter_placeholder = HttpAIProviderAdapter(
+        api_key="placeholder_key_123",
+        endpoint_url="https://api.openai.com/v1/chat/completions",
+    )
+    assert adapter_placeholder.get_status() == AIProviderStatus.UNAVAILABLE
+
+    # Non-HTTP/HTTPS URL check
+    adapter_bad_url = HttpAIProviderAdapter(
+        api_key="sk-valid-key",
+        endpoint_url="ftp://invalid.endpoint/completions",
+    )
+    assert adapter_bad_url.get_status() == AIProviderStatus.UNAVAILABLE
+
+    # Invalid timeout type falls back cleanly
+    adapter_invalid_timeout = HttpAIProviderAdapter(
+        api_key="sk-valid-key",
+        endpoint_url="https://api.openai.com/v1/chat/completions",
+        timeout="not_a_number",
+    )
+    assert adapter_invalid_timeout._timeout == 5.0

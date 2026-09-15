@@ -12,7 +12,7 @@ import socket
 import time
 import urllib.error
 import urllib.request
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from src.platform.domain.ai_gateway import (
     AICapability,
@@ -120,33 +120,38 @@ class HttpAIProviderAdapter(AIProviderPort):
         api_key: Optional[str] = None,
         endpoint_url: Optional[str] = None,
         model: Optional[str] = None,
-        timeout: Optional[float] = None,
+        timeout: Optional[Union[float, int, str]] = None,
         provider_name_override: Optional[str] = None,
     ) -> None:
         raw_key = api_key if api_key is not None else os.getenv("AI_PROVIDER_API_KEY", "")
-        self._api_key = raw_key.strip()
+        self._api_key = str(raw_key).strip()
 
         raw_url = endpoint_url if endpoint_url is not None else os.getenv("AI_PROVIDER_URL", "")
-        self._endpoint_url = raw_url.strip()
+        self._endpoint_url = str(raw_url).strip()
 
         raw_model = model if model is not None else os.getenv("AI_PROVIDER_MODEL", "gpt-4o-mini")
-        self._model = raw_model.strip()
+        self._model = str(raw_model).strip() or "gpt-4o-mini"
 
         if timeout is not None:
-            self._timeout = float(timeout)
+            try:
+                self._timeout = max(0.1, float(timeout))
+            except (ValueError, TypeError):
+                self._timeout = 5.0
         else:
             try:
-                self._timeout = float(os.getenv("AI_PROVIDER_TIMEOUT", "5.0"))
-            except ValueError:
+                self._timeout = max(0.1, float(os.getenv("AI_PROVIDER_TIMEOUT", "5.0")))
+            except (ValueError, TypeError):
                 self._timeout = 5.0
 
-        self._provider_name = provider_name_override or "HttpAIProviderAdapter"
+        self._provider_name = str(provider_name_override).strip() if provider_name_override else "HttpAIProviderAdapter"
 
     def get_status(self) -> AIProviderStatus:
         if (
             self._api_key
             and self._endpoint_url
-            and not self._api_key.startswith("placeholder")
+            and not self._api_key.lower().startswith("placeholder")
+            and not self._api_key.lower().startswith("your_api_key")
+            and (self._endpoint_url.startswith("http://") or self._endpoint_url.startswith("https://"))
         ):
             return AIProviderStatus.AVAILABLE
         return AIProviderStatus.UNAVAILABLE
@@ -312,7 +317,10 @@ class HttpAIProviderAdapter(AIProviderPort):
 
 def create_default_ai_provider() -> AIProviderPort:
     """Factory helper creating configured HttpAIProviderAdapter if environment variables are set, else UnavailableAIProviderAdapter."""
-    http_adapter = HttpAIProviderAdapter()
-    if http_adapter.get_status() == AIProviderStatus.AVAILABLE:
-        return http_adapter
+    try:
+        http_adapter = HttpAIProviderAdapter()
+        if http_adapter.get_status() == AIProviderStatus.AVAILABLE:
+            return http_adapter
+    except Exception:
+        pass
     return UnavailableAIProviderAdapter()

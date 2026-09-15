@@ -13,6 +13,7 @@ import { StrategyCard } from "./components/StrategyCard";
 import { AcademyViewer } from "./components/AcademyViewer";
 import { EmptyState } from "./components/EmptyState";
 import { INITIAL_NOTIFICATIONS, type NotificationItem } from "../architecture/marketData";
+import { useI18n, type SupportedLanguage } from "../i18n";
 
 type HostPageProps = {
   pageId: string;
@@ -56,6 +57,8 @@ export function HostPage({
   onSelectSymbol,
   onSelectTimeframe,
 }: HostPageProps) {
+  const { t } = useI18n();
+
   const normalizedPageId =
     pageId === "market"
       ? "markets"
@@ -65,15 +68,22 @@ export function HostPage({
       ? "academy"
       : pageId;
 
-  const copy = PAGE_COPY[normalizedPageId] ?? PAGE_COPY[pageId] ?? PAGE_COPY.dashboard;
+  const copyTitle = t(`nav.${normalizedPageId}`) !== `nav.${normalizedPageId}`
+    ? t(`nav.${normalizedPageId}`)
+    : (PAGE_COPY[normalizedPageId] ?? PAGE_COPY[pageId] ?? PAGE_COPY.dashboard).title;
+
+  const copyKicker = (PAGE_COPY[normalizedPageId] ?? PAGE_COPY[pageId] ?? PAGE_COPY.dashboard).kicker;
+  const copySummary = t(`${normalizedPageId}.summary`) !== `${normalizedPageId}.summary`
+    ? t(`${normalizedPageId}.summary`)
+    : (PAGE_COPY[normalizedPageId] ?? PAGE_COPY[pageId] ?? PAGE_COPY.dashboard).summary;
 
   return (
     <div className="page-workspace">
       <div className="page-header">
         <div>
-          <p className="kicker">{copy.kicker}</p>
-          <h2>{copy.title}</h2>
-          <p className="lede">{copy.summary}</p>
+          <p className="kicker">{copyKicker}</p>
+          <h2>{copyTitle}</h2>
+          <p className="lede">{copySummary}</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {onToggleConnection && (
@@ -83,13 +93,13 @@ export function HostPage({
               style={{ fontSize: 13, padding: "6px 12px" }}
             >
               {snapshot.project1.connected
-                ? "Use Disconnected Adapter"
-                : "Connect Project 1 Port"}
+                ? t("buttons.useDisconnectedAdapter")
+                : t("buttons.connectProject1Port")}
             </button>
           )}
           <span className="chip">
             <span className={`dot ${snapshot.project1.connected ? "ready" : "warn"}`} />
-            {snapshot.project1.connected ? "Project 1 Connected" : "Integration-ready"}
+            {snapshot.project1.connected ? t("status.project1Connected") : t("status.integrationReady")}
           </span>
         </div>
       </div>
@@ -129,8 +139,8 @@ export function HostPage({
 
       <p className="footer-status">
         {snapshot.project1.connected
-          ? `Connected to ${snapshot.project1.adapterName} (${snapshot.project1.port}). Real Project 1 output active.`
-          : "Presentation layer only. Values stay unavailable until Project 1 and platform adapters supply them."}
+          ? t("footer.connectedText", { adapter: snapshot.project1.adapterName, port: snapshot.project1.port })
+          : t("footer.disconnectedText")}
       </p>
     </div>
   );
@@ -149,6 +159,7 @@ function DashboardPage({
   onSelectSymbol?: (symbol: string) => void;
   onSelectTimeframe?: (tf: string) => void;
 }) {
+  const { t } = useI18n();
   const quote = snapshot.market.quote;
   const quotePrice = quote?.last ?? quote?.mid ?? quote?.bid ?? snapshot.risk.entry ?? null;
 
@@ -158,26 +169,26 @@ function DashboardPage({
 
       <div className="grid cols-4" style={{ marginTop: 16 }}>
         <MetricCard
-          title="Platform"
-          value="Ready"
+          title={t("dashboard.platformCard")}
+          value={t("status.ready")}
           status={snapshot.platform.status}
           message={snapshot.platform.role}
         />
         <MetricCard
-          title="Project 1"
-          value={snapshot.project1.connected ? "Connected" : "Disconnected"}
+          title={t("dashboard.project1Card")}
+          value={snapshot.project1.connected ? t("status.connected") : t("status.disconnected")}
           status={snapshot.project1.status}
           message={snapshot.project1.message}
         />
         <MetricCard
-          title="Primary Market"
+          title={t("dashboard.primaryMarketCard")}
           value={snapshot.market.symbol}
           status={snapshot.market.status === "connected" ? "ready" : snapshot.market.status}
           message={snapshot.market.message}
         />
         <MetricCard
-          title="Latest Signal"
-          value={snapshot.signal.action || "No signal"}
+          title={t("signal.latestSignal")}
+          value={snapshot.signal.action || t("signal.noSignal")}
           status={snapshot.signal.status}
           message={snapshot.signal.message}
         />
@@ -206,20 +217,20 @@ function DashboardPage({
 
         <div className="card">
           <div className="card-head">
-            <h3>Academy & Quick Learning</h3>
-            <span className="chip ready-chip">10 Modules</span>
+            <h3>{t("dashboard.academyQuickLearning")}</h3>
+            <span className="chip ready-chip">{t("dashboard.academyCount")}</span>
           </div>
           <div className="card-body">
             <p className="hint">
-              Explore original guides on Risk Management, Walk-Forward Validation, Technical Analysis, and Glossary terms.
+              {t("dashboard.academyDesc")}
             </p>
             <div className="academy-banner-box" style={{ marginTop: 16 }}>
-              <strong>Master Quantitative Trading Concepts</strong>
+              <strong>{t("dashboard.masterConcepts")}</strong>
               <p className="hint" style={{ marginTop: 6 }}>
-                Learn how Project 1 generates signals and how Project 2 validates and presents trading intelligence.
+                {t("dashboard.masterSub")}
               </p>
               <Link to="/academy" className="btn btn-primary" style={{ marginTop: 12, display: "inline-block" }}>
-                Open Trading Academy →
+                {t("buttons.openAcademy")}
               </Link>
             </div>
           </div>
@@ -240,6 +251,7 @@ function MarketsPage({
   onSelectTimeframe?: (tf: string) => void;
   onRefresh?: () => void;
 }) {
+  const { t, formatCurrency, formatPercent } = useI18n();
   const currentSymbol = snapshot.market.symbol;
   const quote = snapshot.market.quote;
   const isMarketConnected = snapshot.market.status === "connected";
@@ -254,8 +266,8 @@ function MarketsPage({
       <div className="grid cols-2" style={{ marginTop: 16 }}>
         <div className="card">
           <div className="card-head">
-            <h3>Market Symbol Selector</h3>
-            <span className="chip">{currentSymbol} Selected</span>
+            <h3>{t("markets.selectorTitle")}</h3>
+            <span className="chip">{t("markets.symbolSelected", { symbol: currentSymbol })}</span>
           </div>
           <div className="card-body">
             <div className="market-select-grid">
@@ -268,7 +280,7 @@ function MarketsPage({
                 >
                   <strong>{sym}</strong>
                   <span className={`status ${isMarketConnected && sym === currentSymbol ? "ready" : "disconnected"}`}>
-                    {isMarketConnected && sym === currentSymbol ? "Connected" : "Disconnected"}
+                    {isMarketConnected && sym === currentSymbol ? t("status.connected") : t("status.disconnected")}
                   </span>
                 </button>
               ))}
@@ -278,52 +290,52 @@ function MarketsPage({
 
         <div className="card">
           <div className="card-head">
-            <h3>{currentSymbol} Real-Time Quote</h3>
+            <h3>{t("markets.quoteTitle", { symbol: currentSymbol })}</h3>
             <span className={`status ${isMarketConnected ? "ready" : snapshot.market.status}`}>
-              {isMarketConnected ? "Connected" : snapshot.market.status}
+              {isMarketConnected ? t("status.connected") : snapshot.market.status}
             </span>
           </div>
           <div className="card-body">
             <table className="table">
               <tbody>
                 <tr>
-                  <th>Current Price</th>
+                  <th>{t("markets.currentPrice")}</th>
                   <td>
                     {quote?.last != null
-                      ? `$${quote.last.toFixed(2)} USD`
+                      ? formatCurrency(quote.last)
                       : quote?.mid != null
-                      ? `$${quote.mid.toFixed(2)} USD`
+                      ? formatCurrency(quote.mid)
                       : snapshot.risk.entry
-                      ? `$${snapshot.risk.entry.toFixed(2)} USD`
-                      : "Unavailable"}
+                      ? formatCurrency(snapshot.risk.entry)
+                      : t("status.unavailable")}
                   </td>
                 </tr>
                 <tr>
-                  <th>Bid / Ask</th>
+                  <th>{t("markets.bidAsk")}</th>
                   <td>
                     {quote?.bid != null && quote?.ask != null
-                      ? `$${quote.bid.toFixed(2)} / $${quote.ask.toFixed(2)}`
-                      : "Unavailable"}
+                      ? `${formatCurrency(quote.bid)} / ${formatCurrency(quote.ask)}`
+                      : t("status.unavailable")}
                   </td>
                 </tr>
                 <tr>
-                  <th>24h Change</th>
+                  <th>{t("markets.change24h")}</th>
                   <td>
                     {quote?.changePercent != null
-                      ? `${quote.changePercent >= 0 ? "+" : ""}${quote.changePercent.toFixed(2)}%`
-                      : "Unavailable"}
+                      ? formatPercent(quote.changePercent)
+                      : t("status.unavailable")}
                   </td>
                 </tr>
                 <tr>
-                  <th>24h High / Low</th>
+                  <th>{t("markets.highLow24h")}</th>
                   <td>
                     {quote?.high24h != null && quote?.low24h != null
-                      ? `$${quote.high24h.toFixed(2)} / $${quote.low24h.toFixed(2)}`
-                      : "Unavailable"}
+                      ? `${formatCurrency(quote.high24h)} / ${formatCurrency(quote.low24h)}`
+                      : t("status.unavailable")}
                   </td>
                 </tr>
                 <tr>
-                  <th>Timeframe</th>
+                  <th>{t("markets.timeframe")}</th>
                   <td>{snapshot.market.timeframe || "1h"}</td>
                 </tr>
               </tbody>
@@ -382,16 +394,17 @@ function StrategiesPage({ snapshot }: { snapshot: HostSnapshot }) {
 }
 
 function BacktestPage({ snapshot }: { snapshot: HostSnapshot }) {
+  const { t } = useI18n();
   return (
     <div className="backtest-view">
       <div className="card">
         <div className="card-head">
-          <h3>Historical Backtest Surface</h3>
-          <span className="status unavailable">Waiting for Project 1</span>
+          <h3>{t("nav.backtest")}</h3>
+          <span className="status unavailable">{t("status.unavailable")}</span>
         </div>
         <div className="card-body">
           <EmptyState
-            title="No Project 1 backtest connected yet."
+            title={t("empty.noBacktestTitle")}
             message={snapshot.performance.message}
           />
         </div>
@@ -401,16 +414,17 @@ function BacktestPage({ snapshot }: { snapshot: HostSnapshot }) {
 }
 
 function PerformancePage({ snapshot }: { snapshot: HostSnapshot }) {
+  const { t } = useI18n();
   return (
     <div className="performance-view">
       <div className="card">
         <div className="card-head">
-          <h3>Performance Metrics & Equity Curve</h3>
-          <span className="status unavailable">Unavailable</span>
+          <h3>{t("nav.performance")}</h3>
+          <span className="status unavailable">{t("status.unavailable")}</span>
         </div>
         <div className="card-body">
           <EmptyState
-            title="No performance data connected yet."
+            title={t("empty.noPerfTitle")}
             message={snapshot.performance.message}
           />
         </div>
@@ -420,12 +434,13 @@ function PerformancePage({ snapshot }: { snapshot: HostSnapshot }) {
 }
 
 function RiskPage({ snapshot }: { snapshot: HostSnapshot }) {
+  const { t } = useI18n();
   const levels = [
-    ["Entry Price", snapshot.risk.entry],
-    ["Stop Loss (SL)", snapshot.risk.stopLoss],
-    ["Take Profit 1 (TP1)", snapshot.risk.takeProfits[0] ?? null],
-    ["Take Profit 2 (TP2)", snapshot.risk.takeProfits[1] ?? null],
-    ["Take Profit 3 (TP3)", snapshot.risk.takeProfits[2] ?? null],
+    [t("risk.entryLevel"), snapshot.risk.entry],
+    [t("risk.stopLoss"), snapshot.risk.stopLoss],
+    [t("risk.targetTp1"), snapshot.risk.takeProfits[0] ?? null],
+    [t("risk.targetTp2"), snapshot.risk.takeProfits[1] ?? null],
+    [t("risk.targetTp3"), snapshot.risk.takeProfits[2] ?? null],
   ] as const;
 
   return (
@@ -433,9 +448,9 @@ function RiskPage({ snapshot }: { snapshot: HostSnapshot }) {
       <div className="grid cols-2">
         <section className="card">
           <div className="card-head">
-            <h3>Trade Risk Breakdown</h3>
+            <h3>{t("risk.tradeRiskBreakdown")}</h3>
             <span className={`status ${snapshot.risk.status === "available" ? "ready" : "unavailable"}`}>
-              {snapshot.risk.status === "available" ? "Active Setup" : "Unavailable"}
+              {snapshot.risk.status === "available" ? t("status.activeSetup") : t("status.unavailable")}
             </span>
           </div>
           <div className="card-body">
@@ -443,8 +458,8 @@ function RiskPage({ snapshot }: { snapshot: HostSnapshot }) {
               {levels.map(([label, value]) => (
                 <div className="level" key={label}>
                   <span>{label}</span>
-                  <b className={label.includes("Stop") ? "text-red" : label.includes("Take") ? "text-green" : ""}>
-                    {value == null ? "Unavailable" : value}
+                  <b className={label.includes("Stop") || label.includes("ضرر") || label.includes("خسارة") || label.includes("Durdur") ? "text-red" : label.includes("Take") || label.includes("تارگت") || label.includes("هدف") || label.includes("Hedef") ? "text-green" : ""}>
+                    {value == null ? t("status.unavailable") : value}
                   </b>
                 </div>
               ))}
@@ -457,21 +472,21 @@ function RiskPage({ snapshot }: { snapshot: HostSnapshot }) {
 
         <section className="card">
           <div className="card-head">
-            <h3>Risk/Reward Calculator View</h3>
-            <span className="status ready">1:2 Target</span>
+            <h3>{t("risk.riskRewardCalculator")}</h3>
+            <span className="status ready">{t("risk.ratio")}</span>
           </div>
           <div className="card-body">
             <p className="hint">
-              Position sizing and R:R ratios are evaluated based on 1% equity risk rules.
+              {t("risk.riskDesc")}
             </p>
             <div className="calc-preview-box" style={{ marginTop: 14 }}>
               <div className="calc-row">
-                <span>Account Risk Limit:</span>
-                <b>1.0% per trade</b>
+                <span>{t("risk.accountRiskLimit")}:</span>
+                <b>{t("risk.perTrade")}</b>
               </div>
               <div className="calc-row">
-                <span>Min Target R:R Ratio:</span>
-                <b>1 : 2.0</b>
+                <span>{t("risk.minTargetRatio")}:</span>
+                <b>{t("risk.ratio")}</b>
               </div>
             </div>
           </div>
@@ -482,24 +497,25 @@ function RiskPage({ snapshot }: { snapshot: HostSnapshot }) {
 }
 
 function MonitoringPage({ snapshot }: { snapshot: HostSnapshot }) {
+  const { t } = useI18n();
   return (
     <div className="monitoring-view">
       <div className="grid cols-3">
         <MetricCard
           title="Freshness"
-          value={snapshot.monitoring.freshness || "Unavailable"}
+          value={snapshot.monitoring.freshness || t("status.unavailable")}
           status={snapshot.monitoring.status}
           message={snapshot.monitoring.message}
         />
         <MetricCard
           title="Market Data Provider"
-          value={snapshot.market.provider ? snapshot.market.provider.name : "Disconnected"}
+          value={snapshot.market.provider ? snapshot.market.provider.name : t("status.disconnected")}
           status={snapshot.market.status === "connected" ? "ready" : snapshot.market.status}
           message={snapshot.market.message}
         />
         <MetricCard
           title="Live Observer"
-          value={snapshot.project1.connected ? "Active" : "Idle"}
+          value={snapshot.project1.connected ? t("status.active") : t("status.idle")}
           status={snapshot.project1.connected ? "ready" : "unavailable"}
           message={snapshot.project1.connected ? "Monitoring Project 1 integration port." : "No live observations active."}
         />
@@ -509,6 +525,7 @@ function MonitoringPage({ snapshot }: { snapshot: HostSnapshot }) {
 }
 
 function ProvidersPage({ snapshot }: { snapshot: HostSnapshot }) {
+  const { t } = useI18n();
   const providerName = snapshot.market.provider?.name || "BiQuoteProvider";
 
   return (
@@ -517,7 +534,7 @@ function ProvidersPage({ snapshot }: { snapshot: HostSnapshot }) {
         <div className="card-head">
           <h3>Provider Slots & Registry</h3>
           <span className={`status ${snapshot.project1.connected ? "ready" : "unavailable"}`}>
-            {snapshot.project1.connected ? "Port Connected" : "Unconnected"}
+            {snapshot.project1.connected ? t("status.connected") : t("status.disconnected")}
           </span>
         </div>
         <div className="card-body">
@@ -536,7 +553,7 @@ function ProvidersPage({ snapshot }: { snapshot: HostSnapshot }) {
                   <td>Project 1 Integration Port</td>
                   <td>
                     <span className={`status ${snapshot.project1.connected ? "ready" : "disconnected"}`}>
-                      {snapshot.project1.connected ? "Connected" : "Disconnected"}
+                      {snapshot.project1.connected ? t("status.connected") : t("status.disconnected")}
                     </span>
                   </td>
                   <td>{snapshot.project1.adapterName}</td>
@@ -556,7 +573,7 @@ function ProvidersPage({ snapshot }: { snapshot: HostSnapshot }) {
                   <td>Real-Time Quotes</td>
                   <td>
                     <span className={`status ${snapshot.market.quote ? "ready" : snapshot.market.status}`}>
-                      {snapshot.market.quote ? "connected" : snapshot.market.status}
+                      {snapshot.market.quote ? t("status.connected") : snapshot.market.status}
                     </span>
                   </td>
                   <td>BiQuoteQuoteProvider</td>
@@ -579,6 +596,7 @@ function AcademyPage() {
 }
 
 function NotificationsPage() {
+  const { t } = useI18n();
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
 
   const markAllAsRead = () => {
@@ -590,11 +608,11 @@ function NotificationsPage() {
       <div className="card">
         <div className="card-head">
           <div>
-            <h3>Notifications & Feed</h3>
-            <p className="hint">System events, integration logs, and alert history.</p>
+            <h3>{t("notifications.feedTitle")}</h3>
+            <p className="hint">{t("notifications.feedSub")}</p>
           </div>
           <button className="btn btn-secondary" onClick={markAllAsRead}>
-            Mark all read
+            {t("buttons.markAllRead")}
           </button>
         </div>
 
@@ -622,17 +640,18 @@ function NotificationsPage() {
 }
 
 function LogsPage() {
+  const { t } = useI18n();
   return (
     <div className="logs-view">
       <div className="card">
         <div className="card-head">
-          <h3>Operational Event Logs</h3>
-          <span className="status unavailable">Empty</span>
+          <h3>{t("nav.logs")}</h3>
+          <span className="status unavailable">{t("status.empty")}</span>
         </div>
         <div className="card-body">
           <EmptyState
-            title="No host activity recorded yet."
-            message="Operational logs will appear here when the host records real events."
+            title={t("empty.noLogsTitle")}
+            message={t("empty.noLogsMessage")}
           />
         </div>
       </div>
@@ -641,40 +660,42 @@ function LogsPage() {
 }
 
 function SettingsPage({ snapshot }: { snapshot: HostSnapshot }) {
+  const { t, language, setLanguage, supportedLanguages } = useI18n();
+
   return (
     <div className="settings-view">
       <div className="grid cols-2">
         <section className="card">
           <div className="card-head">
-            <h3>Host Policy & System Guardrails</h3>
-            <span className="status ready">Enforced</span>
+            <h3>{t("settings.policyTitle")}</h3>
+            <span className="status ready">{t("status.enforced")}</span>
           </div>
           <div className="card-body">
             <table className="table">
               <tbody>
                 <tr>
-                  <th>Order Execution</th>
-                  <td>Disabled (Presentation & Delivery Layer Only)</td>
+                  <th>{t("settings.table.orderExecution")}</th>
+                  <td>{t("settings.table.orderExecutionValue")}</td>
                 </tr>
                 <tr>
-                  <th>Exchange API Keys</th>
-                  <td>Not Requested / Not Stored</td>
+                  <th>{t("settings.table.apiKeys")}</th>
+                  <td>{t("settings.table.apiKeysValue")}</td>
                 </tr>
                 <tr>
-                  <th>Signal Intelligence Source</th>
-                  <td>Project 1 via Project1IntegrationPort Contract</td>
+                  <th>{t("settings.table.source")}</th>
+                  <td>{t("settings.table.sourceValue")}</td>
                 </tr>
                 <tr>
-                  <th>Active Adapter</th>
+                  <th>{t("settings.table.adapter")}</th>
                   <td>{snapshot.project1.adapterName}</td>
                 </tr>
                 <tr>
-                  <th>Primary Market Asset</th>
+                  <th>{t("settings.table.market")}</th>
                   <td>{snapshot.market.symbol}</td>
                 </tr>
                 <tr>
-                  <th>Architecture Pattern</th>
-                  <td>Hexagonal Ports and Adapters</td>
+                  <th>{t("settings.table.pattern")}</th>
+                  <td>{t("settings.table.patternValue")}</td>
                 </tr>
               </tbody>
             </table>
@@ -683,7 +704,7 @@ function SettingsPage({ snapshot }: { snapshot: HostSnapshot }) {
 
         <section className="card">
           <div className="card-head">
-            <h3>Integration Flow Topology</h3>
+            <h3>{t("settings.flowTitle")}</h3>
             <span className="status">{snapshot.project1.port}</span>
           </div>
           <div className="card-body">
@@ -694,6 +715,32 @@ function SettingsPage({ snapshot }: { snapshot: HostSnapshot }) {
                   <strong>{step.label}</strong>
                   <p className="hint">{step.role}</p>
                 </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="card" style={{ gridColumn: "1 / -1", marginTop: 16 }}>
+          <div className="card-head">
+            <h3>{t("settings.languageSettings")}</h3>
+            <span className="chip ready-chip">{language.toUpperCase()}</span>
+          </div>
+          <div className="card-body">
+            <p className="hint" style={{ marginBottom: 12 }}>
+              {t("settings.selectLanguageLabel")}
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+              {supportedLanguages.map((l) => (
+                <button
+                  key={l.code}
+                  className={`btn ${language === l.code ? "btn-primary" : "btn-secondary"}`}
+                  onClick={() => setLanguage(l.code as SupportedLanguage)}
+                  style={{ gap: 10, padding: "10px 14px" }}
+                >
+                  <span style={{ fontSize: 16 }}>{l.flag}</span>
+                  <strong>{l.nativeName}</strong>
+                  <span style={{ fontSize: 11, opacity: 0.7 }}>({l.name} - {l.dir.toUpperCase()})</span>
+                </button>
               ))}
             </div>
           </div>

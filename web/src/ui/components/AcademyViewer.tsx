@@ -4,8 +4,10 @@ import {
   GLOSSARY_ITEMS,
   type AcademyArticle,
 } from "../../architecture/academyData";
+import { useI18n } from "../../i18n";
 
 export function AcademyViewer() {
+  const { t } = useI18n();
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("basics");
   const [selectedArticle, setSelectedArticle] = useState<AcademyArticle | null>(
     ACADEMY_CATEGORIES[0]?.articles[0] ?? null
@@ -46,7 +48,7 @@ export function AcademyViewer() {
             <input
               type="text"
               className="input-search"
-              placeholder="Search concepts, risk management, backtesting, walk-forward, glossary terms..."
+              placeholder={t("academy.searchPlaceholder")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -82,7 +84,9 @@ export function AcademyViewer() {
           <div className="card">
             <div className="card-head">
               <h3>{currentCategory?.title} Modules</h3>
-              <span className="chip">{currentCategory?.articles.length} Guides</span>
+              <span className="chip">
+                {t("academy.modulesCount", { count: currentCategory?.articles.length ?? 0 })}
+              </span>
             </div>
             <div className="card-body">
               <p className="hint">{currentCategory?.shortDescription}</p>
@@ -103,7 +107,7 @@ export function AcademyViewer() {
                     </div>
                     <p className="hint">{art.summary}</p>
                     <div className="article-meta">
-                      <span>⏱ {art.readTime}</span>
+                      <span>⏱ {t("academy.readTime", { time: art.readTime })}</span>
                     </div>
                   </div>
                 ))}
@@ -119,8 +123,8 @@ export function AcademyViewer() {
                   <span className="kicker">{selectedArticle.level} Module</span>
                   <h2>{selectedArticle.title}</h2>
                   <div className="article-meta-bar">
-                    <span>⏱ {selectedArticle.readTime}</span>
-                    <span className="chip ready-chip">Original Content</span>
+                    <span>⏱ {t("academy.readTime", { time: selectedArticle.readTime })}</span>
+                    <span className="chip ready-chip">{t("academy.originalContent")}</span>
                   </div>
 
                   <hr className="divider" />
@@ -142,7 +146,7 @@ export function AcademyViewer() {
               </div>
             ) : (
               <div className="card-body">
-                <p className="hint">Select an article to begin reading.</p>
+                <p className="hint">{t("academy.selectArticleHint")}</p>
               </div>
             )}
           </div>
@@ -152,12 +156,12 @@ export function AcademyViewer() {
         <div className="card" style={{ marginTop: 20 }}>
           <div className="card-head">
             <div>
-              <h3>Financial & Quantitative Trading Glossary</h3>
-              <p className="hint">
-                Interactive reference for core trading, backtesting, and risk metrics.
-              </p>
+              <h3>{t("academy.glossaryTitle")}</h3>
+              <p className="hint">{t("academy.glossarySub")}</p>
             </div>
-            <span className="chip">{filteredGlossary.length} Terms</span>
+            <span className="chip">
+              {t("academy.termsCount", { count: filteredGlossary.length })}
+            </span>
           </div>
 
           <div className="card-body">

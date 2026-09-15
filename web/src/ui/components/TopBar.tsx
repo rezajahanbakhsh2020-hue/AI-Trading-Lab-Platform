@@ -1,9 +1,6 @@
 import { NavLink } from "react-router-dom";
-import {
-  PLATFORM_NAME,
-  PLATFORM_ROLE,
-  PRIMARY_MARKET,
-} from "../../architecture/hostView";
+import { PRIMARY_MARKET } from "../../architecture/hostView";
+import { useI18n, type SupportedLanguage } from "../../i18n";
 
 type TopBarProps = {
   unreadNotificationsCount?: number;
@@ -16,13 +13,15 @@ export function TopBar({
   onOpenMobileMenu,
   onOpenSearch,
 }: TopBarProps) {
+  const { t, language, setLanguage, supportedLanguages } = useI18n();
+
   return (
     <header className="topbar">
       <div className="brand">
         <button
           className="mobile-menu-btn"
           onClick={onOpenMobileMenu}
-          aria-label="Open Navigation Menu"
+          aria-label={t("topbar.menu")}
         >
           <svg
             width="20"
@@ -40,8 +39,8 @@ export function TopBar({
         <NavLink to="/" className="brand-link">
           <div className="brand-mark">P2</div>
           <div className="brand-text">
-            <h1>{PLATFORM_NAME}</h1>
-            <p>{PLATFORM_ROLE}</p>
+            <h1>{t("topbar.platformTitle")}</h1>
+            <p>{t("topbar.platformRole")}</p>
           </div>
         </NavLink>
       </div>
@@ -58,25 +57,40 @@ export function TopBar({
           <circle cx="11" cy="11" r="8" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
-        <span>Search markets, signals, academy...</span>
+        <span>{t("topbar.searchPlaceholder")}</span>
         <kbd className="search-kbd">⌘K</kbd>
       </div>
 
       <div className="top-meta">
+        <div className="lang-selector">
+          <span>🌐</span>
+          <select
+            value={language}
+            onChange={(e) => setLanguage(e.target.value as SupportedLanguage)}
+            aria-label={t("buttons.selectLanguage")}
+          >
+            {supportedLanguages.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.flag} {l.nativeName}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <span className="chip">
           <span className="dot ready" />
-          Host ready
+          {t("topbar.hostReady")}
         </span>
         <span className="chip warn-chip">
           <span className="dot warn" />
-          Project 1 disconnected
+          {t("topbar.project1Disconnected")}
         </span>
         <span className="chip market-chip">{PRIMARY_MARKET}</span>
 
         <NavLink
           to="/notifications"
           className="notification-icon-btn"
-          aria-label="Notifications"
+          aria-label={t("nav.notifications")}
         >
           <svg
             width="18"

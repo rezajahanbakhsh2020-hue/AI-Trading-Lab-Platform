@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import {
   INTEGRATION_FLOW,
   PAGE_COPY,
@@ -14,6 +13,7 @@ import { AcademyViewer } from "./components/AcademyViewer";
 import { EmptyState } from "./components/EmptyState";
 import { NotificationCenter } from "./components/NotificationCenter";
 import { HealthCenter } from "./components/HealthCenter";
+import { IntelligenceTimeline } from "./components/IntelligenceTimeline";
 import {
   loadUserNotifications,
   saveUserNotifications,
@@ -124,6 +124,9 @@ export function HostPage({
           onSelectTimeframe={onSelectTimeframe}
         />
       )}
+      {normalizedPageId === "timeline" && (
+        <TimelinePage snapshot={snapshot} />
+      )}
       {(normalizedPageId === "markets" || pageId === "market") && (
         <MarketsPage
           snapshot={snapshot}
@@ -160,6 +163,14 @@ export function HostPage({
 }
 
 /* Page Subviews */
+
+function TimelinePage({ snapshot }: { snapshot: HostSnapshot }) {
+  return (
+    <div className="timeline-view space-y-6">
+      <IntelligenceTimeline snapshot={snapshot} />
+    </div>
+  );
+}
 
 function DashboardPage({
   snapshot,
@@ -235,24 +246,7 @@ function DashboardPage({
         />
 
         <div className="card">
-          <div className="card-head">
-            <h3>{t("dashboard.academyQuickLearning")}</h3>
-            <span className="chip ready-chip">{t("dashboard.academyCount")}</span>
-          </div>
-          <div className="card-body">
-            <p className="hint">
-              {t("dashboard.academyDesc")}
-            </p>
-            <div className="academy-banner-box" style={{ marginTop: 16 }}>
-              <strong>{t("dashboard.masterConcepts")}</strong>
-              <p className="hint" style={{ marginTop: 6 }}>
-                {t("dashboard.masterSub")}
-              </p>
-              <Link to="/academy" className="btn btn-primary" style={{ marginTop: 12, display: "inline-block" }}>
-                {t("buttons.openAcademy")}
-              </Link>
-            </div>
-          </div>
+          <IntelligenceTimeline snapshot={snapshot} compact={true} />
         </div>
       </div>
     </div>

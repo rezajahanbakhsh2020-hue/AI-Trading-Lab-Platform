@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from src.platform.adapters.ai_provider import (
     AIProviderPort,
     UnavailableAIProviderAdapter,
+    create_default_ai_provider,
 )
 from src.platform.domain.ai_gateway import (
     AICapability,
@@ -62,7 +63,7 @@ class AIGatewayService:
         self.security_boundary = security_boundary or SecurityBoundaryService(
             audit_logger=self.audit_logger
         )
-        self._provider = provider or UnavailableAIProviderAdapter()
+        self._provider = provider or create_default_ai_provider()
 
     def set_provider(self, provider: AIProviderPort) -> None:
         """Set or replace the AI Provider Adapter (cloud, local model, or test mock)."""
@@ -309,11 +310,11 @@ class AIGatewayService:
             response = self._provider.generate_explanation(context=context, request=request)
             self.audit_logger.log(
                 user_id=user_id,
-                event_type="AI_REQUEST_SUCCESS",
+                event_type="AI_REQUEST_SUCCESS" if response.status == "SUCCESS" else "AI_REQUEST_FAILED",
                 resource="ai_gateway",
                 action=request.capability.value,
-                outcome="ALLOW",
-                details=f"Explanation generated successfully by {self._provider.provider_name()}",
+                outcome="ALLOW" if response.status == "SUCCESS" else "DENY",
+                details=f"Provider status '{response.status}' from {self._provider.provider_name()}: {response.error_message or 'Success'}",
             )
             return response
         except Exception as err:

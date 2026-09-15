@@ -14,6 +14,13 @@ export type AIResponseStatus =
   | "PERMISSION_DENIED"
   | "ERROR";
 
+export type AISimulatedErrorType =
+  | "none"
+  | "timeout"
+  | "provider_error"
+  | "rate_limit"
+  | "auth_error";
+
 export interface AllowedContextSummary {
   contextId: string;
   userId: string;
@@ -96,7 +103,12 @@ export function buildAllowedContextSummary(
 export function processAIGatewayRequest(
   snapshot: HostSnapshot,
   request: AIRequestPayload,
-  providerOverride?: { status: AIProviderStatus; name: string; responseText?: string }
+  providerOverride?: {
+    status: AIProviderStatus;
+    name: string;
+    responseText?: string;
+    simulatedErrorType?: AISimulatedErrorType;
+  }
 ): AIResponsePayload {
   const now = Date.now() / 1000;
   const context = buildAllowedContextSummary(
@@ -116,7 +128,7 @@ export function processAIGatewayRequest(
       requestId: request.requestId,
       status: "PERMISSION_DENIED",
       capability: request.capability,
-      providerName: providerOverride?.name || "UnavailableAIProviderAdapter",
+      providerName: providerOverride?.name || "HttpAIProviderAdapter",
       content: "Access denied: missing required permissions to access AI context for this capability.",
       createdAt: now,
       contextSummary: null,
@@ -124,11 +136,12 @@ export function processAIGatewayRequest(
     };
   }
 
-  // Check provider status
+  // Check provider status & simulated error conditions
   const providerStatus = providerOverride?.status || "unavailable";
   const providerName = providerOverride?.name || "UnavailableAIProviderAdapter";
+  const errorType = providerOverride?.simulatedErrorType || "none";
 
-  if (providerStatus !== "available") {
+  if (providerStatus === "unavailable") {
     return {
       requestId: request.requestId,
       status: "UNAVAILABLE",
@@ -138,6 +151,33 @@ export function processAIGatewayRequest(
       createdAt: now,
       contextSummary: context,
       errorMessage: "No external AI provider adapter attached.",
+    };
+  }
+
+  if (providerStatus === "error" || errorType !== "none") {
+    let errContent = "An error occurred while communicating with the AI provider.";
+    let errMessage = "AI Provider Error";
+
+    if (errorType === "timeout") {
+      errContent = "AI provider request timed out.";
+      errMessage = "Request timed out";
+    } else if (errorType === "rate_limit") {
+      errContent = "AI provider rate limit or quota exceeded.";
+      errMessage = "HTTP 429 Rate Limit Exceeded";
+    } else if (errorType === "auth_error") {
+      errContent = "AI provider authentication failed.";
+      errMessage = "HTTP 401 Unauthorized";
+    }
+
+    return {
+      requestId: request.requestId,
+      status: "ERROR",
+      capability: request.capability,
+      providerName,
+      content: errContent,
+      createdAt: now,
+      contextSummary: context,
+      errorMessage: errMessage,
     };
   }
 

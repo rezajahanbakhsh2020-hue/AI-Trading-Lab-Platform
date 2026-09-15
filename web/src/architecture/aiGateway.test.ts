@@ -61,14 +61,35 @@ describe("AI Gateway Architecture Tests", () => {
       },
       {
         status: "available",
-        name: "OpenAI_GPT4o_Adapter",
+        name: "HttpAIProviderAdapter",
         responseText: "System health analysis complete.",
       }
     );
 
     expect(response.status).toBe("SUCCESS");
-    expect(response.providerName).toBe("OpenAI_GPT4o_Adapter");
+    expect(response.providerName).toBe("HttpAIProviderAdapter");
     expect(response.content).toBe("System health analysis complete.");
     expect(response.contextSummary?.hasPermittedHealth).toBe(true);
+  });
+
+  it("handles provider timeout or error states gracefully", () => {
+    const snapshot = createDisconnectedHostSnapshot("XAUUSD", "1h");
+    const response = processAIGatewayRequest(
+      snapshot,
+      {
+        requestId: "req_004",
+        userId: "guest_user",
+        capability: "explain_signal",
+      },
+      {
+        status: "error",
+        name: "HttpAIProviderAdapter",
+        simulatedErrorType: "timeout",
+      }
+    );
+
+    expect(response.status).toBe("ERROR");
+    expect(response.content).toBe("AI provider request timed out.");
+    expect(response.errorMessage).toBe("Request timed out");
   });
 });

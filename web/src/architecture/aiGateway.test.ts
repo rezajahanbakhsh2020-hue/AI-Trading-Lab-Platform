@@ -92,4 +92,24 @@ describe("AI Gateway Architecture Tests", () => {
     expect(response.content).toBe("AI provider request timed out.");
     expect(response.errorMessage).toBe("Request timed out");
   });
+
+  it("handles rate limit and auth error types in AI gateway", () => {
+    const snapshot = createDisconnectedHostSnapshot("XAUUSD", "1h");
+
+    const rateLimitResp = processAIGatewayRequest(
+      snapshot,
+      { requestId: "req_005", userId: "guest_user", capability: "summarize_market" },
+      { status: "error", name: "HttpAIProviderAdapter", simulatedErrorType: "rate_limit" }
+    );
+    expect(rateLimitResp.status).toBe("ERROR");
+    expect(rateLimitResp.content).toContain("rate limit");
+
+    const authErrResp = processAIGatewayRequest(
+      snapshot,
+      { requestId: "req_006", userId: "guest_user", capability: "summarize_market" },
+      { status: "error", name: "HttpAIProviderAdapter", simulatedErrorType: "auth_error" }
+    );
+    expect(authErrResp.status).toBe("ERROR");
+    expect(authErrResp.content).toContain("authentication failed");
+  });
 });

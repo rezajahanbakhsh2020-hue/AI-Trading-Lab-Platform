@@ -6,6 +6,7 @@ export const PRIMARY_MARKET = "XAUUSD";
 
 export const NAV_ITEMS = [
   { id: "dashboard", path: "/", label: "Dashboard", icon: "home" },
+  { id: "timeline", path: "/timeline", label: "Intelligence Timeline", icon: "activity" },
   { id: "markets", path: "/markets", label: "Markets", icon: "bar-chart-2" },
   { id: "watchlist", path: "/watchlist", label: "Watchlist", icon: "star" },
   { id: "signals", path: "/signals", label: "Signals", icon: "zap" },
@@ -452,6 +453,11 @@ export const PAGE_COPY: Record<
     title: "Dashboard",
     kicker: "Host overview",
     summary: "Operational home for presenting Project 1 inside Project 2.",
+  },
+  timeline: {
+    title: "Intelligence Timeline",
+    kicker: "Real Chronological Activity & Explainability",
+    summary: "Unified platform events, signal emission history, market state updates, and context explainability layer.",
   },
   markets: {
     title: "Markets",

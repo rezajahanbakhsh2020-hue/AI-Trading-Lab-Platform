@@ -24,6 +24,7 @@ class GlobalSearchService:
 
     NAVIGATION_ENTRIES: List[Dict[str, Any]] = [
         {"id": "nav-dashboard", "title": "Dashboard", "route": "/", "desc": "Host overview & operational metrics"},
+        {"id": "nav-timeline", "title": "Intelligence Timeline", "route": "/timeline", "desc": "Chronological platform activity & explainability layer"},
         {"id": "nav-markets", "title": "Markets & Chart", "route": "/markets", "desc": "Real-time quotes and interactive candles"},
         {"id": "nav-watchlist", "title": "Watchlist", "route": "/watchlist", "desc": "Personal watchlist and symbol tracking"},
         {"id": "nav-signals", "title": "Signals Feed", "route": "/signals", "desc": "Validated signals emitted via Project 1 port"},

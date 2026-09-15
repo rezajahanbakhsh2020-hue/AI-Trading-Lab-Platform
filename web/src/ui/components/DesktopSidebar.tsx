@@ -10,7 +10,7 @@ export function DesktopSidebar() {
   );
 
   const intelligenceNav = NAV_ITEMS.filter((item) =>
-    ["signals", "strategies", "backtest", "performance"].includes(item.id)
+    ["signals", "strategies", "ai", "backtest", "performance"].includes(item.id)
   );
 
   const systemNav = NAV_ITEMS.filter((item) =>

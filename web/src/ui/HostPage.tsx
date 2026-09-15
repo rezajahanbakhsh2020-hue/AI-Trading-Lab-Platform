@@ -14,6 +14,7 @@ import { EmptyState } from "./components/EmptyState";
 import { NotificationCenter } from "./components/NotificationCenter";
 import { HealthCenter } from "./components/HealthCenter";
 import { IntelligenceTimeline } from "./components/IntelligenceTimeline";
+import { AIAssistant } from "./components/AIAssistant";
 import {
   loadUserNotifications,
   saveUserNotifications,
@@ -149,6 +150,7 @@ export function HostPage({
       {normalizedPageId === "monitoring" && <MonitoringPage snapshot={snapshot} />}
       {normalizedPageId === "providers" && <ProvidersPage snapshot={snapshot} />}
       {(normalizedPageId === "academy" || pageId === "learning") && <AcademyPage />}
+      {normalizedPageId === "ai" && <AIAssistant snapshot={snapshot} />}
       {normalizedPageId === "notifications" && <NotificationsPage snapshot={snapshot} />}
       {normalizedPageId === "logs" && <LogsPage />}
       {normalizedPageId === "settings" && <SettingsPage snapshot={snapshot} />}

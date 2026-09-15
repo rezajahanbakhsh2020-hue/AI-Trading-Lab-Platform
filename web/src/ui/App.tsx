@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Route, Routes } from "react-router-dom";
 import { HostPage } from "./HostPage";
 import { TopBar } from "./components/TopBar";
 import { DesktopSidebar } from "./components/DesktopSidebar";
 import { MobileBottomNav } from "./components/MobileBottomNav";
+import { CommandPalette } from "./components/CommandPalette";
 import {
   NAV_ITEMS,
   SAMPLE_CONNECTED_PORT,
@@ -24,9 +25,21 @@ import {
 
 export function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState("XAUUSD");
   const [selectedTimeframe, setSelectedTimeframe] = useState("1h");
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, []);
 
   const marketState = isConnected && selectedSymbol === "XAUUSD"
     ? {
@@ -90,6 +103,7 @@ export function App() {
       <TopBar
         unreadNotificationsCount={unreadCount}
         onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
+        onOpenSearch={() => setIsCommandPaletteOpen(true)}
       />
 
       <DesktopSidebar />
@@ -172,6 +186,13 @@ export function App() {
         isMenuOpen={isMobileMenuOpen}
         onToggleMenu={() => setIsMobileMenuOpen((prev) => !prev)}
         onCloseMenu={() => setIsMobileMenuOpen(false)}
+      />
+
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        snapshot={snapshot}
+        onSelectSymbol={handleSelectSymbol}
       />
     </div>
   );

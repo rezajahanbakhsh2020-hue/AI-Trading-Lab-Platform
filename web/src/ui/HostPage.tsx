@@ -12,7 +12,13 @@ import { SignalCard } from "./components/SignalCard";
 import { StrategyCard } from "./components/StrategyCard";
 import { AcademyViewer } from "./components/AcademyViewer";
 import { EmptyState } from "./components/EmptyState";
-import { INITIAL_NOTIFICATIONS, type NotificationItem } from "../architecture/marketData";
+import { NotificationCenter } from "./components/NotificationCenter";
+import {
+  loadUserNotifications,
+  saveUserNotifications,
+  syncNotificationsFromHostSnapshot,
+  type NotificationItem,
+} from "../architecture/notification";
 import { useI18n, type SupportedLanguage } from "../i18n";
 
 type HostPageProps = {
@@ -138,7 +144,7 @@ export function HostPage({
       {normalizedPageId === "monitoring" && <MonitoringPage snapshot={snapshot} />}
       {normalizedPageId === "providers" && <ProvidersPage snapshot={snapshot} />}
       {(normalizedPageId === "academy" || pageId === "learning") && <AcademyPage />}
-      {normalizedPageId === "notifications" && <NotificationsPage />}
+      {normalizedPageId === "notifications" && <NotificationsPage snapshot={snapshot} />}
       {normalizedPageId === "logs" && <LogsPage />}
       {normalizedPageId === "settings" && <SettingsPage snapshot={snapshot} />}
 
@@ -636,46 +642,47 @@ function AcademyPage() {
   return <AcademyViewer />;
 }
 
-function NotificationsPage() {
-  const { t } = useI18n();
-  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
+function NotificationsPage({ snapshot }: { snapshot: HostSnapshot }) {
+  const userId = snapshot.security?.userId || "guest_user";
+  const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
+    const loaded = loadUserNotifications(userId);
+    return syncNotificationsFromHostSnapshot(userId, snapshot, loaded);
+  });
 
-  const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  const updateNotifications = (newItems: NotificationItem[]) => {
+    setNotifications(newItems);
+    saveUserNotifications(userId, newItems);
+  };
+
+  const handleMarkRead = (id: string) => {
+    updateNotifications(
+      notifications.map((n) => (n.id === id ? { ...n, read: true } : n))
+    );
+  };
+
+  const handleMarkAllRead = () => {
+    updateNotifications(notifications.map((n) => ({ ...n, read: true })));
+  };
+
+  const handleArchive = (id: string) => {
+    updateNotifications(
+      notifications.map((n) => (n.id === id ? { ...n, archived: true } : n))
+    );
+  };
+
+  const handleDelete = (id: string) => {
+    updateNotifications(notifications.filter((n) => n.id !== id));
   };
 
   return (
     <div className="notifications-view">
-      <div className="card">
-        <div className="card-head">
-          <div>
-            <h3>{t("notifications.feedTitle")}</h3>
-            <p className="hint">{t("notifications.feedSub")}</p>
-          </div>
-          <button className="btn btn-secondary" onClick={markAllAsRead}>
-            {t("buttons.markAllRead")}
-          </button>
-        </div>
-
-        <div className="card-body">
-          <div className="notifications-list">
-            {notifications.map((n) => (
-              <div
-                key={n.id}
-                className={n.read ? "notif-item read" : "notif-item unread"}
-              >
-                <div className="notif-head">
-                  <strong className="notif-title">{n.title}</strong>
-                  <span className="notif-time">{n.timestamp}</span>
-                </div>
-                <p className="hint" style={{ marginTop: 4 }}>
-                  {n.message}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      <NotificationCenter
+        notifications={notifications}
+        onMarkRead={handleMarkRead}
+        onMarkAllRead={handleMarkAllRead}
+        onArchive={handleArchive}
+        onDelete={handleDelete}
+      />
     </div>
   );
 }

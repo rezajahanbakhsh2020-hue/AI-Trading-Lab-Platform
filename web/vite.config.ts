@@ -20,7 +20,7 @@ export default defineConfig({
     allowedHosts: [".monkeycode-ai.live"],
   },
   test: {
-    environment: "node",
-    include: ["src/**/*.test.ts"],
+    environment: "jsdom",
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
   },
 });

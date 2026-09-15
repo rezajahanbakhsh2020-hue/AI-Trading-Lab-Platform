@@ -16,6 +16,11 @@ import {
   SAMPLE_BIQUOTE_CANDLES_XAUUSD,
   SAMPLE_BIQUOTE_QUOTE_XAUUSD,
 } from "../architecture/marketData";
+import {
+  loadUserNotifications,
+  syncNotificationsFromHostSnapshot,
+  countUnreadNotifications,
+} from "../architecture/notification";
 
 export function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -55,6 +60,11 @@ export function App() {
       )
     : createDisconnectedHostSnapshot(selectedSymbol, selectedTimeframe);
 
+  const userId = snapshot.security?.userId || "guest_user";
+  const userNotifs = loadUserNotifications(userId);
+  const syncedNotifs = syncNotificationsFromHostSnapshot(userId, snapshot, userNotifs);
+  const unreadCount = countUnreadNotifications(syncedNotifs);
+
   const handleToggleConnection = () => {
     setIsConnected((prev) => !prev);
   };
@@ -78,7 +88,7 @@ export function App() {
   return (
     <div className="app-shell">
       <TopBar
-        unreadNotificationsCount={2}
+        unreadNotificationsCount={unreadCount}
         onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
       />
 

@@ -81,10 +81,6 @@ export function TopBar({
           <span className="dot ready" />
           {t("topbar.hostReady")}
         </span>
-        <span className="chip warn-chip">
-          <span className="dot warn" />
-          {t("topbar.project1Disconnected")}
-        </span>
         <span className="chip market-chip">{PRIMARY_MARKET}</span>
 
         <NavLink

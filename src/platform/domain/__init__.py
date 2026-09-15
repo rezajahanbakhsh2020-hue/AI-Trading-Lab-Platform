@@ -32,6 +32,13 @@ from .provider_selection import (
 )
 from .quote import Quote
 from .readiness import Readiness
+from .security import (
+    ADMIN_ONLY_PERMISSIONS,
+    DEFAULT_ROLE_PERMISSIONS,
+    Permission,
+    SecurityEvent,
+    UserRole,
+)
 from .signal import Signal
 from .signal_delivery import (
     DELIVERY_STATUS_DELIVERED,
@@ -83,6 +90,11 @@ __all__ = [
     "ProviderSelection",
     "Quote",
     "Readiness",
+    "SecurityEvent",
+    "UserRole",
+    "Permission",
+    "DEFAULT_ROLE_PERMISSIONS",
+    "ADMIN_ONLY_PERMISSIONS",
     "Signal",
     "DELIVERY_STATUS_DELIVERED",
     "DELIVERY_STATUS_NOT_DELIVERED",

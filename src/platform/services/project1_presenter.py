@@ -2,6 +2,7 @@
 
 Consumes Project1IntegrationPort outputs and formats them into clean,
 non-fabricated Project 2 view models and host snapshots for application and UI rendering.
+Enforces security boundary authorization checks for protected signal, strategy, and trade-setup data.
 
 Rules:
 - Read-only: Consumes strictly through Project1IntegrationPort.
@@ -13,27 +14,56 @@ Rules:
 
 from typing import Any, Dict, Optional
 
+from src.platform.domain.security import Permission
+from src.platform.domain.user_authorization import UserAuthorization
 from src.platform.integrations.project1 import Project1IntegrationPort
+from src.platform.services.security import SecretSanitizer, SecurityBoundaryService
 
 
 class Project1SignalPresenter:
     """Application service presenting Project 1 outputs to Project 2 application/UI layers."""
 
-    def __init__(self, port: Project1IntegrationPort) -> None:
+    def __init__(
+        self,
+        port: Project1IntegrationPort,
+        security_service: Optional[SecurityBoundaryService] = None,
+    ) -> None:
         if port is None or not isinstance(port, Project1IntegrationPort):
             raise ValueError("port must be a valid Project1IntegrationPort")
+        if security_service is not None and not isinstance(
+            security_service, SecurityBoundaryService
+        ):
+            raise ValueError("security_service must be a SecurityBoundaryService instance")
         self._port = port
+        self._security_service = security_service or SecurityBoundaryService()
 
     def present_signal(
-        self, symbol: str = "XAUUSD", timeframe: str = "1h", strategy_name: Optional[str] = None
+        self,
+        symbol: str = "XAUUSD",
+        timeframe: str = "1h",
+        strategy_name: Optional[str] = None,
+        user: Optional[UserAuthorization] = None,
     ) -> Dict[str, Any]:
-        """Fetch and present signal and port state for a given market context."""
+        """Fetch and present signal and port state for a given market context, enforcing security boundary."""
 
         _validate_symbol(symbol)
         _validate_timeframe(timeframe)
 
         desc = self._port.describe()
         is_connected = bool(desc.get("connected", False))
+
+        if user is not None:
+            allowed, reason = self._security_service.authorize(user, "signals", action="read")
+            if not allowed:
+                return {
+                    "port": desc,
+                    "connected": is_connected,
+                    "status": "unauthorized",
+                    "symbol": symbol,
+                    "timeframe": timeframe,
+                    "signal": None,
+                    "message": f"Access denied: {reason}",
+                }
 
         if not is_connected:
             return {
@@ -62,6 +92,20 @@ class Project1SignalPresenter:
             }
 
         sig_dict = presented_signal.to_dict()
+
+        # Check permission for trade setup levels
+        if user is not None and not user.has_permission(Permission.READ_TRADE_SETUPS):
+            sig_dict["entry_price"] = None
+            sig_dict["stop_loss"] = None
+            sig_dict["take_profits"] = []
+
+        # Sanitize metadata for all roles and filter protected payloads for non-admins
+        raw_meta = sig_dict.get("metadata", {})
+        if user is not None:
+            sig_dict["metadata"] = self._security_service.filter_protected_payload(user, raw_meta)
+        else:
+            sig_dict["metadata"] = SecretSanitizer.sanitize_data(raw_meta)
+
         return {
             "port": desc,
             "connected": True,
@@ -73,14 +117,82 @@ class Project1SignalPresenter:
         }
 
     def build_host_snapshot(
-        self, symbol: str = "XAUUSD", timeframe: str = "1h", strategy_name: Optional[str] = None
+        self,
+        symbol: str = "XAUUSD",
+        timeframe: str = "1h",
+        strategy_name: Optional[str] = None,
+        user: Optional[UserAuthorization] = None,
     ) -> Dict[str, Any]:
-        """Build a full Project 2 host snapshot from real Project 1 port outputs."""
+        """Build a full Project 2 host snapshot from real Project 1 port outputs, respecting user permissions."""
 
-        pres = self.present_signal(symbol=symbol, timeframe=timeframe, strategy_name=strategy_name)
+        pres = self.present_signal(
+            symbol=symbol, timeframe=timeframe, strategy_name=strategy_name, user=user
+        )
         desc = pres["port"]
         is_connected = pres["connected"]
         signal_dict = pres["signal"]
+
+        if pres["status"] == "unauthorized":
+            return {
+                "generatedAt": None,
+                "platform": {
+                    "name": "AI Trading Lab Platform",
+                    "role": "Host application for AI-Trading-Lab",
+                    "status": "ready",
+                },
+                "project1": {
+                    "connected": is_connected,
+                    "status": desc.get("status", "disconnected"),
+                    "port": desc.get("port", "Project1IntegrationPort"),
+                    "adapterName": desc.get("name", "DisconnectedProject1Adapter"),
+                    "message": pres["message"],
+                },
+                "market": {
+                    "symbol": symbol,
+                    "timeframe": timeframe,
+                    "quote": None,
+                    "change": None,
+                    "volume": None,
+                    "candles": [],
+                    "status": "unavailable",
+                    "message": "Market data is restricted or unavailable.",
+                },
+                "strategy": {
+                    "name": None,
+                    "stability": None,
+                    "status": "unavailable",
+                    "message": "Strategy details restricted.",
+                },
+                "signal": {
+                    "action": None,
+                    "timestamp": None,
+                    "status": "unauthorized",
+                    "message": pres["message"],
+                },
+                "performance": {
+                    "status": "unavailable",
+                    "message": "Performance metrics restricted.",
+                },
+                "risk": {
+                    "entry": None,
+                    "stopLoss": None,
+                    "takeProfits": [],
+                    "status": "unavailable",
+                    "message": "Risk levels restricted.",
+                },
+                "monitoring": {
+                    "freshness": None,
+                    "health": None,
+                    "status": "unavailable",
+                    "message": "Monitoring data restricted.",
+                },
+                "providers": {
+                    "marketData": "unconnected",
+                    "quote": "unconnected",
+                    "message": "Provider information restricted.",
+                },
+                "activity": [],
+            }
 
         if not is_connected:
             return {
@@ -214,6 +326,11 @@ class Project1SignalPresenter:
         sl = signal_dict.get("stop_loss")
         tps = list(signal_dict.get("take_profits") or [])
 
+        # Mask strategy details for normal users if strategy info is protected
+        strat_msg = f"Strategy '{strat_name}' owned and evaluated by Project 1."
+        if user is not None and not user.is_admin and not user.has_permission(Permission.READ_STRATEGY_PARAMETERS):
+            strat_msg = "Strategy evaluated by Project 1."
+
         return {
             "generatedAt": signal_dict.get("timestamp"),
             "platform": {
@@ -242,7 +359,7 @@ class Project1SignalPresenter:
                 "name": strat_name,
                 "stability": int(conf * 100) if conf is not None else None,
                 "status": "active",
-                "message": f"Strategy '{strat_name}' owned and evaluated by Project 1.",
+                "message": strat_msg,
             },
             "signal": {
                 "signalId": signal_dict.get("signal_id"),
@@ -264,7 +381,7 @@ class Project1SignalPresenter:
                 "stopLoss": sl,
                 "takeProfits": tps,
                 "status": "available" if entry is not None else "unavailable",
-                "message": "Real trade setup levels provided by Project 1." if entry is not None else "Trade setup omitted.",
+                "message": "Real trade setup levels provided by Project 1." if entry is not None else "Trade setup omitted or restricted.",
             },
             "monitoring": {
                 "freshness": "fresh",

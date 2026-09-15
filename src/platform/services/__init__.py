@@ -49,6 +49,9 @@ __all__ = [
     "BacktestAssessmentService",
     "StrategyValidationService",
     "UserAuthorizationService",
+    "SecurityBoundaryService",
+    "SecretSanitizer",
+    "AuditLogger",
     "TelegramDeliveryService",
     "SignalDeliveryService",
     "REASON_DELIVERED",
@@ -139,6 +142,7 @@ from .strategy_validation import (
     StrategyValidationService,
 )
 from .user_authorization import UserAuthorizationService
+from .security import AuditLogger, SecretSanitizer, SecurityBoundaryService
 from .telegram_delivery import TelegramDeliveryService
 from .signal_delivery import (
     REASON_CHANNEL_FAILED,

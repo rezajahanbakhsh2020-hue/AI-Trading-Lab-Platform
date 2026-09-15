@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Candle, MarketDataStatus, ProviderMetadata } from "../../architecture/marketData";
+import { useI18n } from "../../i18n";
 
 type Timeframe = "1m" | "5m" | "15m" | "30m" | "1h" | "4h" | "1d";
 type ChartType = "Candles" | "Line" | "Area";
@@ -33,6 +34,7 @@ export function InteractiveChart({
   onTimeframeChange,
   onRefresh,
 }: ChartProps) {
+  const { t } = useI18n();
   const [selectedTimeframe, setSelectedTimeframe] = useState<Timeframe>(
     (timeframe as Timeframe) || "1h"
   );
@@ -172,7 +174,7 @@ export function InteractiveChart({
               style={{ fontSize: 11, padding: "4px 8px" }}
               onClick={onRefresh}
             >
-              Retry / Sync
+              {t("buttons.refresh")}
             </button>
           )}
         </div>
@@ -183,7 +185,7 @@ export function InteractiveChart({
           <div className="chart-disconnected-overlay">
             {status === "loading" ? (
               <>
-                <p className="overlay-title">Fetching Market Data...</p>
+                <p className="overlay-title">{t("chart.streamingData")}...</p>
                 <p className="overlay-sub">Connecting to ProviderRegistry to stream {symbol} candles.</p>
               </>
             ) : status === "error" ? (
@@ -214,9 +216,9 @@ export function InteractiveChart({
                   <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
                   <line x1="12" y1="20" x2="12.01" y2="20" />
                 </svg>
-                <p className="overlay-title">Market Data Provider Disconnected</p>
+                <p className="overlay-title">{t("chart.disconnectedOverlayTitle")}</p>
                 <p className="overlay-sub">
-                  Candlestick and volume panes consume live market data through ProviderRegistry.
+                  {t("chart.disconnectedOverlaySub")}
                 </p>
               </>
             ) : (
@@ -338,7 +340,7 @@ export function InteractiveChart({
                 strokeDasharray="4 4"
               />
               <text x="12" y={getY(entryPrice) - 4} fill="#3B82F6" fontSize="11" fontWeight="bold">
-                Entry: {entryPrice.toFixed(2)}
+                {t("chart.legend.entry")}: {entryPrice.toFixed(2)}
               </text>
             </g>
           )}
@@ -355,7 +357,7 @@ export function InteractiveChart({
                 strokeDasharray="3 3"
               />
               <text x="12" y={getY(stopLossPrice) - 4} fill="#EF4444" fontSize="11" fontWeight="bold">
-                SL: {stopLossPrice.toFixed(2)}
+                {t("chart.legend.sl")}: {stopLossPrice.toFixed(2)}
               </text>
             </g>
           )}
@@ -372,7 +374,7 @@ export function InteractiveChart({
                 strokeDasharray="3 3"
               />
               <text x="12" y={getY(tp) - 4} fill="#10B981" fontSize="11" fontWeight="bold">
-                TP{idx + 1}: {tp.toFixed(2)}
+                {t("chart.legend.tp")} {idx + 1}: {tp.toFixed(2)}
               </text>
             </g>
           ))}
@@ -390,10 +392,10 @@ export function InteractiveChart({
                 : "disconnected"
             }`}
           />
-          Provider: {provider ? provider.name : isProviderConnected ? "Connected" : "Disconnected"}
+          {t("nav.providers")}: {provider ? provider.name : isProviderConnected ? t("status.connected") : t("status.disconnected")}
         </div>
         <div className="chart-status-label">
-          {hoverData ? `${hoverData.ohlc} | ${hoverData.vol}` : `Timeframe: ${selectedTimeframe} (${candles.length} bars)`}
+          {hoverData ? `${hoverData.ohlc} | ${hoverData.vol}` : `${t("markets.timeframe")}: ${selectedTimeframe} (${candles.length} bars)`}
         </div>
       </div>
     </div>

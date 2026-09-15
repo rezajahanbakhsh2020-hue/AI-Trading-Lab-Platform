@@ -1,4 +1,5 @@
 import type { MarketSymbol, MarketDataStatus } from "../../architecture/marketData";
+import { useI18n } from "../../i18n";
 
 type MarketPulseProps = {
   symbols?: MarketSymbol[];
@@ -8,6 +9,8 @@ type MarketPulseProps = {
 };
 
 export function MarketPulse({ symbols, quotePrice, change24hPct }: MarketPulseProps) {
+  const { t, formatCurrency, formatPercent } = useI18n();
+
   const displaySymbols = symbols || [
     {
       symbol: "XAUUSD",
@@ -49,11 +52,9 @@ export function MarketPulse({ symbols, quotePrice, change24hPct }: MarketPulsePr
       <div className="pulse-track">
         {displaySymbols.map((item) => {
           const isConnected = item.status === "connected";
-          const priceText = item.lastPrice != null ? `$${item.lastPrice.toFixed(2)}` : null;
+          const priceText = item.lastPrice != null ? formatCurrency(item.lastPrice) : null;
           const changeText =
-            item.change24hPct != null
-              ? `${item.change24hPct >= 0 ? "+" : ""}${item.change24hPct.toFixed(2)}%`
-              : null;
+            item.change24hPct != null ? formatPercent(item.change24hPct) : null;
 
           return (
             <div className="pulse-item" key={item.symbol}>
@@ -65,7 +66,7 @@ export function MarketPulse({ symbols, quotePrice, change24hPct }: MarketPulsePr
                 </span>
               ) : (
                 <span className="pulse-status">
-                  {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+                  {item.status === "connected" ? t("status.connected") : t("status.disconnected")}
                 </span>
               )}
             </div>

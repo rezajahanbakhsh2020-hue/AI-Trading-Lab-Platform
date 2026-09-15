@@ -1,5 +1,6 @@
 import { NavLink, useLocation } from "react-router-dom";
 import { NAV_ITEMS } from "../../architecture/hostView";
+import { useI18n, type SupportedLanguage } from "../../i18n";
 
 type MobileBottomNavProps = {
   isMenuOpen: boolean;
@@ -13,6 +14,7 @@ export function MobileBottomNav({
   onCloseMenu,
 }: MobileBottomNavProps) {
   const location = useLocation();
+  const { t, language, setLanguage, supportedLanguages } = useI18n();
 
   return (
     <>
@@ -27,17 +29,34 @@ export function MobileBottomNav({
               <div className="brand">
                 <div className="brand-mark">P2</div>
                 <div>
-                  <h3>AI Trading Lab Platform</h3>
-                  <p>Navigation Directory</p>
+                  <h3>{t("topbar.platformTitle")}</h3>
+                  <p>{t("topbar.menu")}</p>
                 </div>
               </div>
               <button
                 className="close-btn"
                 onClick={onCloseMenu}
-                aria-label="Close Navigation Directory"
+                aria-label={t("topbar.menu")}
               >
                 ✕
               </button>
+            </div>
+
+            <div style={{ padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+              <div className="lang-selector" style={{ width: "100%", justifyContent: "space-between" }}>
+                <span>🌐 {t("settings.selectLanguageLabel")}</span>
+                <select
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value as SupportedLanguage)}
+                  aria-label={t("buttons.selectLanguage")}
+                >
+                  {supportedLanguages.map((l) => (
+                    <option key={l.code} value={l.code}>
+                      {l.flag} {l.nativeName}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div className="mobile-drawer-grid">
@@ -53,7 +72,7 @@ export function MobileBottomNav({
                   }
                   onClick={onCloseMenu}
                 >
-                  <span className="drawer-item-label">{item.label}</span>
+                  <span className="drawer-item-label">{t(`nav.${item.id}`)}</span>
                 </NavLink>
               ))}
             </div>
@@ -82,7 +101,7 @@ export function MobileBottomNav({
             <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
             <polyline points="9 22 9 12 15 12 15 22" />
           </svg>
-          <span>Home</span>
+          <span>{t("nav.dashboard")}</span>
         </NavLink>
 
         <NavLink
@@ -106,7 +125,7 @@ export function MobileBottomNav({
             <line x1="12" y1="20" x2="12" y2="4" />
             <line x1="6" y1="20" x2="6" y2="14" />
           </svg>
-          <span>Markets</span>
+          <span>{t("nav.markets")}</span>
         </NavLink>
 
         <NavLink
@@ -126,7 +145,7 @@ export function MobileBottomNav({
           >
             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
           </svg>
-          <span>Signals</span>
+          <span>{t("nav.signals")}</span>
         </NavLink>
 
         <NavLink
@@ -147,7 +166,7 @@ export function MobileBottomNav({
             <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
             <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
           </svg>
-          <span>Academy</span>
+          <span>{t("nav.academy")}</span>
         </NavLink>
 
         <button
@@ -155,7 +174,7 @@ export function MobileBottomNav({
             isMenuOpen ? "bottom-dock-tab active" : "bottom-dock-tab"
           }
           onClick={onToggleMenu}
-          aria-label="More Navigation Menu"
+          aria-label={t("topbar.menu")}
         >
           <svg
             width="20"
@@ -169,7 +188,7 @@ export function MobileBottomNav({
             <circle cx="12" cy="5" r="1" />
             <circle cx="12" cy="19" r="1" />
           </svg>
-          <span>More</span>
+          <span>{t("topbar.menu")}</span>
         </button>
       </nav>
     </>

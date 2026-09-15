@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { WATCHLIST_SYMBOLS, type MarketSymbol, type Quote } from "../../architecture/marketData";
+import { useI18n } from "../../i18n";
 
 type WatchlistWidgetProps = {
   quote?: Quote | null;
@@ -7,6 +8,7 @@ type WatchlistWidgetProps = {
 };
 
 export function WatchlistWidget({ quote, onSelectSymbol }: WatchlistWidgetProps) {
+  const { t, formatCurrency, formatPercent } = useI18n();
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
@@ -40,8 +42,8 @@ export function WatchlistWidget({ quote, onSelectSymbol }: WatchlistWidgetProps)
     <div className="card">
       <div className="card-head">
         <div>
-          <h3>Market Watchlist</h3>
-          <p className="hint">Track primary assets across market categories.</p>
+          <h3>{t("watchlist.title")}</h3>
+          <p className="hint">{t("watchlist.summary")}</p>
         </div>
         <span className="chip market-chip">{symbolsList.length} Assets</span>
       </div>
@@ -51,7 +53,7 @@ export function WatchlistWidget({ quote, onSelectSymbol }: WatchlistWidgetProps)
           <input
             type="text"
             className="input-search"
-            placeholder="Search watchlist symbols..."
+            placeholder={t("watchlist.searchPlaceholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -75,12 +77,12 @@ export function WatchlistWidget({ quote, onSelectSymbol }: WatchlistWidgetProps)
           <table className="table">
             <thead>
               <tr>
-                <th>Symbol</th>
-                <th>Asset Name</th>
-                <th>Category</th>
-                <th>Price</th>
-                <th>Change (24h)</th>
-                <th>Status</th>
+                <th>{t("watchlist.columns.symbol")}</th>
+                <th>{t("watchlist.columns.marketName")}</th>
+                <th>{t("watchlist.columns.category")}</th>
+                <th>{t("watchlist.columns.lastPrice")}</th>
+                <th>{t("watchlist.columns.change24h")}</th>
+                <th>{t("watchlist.columns.status")}</th>
               </tr>
             </thead>
             <tbody>
@@ -88,11 +90,9 @@ export function WatchlistWidget({ quote, onSelectSymbol }: WatchlistWidgetProps)
                 const isConnected = item.status === "connected";
                 const isStale = item.status === "stale";
                 const priceText =
-                  item.lastPrice != null ? `$${item.lastPrice.toFixed(2)}` : "Unavailable";
+                  item.lastPrice != null ? formatCurrency(item.lastPrice) : t("status.unavailable");
                 const changeText =
-                  item.change24hPct != null
-                    ? `${item.change24hPct >= 0 ? "+" : ""}${item.change24hPct.toFixed(2)}%`
-                    : "—";
+                  item.change24hPct != null ? formatPercent(item.change24hPct) : "—";
 
                 const statusClass =
                   item.status === "connected"
@@ -110,7 +110,7 @@ export function WatchlistWidget({ quote, onSelectSymbol }: WatchlistWidgetProps)
                     <td>
                       <div className="symbol-cell">
                         <strong>{item.symbol}</strong>
-                        {item.primary && <span className="tag-primary">Primary</span>}
+                        {item.primary && <span className="tag-primary">{t("watchlist.primaryTag")}</span>}
                       </div>
                     </td>
                     <td>{item.name}</td>
@@ -136,7 +136,9 @@ export function WatchlistWidget({ quote, onSelectSymbol }: WatchlistWidgetProps)
                       </span>
                     </td>
                     <td>
-                      <span className={`status ${statusClass}`}>{item.status}</span>
+                      <span className={`status ${statusClass}`}>
+                        {item.status === "connected" ? t("status.connected") : item.status === "stale" ? t("status.stale") : t("status.disconnected")}
+                      </span>
                     </td>
                   </tr>
                 );

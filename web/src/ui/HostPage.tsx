@@ -218,7 +218,13 @@ function DashboardPage({
       </div>
 
       <div className="grid cols-2" style={{ marginTop: 16 }}>
-        <WatchlistWidget quote={snapshot.market.quote} onSelectSymbol={onSelectSymbol} />
+        <WatchlistWidget
+          quote={snapshot.market.quote}
+          provider={snapshot.market.provider}
+          userId={snapshot.security?.userId || "user_default"}
+          activeSymbol={snapshot.market.symbol}
+          onSelectSymbol={onSelectSymbol}
+        />
 
         <div className="card">
           <div className="card-head">
@@ -377,7 +383,13 @@ function WatchlistPage({
 }) {
   return (
     <div className="watchlist-view">
-      <WatchlistWidget quote={snapshot.market.quote} onSelectSymbol={onSelectSymbol} />
+      <WatchlistWidget
+        quote={snapshot.market.quote}
+        provider={snapshot.market.provider}
+        userId={snapshot.security?.userId || "user_default"}
+        activeSymbol={snapshot.market.symbol}
+        onSelectSymbol={onSelectSymbol}
+      />
     </div>
   );
 }

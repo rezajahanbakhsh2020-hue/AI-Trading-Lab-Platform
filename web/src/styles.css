@@ -685,17 +685,105 @@ select {
   color: var(--text-muted);
 }
 
+/* Multi-Watchlist Tabs Bar */
+.watchlist-card-wrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.watchlist-tabs-bar {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+}
+
+.watchlist-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.watchlist-tab.active {
+  background: var(--bg-3);
+  color: var(--text);
+  border-color: var(--gold);
+}
+
+.tab-count {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.tab-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: 4px;
+}
+
+[dir="rtl"] .tab-actions {
+  margin-left: initial;
+  margin-right: 4px;
+}
+
+.tab-action-btn {
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.tab-action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
+.tab-action-btn.danger:hover {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.input-inline-rename {
+  background: var(--bg-0);
+  border: 1px solid var(--gold);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+  color: var(--text);
+  width: 110px;
+}
+
 /* Watchlist & Tables */
 .watchlist-toolbar {
   display: flex;
+  flex-direction: column;
   gap: 10px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
+}
+
+.toolbar-search-add {
+  display: flex;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
 .input-search {
   flex: 1;
-  min-width: 200px;
+  min-width: 180px;
   background: var(--bg-2);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -707,6 +795,113 @@ select {
 .input-search:focus {
   outline: none;
   border-color: var(--blue);
+}
+
+.add-symbol-form {
+  display: flex;
+  gap: 6px;
+}
+
+.input-add-symbol {
+  width: 140px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.btn-add-sm {
+  padding: 6px 12px;
+  font-size: 11px;
+}
+
+.provider-freshness-bar {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.watchlist-table th {
+  user-select: none;
+}
+
+.watchlist-row {
+  transition: background 0.15s ease;
+}
+
+.watchlist-row:hover {
+  background: var(--bg-2);
+}
+
+.watchlist-row.selected-row {
+  background: var(--gold-soft);
+}
+
+.tag-active {
+  background: var(--green-soft);
+  color: var(--green);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.btn-icon-remove {
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-icon-remove:hover {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+/* Modal Styling */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--bg-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+
+.input-modal {
+  width: 100%;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .category-pills {

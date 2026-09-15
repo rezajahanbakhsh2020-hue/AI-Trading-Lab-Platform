@@ -101,6 +101,11 @@ export function HostPage({
             <span className={`dot ${snapshot.project1.connected ? "ready" : "warn"}`} />
             {snapshot.project1.connected ? t("status.project1Connected") : t("status.integrationReady")}
           </span>
+          {snapshot.security && (
+            <span className={`chip ${snapshot.security.isAdmin ? "ready-chip" : ""}`}>
+              Role: <strong>{(snapshot.security.role || "user").toUpperCase()}</strong>
+            </span>
+          )}
         </div>
       </div>
 
@@ -386,9 +391,33 @@ function SignalsPage({ snapshot, onSync }: { snapshot: HostSnapshot; onSync?: ()
 }
 
 function StrategiesPage({ snapshot }: { snapshot: HostSnapshot }) {
+  const isAdmin = snapshot.security?.isAdmin ?? false;
+
   return (
     <div className="strategies-view">
       <StrategyCard snapshot={snapshot} />
+
+      <section className="card" style={{ marginTop: 16 }}>
+        <div className="card-head">
+          <h3>Proprietary Indicator & Research Security Gate</h3>
+          <span className={`status ${isAdmin ? "ready" : "unavailable"}`}>
+            {isAdmin ? "Admin Access Granted" : "Protected Resource"}
+          </span>
+        </div>
+        <div className="card-body">
+          {isAdmin ? (
+            <div className="admin-secrets-panel">
+              <p className="hint">
+                Admin view authenticated. Sensitive research results and parameter calibrations are visible to admin roles only.
+              </p>
+            </div>
+          ) : (
+            <p className="hint text-red">
+              Proprietary indicator logic, sensitive strategy parameters, and research results are restricted to ADMIN accounts. Normal users cannot access trading secrets or parameters through UI, alternate paths, errors, or APIs.
+            </p>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
@@ -661,10 +690,55 @@ function LogsPage() {
 
 function SettingsPage({ snapshot }: { snapshot: HostSnapshot }) {
   const { t, language, setLanguage, supportedLanguages } = useI18n();
+  const security = snapshot.security;
 
   return (
     <div className="settings-view">
       <div className="grid cols-2">
+        <section className="card">
+          <div className="card-head">
+            <h3>Security Boundary & Access Control</h3>
+            <span className={`status ${security?.isAdmin ? "ready" : "enforced"}`}>
+              {security?.isAdmin ? "Admin Role" : "User Role"}
+            </span>
+          </div>
+          <div className="card-body">
+            <table className="table">
+              <tbody>
+                <tr>
+                  <th>User Identity</th>
+                  <td>{security?.userId || "guest_user"}</td>
+                </tr>
+                <tr>
+                  <th>Role</th>
+                  <td>
+                    <strong>{(security?.role || "user").toUpperCase()}</strong>
+                  </td>
+                </tr>
+                <tr>
+                  <th>Permissions</th>
+                  <td>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                      {(security?.permissions || ["read:signals"]).map((p) => (
+                        <span key={p} className="chip" style={{ fontSize: 11 }}>
+                          {p}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <th>Protected Secrets Boundary</th>
+                  <td>{security?.isAdmin ? "Unlocked (Admin)" : "Protected (Restricted to Admin)"}</td>
+                </tr>
+              </tbody>
+            </table>
+            <p className="hint" style={{ marginTop: 12 }}>
+              {security?.message}
+            </p>
+          </div>
+        </section>
+
         <section className="card">
           <div className="card-head">
             <h3>{t("settings.policyTitle")}</h3>
@@ -689,20 +763,12 @@ function SettingsPage({ snapshot }: { snapshot: HostSnapshot }) {
                   <th>{t("settings.table.adapter")}</th>
                   <td>{snapshot.project1.adapterName}</td>
                 </tr>
-                <tr>
-                  <th>{t("settings.table.market")}</th>
-                  <td>{snapshot.market.symbol}</td>
-                </tr>
-                <tr>
-                  <th>{t("settings.table.pattern")}</th>
-                  <td>{t("settings.table.patternValue")}</td>
-                </tr>
               </tbody>
             </table>
           </div>
         </section>
 
-        <section className="card">
+        <section className="card" style={{ gridColumn: "1 / -1", marginTop: 16 }}>
           <div className="card-head">
             <h3>{t("settings.flowTitle")}</h3>
             <span className="status">{snapshot.project1.port}</span>

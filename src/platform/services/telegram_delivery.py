@@ -2,11 +2,13 @@
 
 Orchestrates signal authorization checks and Telegram message delivery
 using TelegramDeliveryPort and UserAuthorizationService.
+Enforces security boundary permissions for trade setup details.
 """
 
 from typing import Optional
 
 from src.platform.domain.presented_signal import PresentedSignal
+from src.platform.domain.security import Permission
 from src.platform.integrations.telegram import TelegramDeliveryPort, TelegramDeliveryResult
 from src.platform.services.user_authorization import UserAuthorizationService
 
@@ -48,4 +50,21 @@ class TelegramDeliveryService:
                 reason=f"Authorization denied: {reason}",
             )
 
-        return self._port.send_signal(chat_id=chat_id, signal=signal)
+        # Enforce trade setup permission boundary
+        delivery_signal = signal
+        if user and not user.has_permission(Permission.READ_TRADE_SETUPS):
+            delivery_signal = PresentedSignal(
+                signal_id=signal.signal_id,
+                symbol=signal.symbol,
+                signal_type=signal.signal_type,
+                timestamp=signal.timestamp,
+                entry_price=None,
+                stop_loss=None,
+                take_profits=(),
+                confidence=signal.confidence,
+                strategy_name=signal.strategy_name,
+                timeframe=signal.timeframe,
+                metadata=signal.metadata,
+            )
+
+        return self._port.send_signal(chat_id=chat_id, signal=delivery_signal)

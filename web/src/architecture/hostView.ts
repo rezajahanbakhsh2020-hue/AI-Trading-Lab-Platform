@@ -46,6 +46,13 @@ export const INTEGRATION_FLOW = [
 export const UNAVAILABLE = "Unavailable";
 export const DISCONNECTED_MESSAGE = "No Project 1 data connected yet.";
 
+export interface UserSecurityProfile {
+  userId: string;
+  role: "admin" | "user" | "guest";
+  permissions: readonly string[];
+  isAdmin: boolean;
+}
+
 export interface PresentedSignalPayload {
   signal_id: string;
   symbol: string;
@@ -86,6 +93,14 @@ export interface HostSnapshot {
     name: string;
     role: string;
     status: string;
+  };
+  security: {
+    userId: string;
+    role: string;
+    isAdmin: boolean;
+    permissions: readonly string[];
+    status: string;
+    message: string;
   };
   project1: {
     connected: boolean;
@@ -139,14 +154,32 @@ export interface HostSnapshot {
 
 export function createDisconnectedHostSnapshot(
   symbol: string = PRIMARY_MARKET,
-  timeframe: string = "1h"
+  timeframe: string = "1h",
+  securityProfile?: UserSecurityProfile
 ): HostSnapshot {
+  const sec = securityProfile || {
+    userId: "guest_user",
+    role: "user",
+    permissions: ["read:signals", "read:trade_setups"],
+    isAdmin: false,
+  };
+
   return {
     generatedAt: null,
     platform: {
       name: PLATFORM_NAME,
       role: PLATFORM_ROLE,
       status: "ready",
+    },
+    security: {
+      userId: sec.userId,
+      role: sec.role,
+      isAdmin: sec.isAdmin,
+      permissions: sec.permissions,
+      status: "enforced",
+      message: sec.isAdmin
+        ? "Admin role authenticated. Full system & secret access granted."
+        : "Standard user identity active. Proprietary secrets and admin-only resources are protected.",
     },
     project1: {
       connected: false,
@@ -213,7 +246,8 @@ export function createHostSnapshotFromProject1(
   signal: PresentedSignalPayload | null,
   symbol: string = PRIMARY_MARKET,
   timeframe: string = "1h",
-  marketState?: Partial<MarketStateSnapshot>
+  marketState?: Partial<MarketStateSnapshot>,
+  securityProfile?: UserSecurityProfile
 ): HostSnapshot {
   const defaultMarketState: MarketStateSnapshot = {
     symbol,
@@ -227,9 +261,27 @@ export function createHostSnapshotFromProject1(
     ...marketState,
   };
 
+  const sec = securityProfile || {
+    userId: "guest_user",
+    role: "user",
+    permissions: ["read:signals", "read:trade_setups"],
+    isAdmin: false,
+  };
+
   if (!portDesc.connected) {
-    return createDisconnectedHostSnapshot(symbol, timeframe);
+    return createDisconnectedHostSnapshot(symbol, timeframe, sec);
   }
+
+  const baseSecSnapshot = {
+    userId: sec.userId,
+    role: sec.role,
+    isAdmin: sec.isAdmin,
+    permissions: sec.permissions,
+    status: "enforced",
+    message: sec.isAdmin
+      ? "Admin role authenticated. Full system & secret access granted."
+      : "Standard user identity active. Proprietary secrets and admin-only resources are protected.",
+  };
 
   if (!signal) {
     return {
@@ -239,6 +291,7 @@ export function createHostSnapshotFromProject1(
         role: PLATFORM_ROLE,
         status: "ready",
       },
+      security: baseSecSnapshot,
       project1: {
         connected: true,
         status: "connected",
@@ -307,6 +360,7 @@ export function createHostSnapshotFromProject1(
       role: PLATFORM_ROLE,
       status: "ready",
     },
+    security: baseSecSnapshot,
     project1: {
       connected: true,
       status: "connected",
@@ -475,7 +529,7 @@ export const PAGE_COPY: Record<
   },
   settings: {
     title: "Settings & Profile",
-    kicker: "Host configuration",
-    summary: "This platform does not store exchange API keys or execute real-money orders.",
+    kicker: "Host configuration & Security Boundary",
+    summary: "Security boundary, authorization roles, and platform settings.",
   },
 };

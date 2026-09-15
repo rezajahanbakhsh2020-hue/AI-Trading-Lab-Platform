@@ -1,17 +1,23 @@
 """User authorization domain model (Part 19: Host Application & Access Control).
 
 Immutable domain object representing a user's authorization identity, destination configuration,
-and signal delivery permissions.
+role, and signal delivery permissions.
 """
 
 from dataclasses import dataclass, field
 import numbers
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Set, Tuple, Union
+
+from src.platform.domain.security import (
+    DEFAULT_ROLE_PERMISSIONS,
+    Permission,
+    UserRole,
+)
 
 
 @dataclass(frozen=True)
 class UserAuthorization:
-    """Immutable user authorization identity and delivery configuration."""
+    """Immutable user authorization identity, role, and delivery configuration."""
 
     user_id: str
     auth_code: str
@@ -19,6 +25,8 @@ class UserAuthorization:
     delivery_enabled: bool = True
     allowed_symbols: Tuple[str, ...] = field(default_factory=tuple)
     allowed_strategies: Tuple[str, ...] = field(default_factory=tuple)
+    role: UserRole = UserRole.USER
+    permissions: Tuple[Permission, ...] = field(default_factory=tuple)
     detail: Optional[str] = None
 
     def __post_init__(self) -> None:
@@ -50,13 +58,61 @@ class UserAuthorization:
         else:
             raise ValueError("allowed_strategies must be a tuple or list")
 
+        # Validate Role
+        if isinstance(self.role, str):
+            try:
+                clean_role = UserRole(self.role.lower().strip())
+            except ValueError:
+                raise ValueError(f"invalid UserRole: {self.role}")
+            object.__setattr__(self, "role", clean_role)
+        elif not isinstance(self.role, UserRole):
+            raise ValueError("role must be a UserRole or string equivalent")
+
+        # Set default permissions if not explicitly supplied
+        if not self.permissions:
+            default_perms = DEFAULT_ROLE_PERMISSIONS.get(self.role, ())
+            object.__setattr__(self, "permissions", default_perms)
+        else:
+            if not isinstance(self.permissions, (list, tuple, set)):
+                raise ValueError("permissions must be a sequence of Permission")
+            clean_perms = []
+            for p in self.permissions:
+                if isinstance(p, str):
+                    try:
+                        clean_perms.append(Permission(p.lower().strip()))
+                    except ValueError:
+                        raise ValueError(f"invalid Permission: {p}")
+                elif isinstance(p, Permission):
+                    clean_perms.append(p)
+                else:
+                    raise ValueError(f"invalid Permission item: {p}")
+            object.__setattr__(self, "permissions", tuple(clean_perms))
+
         if self.detail is not None:
             if not isinstance(self.detail, str) or not self.detail.strip():
                 raise ValueError("detail must be a non-empty string if provided")
             object.__setattr__(self, "detail", self.detail.strip())
 
+    @property
+    def is_admin(self) -> bool:
+        """Return True if user is an admin."""
+        return self.role == UserRole.ADMIN
+
+    def has_permission(self, permission: Union[Permission, str]) -> bool:
+        """Evaluate if user possesses a specific permission."""
+        if Permission.ADMIN_ALL in self.permissions or self.is_admin:
+            return True
+        if isinstance(permission, str):
+            try:
+                permission = Permission(permission.lower().strip())
+            except ValueError:
+                return False
+        return permission in self.permissions
+
     def can_receive_signal(self, symbol: str, strategy_name: Optional[str] = None) -> bool:
         """Evaluate if user authorization policy allows receiving a signal."""
+        if not self.has_permission(Permission.READ_SIGNALS):
+            return False
         if not self.delivery_enabled:
             return False
         if not self.telegram_chat_id:
@@ -71,6 +127,8 @@ class UserAuthorization:
         """Return dictionary representation without exposing sensitive auth_code in full."""
         return {
             "user_id": self.user_id,
+            "role": self.role.value,
+            "permissions": [p.value for p in self.permissions],
             "delivery_enabled": self.delivery_enabled,
             "telegram_chat_id": self.telegram_chat_id,
             "allowed_symbols": list(self.allowed_symbols),

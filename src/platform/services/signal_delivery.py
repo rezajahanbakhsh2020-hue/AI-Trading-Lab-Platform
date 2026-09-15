@@ -1,12 +1,13 @@
 """Signal delivery application service.
 
 Delivers a generated Signal to an authorized consumer through SignalDeliveryPort.
-Authorization reuses UserAuthorizationService. Channel infrastructure stays
+Authorization reuses UserAuthorizationService and SecurityBoundaryService. Channel infrastructure stays
 behind the port; this service does not generate, fabricate, or execute trades.
 """
 
 from typing import Optional, Tuple
 
+from src.platform.domain.security import Permission
 from src.platform.domain.signal import Signal
 from src.platform.domain.signal_delivery import (
     DELIVERY_STATUS_DELIVERED,
@@ -104,6 +105,8 @@ class SignalDeliveryService:
     ) -> Tuple[bool, str]:
         user = self._user_auth_svc.get_authorized_user(consumer_id)
         if user is None:
+            return False, REASON_CONSUMER_NOT_AUTHORIZED
+        if not user.has_permission(Permission.READ_SIGNALS):
             return False, REASON_CONSUMER_NOT_AUTHORIZED
         if not user.delivery_enabled:
             return False, REASON_DELIVERY_DISABLED

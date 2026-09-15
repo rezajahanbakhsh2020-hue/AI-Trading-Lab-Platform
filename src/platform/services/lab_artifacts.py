@@ -1,10 +1,10 @@
 """Lab artifact application service.
 
 Consumes the existing read-only LabArtifactSource port and exposes validated
-domain objects for signals, trade setups,, and stability assessments. It keeps
-all infrastructure concerns (connect/fetch/close) behind the injected port anda
-never fabricates unavailable engine artifacts.
-
+domain objects for signals, trade setups, and stability assessments. It keeps
+all infrastructure concerns (connect/fetch/close) behind the injected port and
+never fabricates unavailable engine artifacts. Enforces security boundary checks
+for protected lab resources.
 
 Rules:
 ------------
@@ -12,7 +12,7 @@ Rules:
 - fetching happens only when an explicit method is called
 - ``None`` from the source means genuinely unavailable, never fabricated
 - source dicts are validated before mapping into existing domain models
-- validation failures raise ``ValueError`` deterministic
+- validation failures raise ``ValueError`` deterministically
 - source identity is preserved where the existing contracts support it
 - no dependency on the original AI-Trading-Lab engine
 """
@@ -20,30 +20,46 @@ Rules:
 from typing import Optional
 
 from src.platform.domain import Signal, Stability, TradeSetup
+from src.platform.domain.security import Permission
+from src.platform.domain.user_authorization import UserAuthorization
 from src.platform.integrations.lab import LabArtifactSource
-
-
-
+from src.platform.services.security import SecurityBoundaryService
 
 
 class LabArtifactService:
     """Application service for reading Labrador artifacts via a LabArtifactSource.
 
-
     The caller owns the source lifecycle (connect/close). The service consumes
     the source strictly via its public port contract and never touches external
-    infrastructure, concrete Lab implementations,, or the engine repository..
+    infrastructure, concrete Lab implementations, or the engine repository.
     """
 
-    def __init__(self, source: LabArtifactSource) -> None:
+    def __init__(
+        self,
+        source: LabArtifactSource,
+        security_service: Optional[SecurityBoundaryService] = None,
+    ) -> None:
         if source is None or not isinstance(source, LabArtifactSource):
             raise ValueError("source must be a LabArtifactSource")
+        if security_service is not None and not isinstance(
+            security_service, SecurityBoundaryService
+        ):
+            raise ValueError("security_service must be a SecurityBoundaryService instance")
         self._source = source
+        self._security_service = security_service or SecurityBoundaryService()
 
-    def get_signal(self, symbol: str, timeframe: str) -> Optional[Signal]:
-        """Return a validated Signal, or None when the source reports it unavailable.."""
+    def get_signal(
+        self, symbol: str, timeframe: str, user: Optional[UserAuthorization] = None
+    ) -> Optional[Signal]:
+        """Return a validated Signal, or None when unavailable or unauthorized."""
         _validate_symbol(symbol)
         _validate_timeframe(timeframe)
+
+        if user is not None:
+            allowed, _ = self._security_service.authorize(user, "signals", action="read")
+            if not allowed:
+                return None
+
         raw = self._source.fetch_signal(symbol=symbol, timeframe=timeframe)
         if raw is None:
             return None
@@ -55,10 +71,20 @@ class LabArtifactService:
             confidence=raw.get("confidence"),
         )
 
-    def get_trade_setup(self, symbol: str, timeframe: str) -> Optional[TradeSetup]:
-        """Return a validated TradeSetup, or None when the source reports it unavailable.."""
+    def get_trade_setup(
+        self, symbol: str, timeframe: str, user: Optional[UserAuthorization] = None
+    ) -> Optional[TradeSetup]:
+        """Return a validated TradeSetup, or None when unavailable or unauthorized."""
         _validate_symbol(symbol)
         _validate_timeframe(timeframe)
+
+        if user is not None:
+            allowed, _ = self._security_service.authorize(
+                user, "trade_setups", action="read"
+            )
+            if not allowed:
+                return None
+
         raw = self._source.fetch_trade_setup(symbol=symbol, timeframe=timeframe)
         if raw is None:
             return None
@@ -74,17 +100,36 @@ class LabArtifactService:
             direction=_require_field(raw, "direction", "trade_setup"),
         )
 
-    def get_stability(self, strategy_name: str) -> Optional[Stability]:
-        """Return a validated Stability, or None when the source reports it unavailable.."""
+    def get_stability(
+        self, strategy_name: str, user: Optional[UserAuthorization] = None
+    ) -> Optional[Stability]:
+        """Return a validated Stability, or None when unavailable or unauthorized."""
         _validate_strategy_name(strategy_name)
+
+        if user is not None:
+            allowed, _ = self._security_service.authorize(
+                user, "best_strategies", action="read"
+            )
+            if not allowed:
+                # Also check general signal permission for stability metrics if user is non-admin
+                allowed_sig, _ = self._security_service.authorize(user, "signals", action="read")
+                if not allowed_sig:
+                    return None
+
         raw = self._source.fetch_stability(strategy_name=strategy_name)
         if raw is None:
             return None
         _require_dict(raw, "stability")
+
+        # Sanitize metrics if present for non-admin users
+        metrics = raw.get("metrics")
+        if user is not None and not user.is_admin and isinstance(metrics, dict):
+            metrics = self._security_service.filter_protected_payload(user, metrics)
+
         return Stability(
             score=_require_field(raw, "score", "stability"),
             risk_level=_require_field(raw, "risk_level", "stability"),
-            metrics=raw.get("metrics"),
+            metrics=metrics,
         )
 
 

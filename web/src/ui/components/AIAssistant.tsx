@@ -5,6 +5,7 @@ import {
   type AICapability,
   type AIResponsePayload,
   type AIProviderStatus,
+  type AISimulatedErrorType,
 } from "../../architecture/aiGateway";
 import { useI18n } from "../../i18n";
 
@@ -21,9 +22,11 @@ export function AIAssistant({ snapshot }: AIAssistantProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [aiResponse, setAiResponse] = useState<AIResponsePayload | null>(null);
 
-  // Provider configuration toggle for testing real vs unavailable states
+  // Provider configuration toggle for testing real vs unavailable vs error states
   const [simulatedProviderStatus, setSimulatedProviderStatus] =
     useState<AIProviderStatus>("unavailable");
+  const [simulatedErrorType, setSimulatedErrorType] =
+    useState<AISimulatedErrorType>("none");
 
   const handleProcessRequest = () => {
     setIsLoading(true);
@@ -42,12 +45,15 @@ export function AIAssistant({ snapshot }: AIAssistantProps) {
         status: simulatedProviderStatus,
         name:
           simulatedProviderStatus === "available"
-            ? "OpenAI_GPT4o_Adapter"
+            ? "HttpAIProviderAdapter"
+            : simulatedProviderStatus === "error"
+            ? "HttpAIProviderAdapter"
             : "UnavailableAIProviderAdapter",
         responseText:
           simulatedProviderStatus === "available"
             ? `AI Explanation for ${capability.toUpperCase()} (${selectedSymbol}): Market conditions and signal alignment verified within permitted platform boundaries. No strategy logic exposed.`
             : "AI unavailable / provider not configured",
+        simulatedErrorType,
       }
     );
 
@@ -68,8 +74,20 @@ export function AIAssistant({ snapshot }: AIAssistantProps) {
     }
     if (!aiResponse) {
       return (
-        <span className={`status ${simulatedProviderStatus === "available" ? "ready" : "unavailable"}`}>
-          {simulatedProviderStatus === "available" ? t("ai.status.available") : t("ai.status.unavailable")}
+        <span
+          className={`status ${
+            simulatedProviderStatus === "available"
+              ? "ready"
+              : simulatedProviderStatus === "error"
+              ? "error"
+              : "unavailable"
+          }`}
+        >
+          {simulatedProviderStatus === "available"
+            ? t("ai.status.available")
+            : simulatedProviderStatus === "error"
+            ? t("status.error")
+            : t("ai.status.unavailable")}
         </span>
       );
     }
@@ -141,20 +159,50 @@ export function AIAssistant({ snapshot }: AIAssistantProps) {
 
               <div>
                 <label className="label" style={{ fontWeight: 600, display: "block", marginBottom: 4 }}>
-                  Simulate Provider:
+                  Provider State:
                 </label>
                 <select
                   aria-label="Simulate Provider"
                   className="input"
                   value={simulatedProviderStatus}
-                  onChange={(e) => setSimulatedProviderStatus(e.target.value as AIProviderStatus)}
+                  onChange={(e) => {
+                    const status = e.target.value as AIProviderStatus;
+                    setSimulatedProviderStatus(status);
+                    if (status === "error") {
+                      setSimulatedErrorType("timeout");
+                    } else {
+                      setSimulatedErrorType("none");
+                    }
+                  }}
                   style={{ width: "100%", padding: "8px" }}
                 >
                   <option value="unavailable">No Provider (Default)</option>
-                  <option value="available">Connected Provider (Mock)</option>
+                  <option value="available">Connected Provider (HTTP Adapter)</option>
+                  <option value="error">Provider Error / Timeout</option>
                 </select>
               </div>
             </div>
+
+            {/* Error Type Selector if Provider State is 'error' */}
+            {simulatedProviderStatus === "error" && (
+              <div style={{ marginBottom: 16 }}>
+                <label className="label" style={{ fontWeight: 600, display: "block", marginBottom: 4 }}>
+                  Simulated Error Condition:
+                </label>
+                <select
+                  aria-label="Simulated Error Condition"
+                  className="input"
+                  value={simulatedErrorType}
+                  onChange={(e) => setSimulatedErrorType(e.target.value as AISimulatedErrorType)}
+                  style={{ width: "100%", padding: "8px" }}
+                >
+                  <option value="timeout">Request Timeout</option>
+                  <option value="rate_limit">HTTP 429 Rate Limit Exceeded</option>
+                  <option value="auth_error">HTTP 401 Authentication Failed</option>
+                  <option value="provider_error">HTTP 500 Service Error</option>
+                </select>
+              </div>
+            )}
 
             {/* Optional Prompt Query */}
             <div style={{ marginBottom: 16 }}>
@@ -279,6 +327,18 @@ export function AIAssistant({ snapshot }: AIAssistantProps) {
                   {aiResponse.content}
                 </p>
                 <p className="hint">{t("ai.permissionDeniedMessage")}</p>
+              </div>
+            ) : aiResponse.status === "ERROR" ? (
+              <div className="empty-state-box" style={{ padding: "20px", textAlign: "center" }}>
+                <span className="status error" style={{ display: "inline-block", marginBottom: 10 }}>
+                  {t("status.error")}
+                </span>
+                <p style={{ fontWeight: 600, fontSize: 15, margin: "8px 0", color: "#ef4444" }}>
+                  {aiResponse.content}
+                </p>
+                <p className="hint">
+                  {aiResponse.errorMessage || "An error occurred with the AI provider."}
+                </p>
               </div>
             ) : (
               <div>

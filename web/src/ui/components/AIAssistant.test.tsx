@@ -52,6 +52,24 @@ describe("AIAssistant UI Component", () => {
     fireEvent.click(btn);
 
     expect(container.textContent).toContain("AI Explanation for EXPLAIN_SIGNAL (XAUUSD)");
-    expect(container.textContent).toContain("OpenAI_GPT4o_Adapter");
+    expect(container.textContent).toContain("HttpAIProviderAdapter");
+  });
+
+  it("handles processing request with simulated error condition", () => {
+    const snapshot = createDisconnectedHostSnapshot("XAUUSD", "1h");
+    const { container } = render(
+      <I18nProvider>
+        <AIAssistant snapshot={snapshot} />
+      </I18nProvider>
+    );
+
+    const select = screen.getByRole("combobox", { name: "Simulate Provider" });
+    fireEvent.change(select, { target: { value: "error" } });
+
+    const btn = screen.getByRole("button", { name: "Generate Explanation" });
+    fireEvent.click(btn);
+
+    expect(container.textContent).toContain("AI provider request timed out.");
+    expect(container.textContent).toContain("Request timed out");
   });
 });

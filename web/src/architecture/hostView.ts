@@ -18,6 +18,7 @@ export const NAV_ITEMS = [
   { id: "monitoring", path: "/monitoring", label: "Monitoring", icon: "activity" },
   { id: "providers", path: "/providers", label: "Providers", icon: "layers" },
   { id: "academy", path: "/academy", label: "Academy", icon: "book-open" },
+  { id: "ai", path: "/ai", label: "AI Assistant", icon: "bot" },
   { id: "notifications", path: "/notifications", label: "Notifications", icon: "bell" },
   { id: "settings", path: "/settings", label: "Settings", icon: "settings" },
 ] as const;
@@ -538,6 +539,11 @@ export const PAGE_COPY: Record<
     title: "Logs",
     kicker: "Host activity",
     summary: "Operational events from the host activity when recorded.",
+  },
+  ai: {
+    title: "AI Assistant Gateway",
+    kicker: "Secure Platform AI Boundary",
+    summary: "Provider-agnostic AI explanation and context boundary with zero trading execution rights.",
   },
   settings: {
     title: "Settings & Profile",

@@ -90,6 +90,7 @@ export function queryCommandCenter(
     { id: "nav-monitoring", title: "Monitoring", category: "navigation", description: "Data freshness & live observer", route: "/monitoring" },
     { id: "nav-providers", title: "Providers", category: "navigation", description: "Registered provider slots", route: "/providers" },
     { id: "nav-academy", title: "Academy & Guides", category: "navigation", description: "Quantitative trading concepts", route: "/academy" },
+    { id: "nav-ai", title: "AI Assistant", category: "navigation", description: "Secure platform AI explanation gateway", route: "/ai" },
     { id: "nav-notifications", title: "Notifications Inbox", category: "navigation", description: "System alerts & event stream", route: "/notifications" },
     { id: "nav-settings", title: "Settings", category: "navigation", description: "Platform policy & system guardrails", route: "/settings" },
   ];

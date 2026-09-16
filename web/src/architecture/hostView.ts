@@ -7,6 +7,7 @@ export const PRIMARY_MARKET = "XAUUSD";
 export const NAV_ITEMS = [
   { id: "dashboard", path: "/", label: "Dashboard", icon: "home" },
   { id: "timeline", path: "/timeline", label: "Intelligence Timeline", icon: "activity" },
+  { id: "screener", path: "/screener", label: "Market Screener", icon: "grid" },
   { id: "markets", path: "/markets", label: "Markets", icon: "bar-chart-2" },
   { id: "watchlist", path: "/watchlist", label: "Watchlist", icon: "star" },
   { id: "signals", path: "/signals", label: "Signals", icon: "zap" },
@@ -459,6 +460,11 @@ export const PAGE_COPY: Record<
     title: "Intelligence Timeline",
     kicker: "Real Chronological Activity & Explainability",
     summary: "Unified platform events, signal emission history, market state updates, and context explainability layer.",
+  },
+  screener: {
+    title: "Market Screener & Heatmap",
+    kicker: "Multi-Asset Performance & Signal Workspace",
+    summary: "Filter, scan, and visualize real 24h market performance and active Project 1 signals across commodities, forex, crypto, and indices.",
   },
   markets: {
     title: "Markets",

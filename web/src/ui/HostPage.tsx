@@ -16,6 +16,7 @@ import { HealthCenter } from "./components/HealthCenter";
 import { IntelligenceTimeline } from "./components/IntelligenceTimeline";
 import { AIAssistant } from "./components/AIAssistant";
 import { BacktestViewer } from "./components/BacktestViewer";
+import { IntelligenceWorkspace } from "./components/IntelligenceWorkspace";
 import {
   loadUserNotifications,
   saveUserNotifications,
@@ -128,6 +129,12 @@ export function HostPage({
       )}
       {normalizedPageId === "timeline" && (
         <TimelinePage snapshot={snapshot} />
+      )}
+      {normalizedPageId === "screener" && (
+        <IntelligenceWorkspace
+          snapshot={snapshot}
+          onSelectSymbol={onSelectSymbol}
+        />
       )}
       {(normalizedPageId === "markets" || pageId === "market") && (
         <MarketsPage

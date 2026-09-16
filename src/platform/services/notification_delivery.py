@@ -1,19 +1,14 @@
 """Notification delivery application service.
 
-Coordinates authorization checks, secret sanitization, user policy evaluation,
-and outbound dispatch of MarketAlert objects via NotificationDeliveryPort.
+Coordinates authorization checks, strict user isolation, secret sanitization,
+user policy evaluation, and outbound dispatch of NotificationEvent and MarketAlert objects.
 """
 
-from typing import Any, Dict, Optional, Tuple
-import uuid
+from typing import Any, Dict, Optional
+import time
 
 from src.platform.domain.alert import MarketAlert
-from src.platform.domain.notification_delivery import (
-    NOTIFICATION_DELIVERY_DELIVERED,
-    NOTIFICATION_DELIVERY_DENIED,
-    NOTIFICATION_DELIVERY_FAILED,
-    NotificationDelivery,
-)
+from src.platform.domain.notification import NotificationEvent
 from src.platform.domain.user_authorization import UserAuthorization
 from src.platform.integrations.notification_delivery import (
     NotificationDeliveryAttempt,
@@ -24,12 +19,12 @@ from src.platform.services.user_authorization import UserAuthorizationService
 
 REASON_UNREGISTERED_USER = "user is not registered or authorized"
 REASON_DELIVERY_DISABLED = "notification delivery is disabled for user"
-REASON_SECURITY_DENIED = "security boundary denied alert delivery"
-REASON_CHANNEL_FAILED = "delivery channel failed"
+REASON_SECURITY_DENIED = "security boundary denied notification delivery"
+REASON_USER_ISOLATION_DENIED = "user is not authorized to deliver notifications for target user"
 
 
 class NotificationDeliveryService:
-    """Application service for authorized notification alert delivery."""
+    """Application service for authorized notification and alert delivery."""
 
     def __init__(
         self,
@@ -43,72 +38,133 @@ class NotificationDeliveryService:
         self._auth_service = user_auth_service
         self._security = security_service or SecurityBoundaryService()
 
+    def _evaluate_delivery_permission(
+        self,
+        requester: Optional[UserAuthorization],
+        target_user_id: str,
+    ) -> tuple[Optional[UserAuthorization], Optional[NotificationDeliveryAttempt]]:
+        clean_target = target_user_id.strip()
+
+        # 1. Enforce strict User Isolation: caller cannot deliver to another user's target_user_id unless Admin
+        if requester is not None:
+            if not requester.is_admin and requester.user_id != clean_target:
+                self._security.audit_logger.log(
+                    user_id=requester.user_id,
+                    event_type="UNAUTHORIZED_CROSS_USER_NOTIFICATION_DELIVERY",
+                    resource=f"notifications:{clean_target}",
+                    action="deliver",
+                    outcome="DENY",
+                    details=f"User '{requester.user_id}' attempted cross-user notification delivery to '{clean_target}'",
+                )
+                raise PermissionError(
+                    f"Access denied: user '{requester.user_id}' is not authorized to deliver notifications for user '{clean_target}'"
+                )
+
+        # 2. Retrieve user authorization configuration
+        target_user: Optional[UserAuthorization] = None
+        if self._auth_service is not None:
+            target_user = self._auth_service.get_authorized_user(clean_target)
+
+        if target_user is None and requester is not None and requester.user_id == clean_target:
+            target_user = requester
+
+        if target_user is not None:
+            if not target_user.delivery_enabled:
+                return target_user, NotificationDeliveryAttempt(
+                    success=False,
+                    user_id=clean_target,
+                    reason=REASON_DELIVERY_DISABLED,
+                    channel="in_process",
+                    detail=f"User '{clean_target}' has delivery_enabled=False",
+                )
+        elif self._auth_service is not None:
+            return None, NotificationDeliveryAttempt(
+                success=False,
+                user_id=clean_target,
+                reason=REASON_UNREGISTERED_USER,
+                channel="in_process",
+                detail=f"User '{clean_target}' is not registered in UserAuthorizationService",
+            )
+
+        # 3. Check SecurityBoundaryService authorization
+        allowed, sec_reason = self._security.authorize(
+            user=target_user or requester,
+            resource="notifications",
+            action="deliver",
+        )
+        if not allowed:
+            return target_user, NotificationDeliveryAttempt(
+                success=False,
+                user_id=clean_target,
+                reason=REASON_SECURITY_DENIED,
+                channel="in_process",
+                detail=sec_reason,
+            )
+
+        return target_user, None
+
+    def deliver_event_to_user(
+        self,
+        target_user_id: str,
+        event: NotificationEvent,
+        channel: Optional[str] = None,
+        requester: Optional[UserAuthorization] = None,
+    ) -> NotificationDeliveryAttempt:
+        """Deliver a NotificationEvent to a target user after strict authorization & sanitization."""
+        if not isinstance(target_user_id, str) or not target_user_id.strip():
+            raise ValueError("target_user_id must be a non-empty string")
+        clean_uid = target_user_id.strip()
+
+        if not isinstance(event, NotificationEvent):
+            raise ValueError("event must be a NotificationEvent instance")
+
+        user_auth, denied_attempt = self._evaluate_delivery_permission(requester, clean_uid)
+        if denied_attempt is not None:
+            return denied_attempt
+
+        # Secret Sanitization before delivery
+        sanitized_payload = SecretSanitizer.sanitize_data(event.payload)
+        if not isinstance(sanitized_payload, dict):
+            sanitized_payload = {}
+
+        sanitized_event = NotificationEvent(
+            event_id=event.event_id,
+            event_type=event.event_type,
+            category=event.category,
+            severity=event.severity,
+            title=SecretSanitizer.sanitize_string(event.title),
+            message=SecretSanitizer.sanitize_string(event.message),
+            timestamp=event.timestamp,
+            target_user_id=clean_uid,
+            payload=sanitized_payload,
+        )
+
+        return self._port.deliver_event(
+            user_id=clean_uid,
+            event=sanitized_event,
+            channel=channel,
+        )
+
     def deliver_alert_to_user(
         self,
-        user_id: str,
+        target_user_id: str,
         alert: MarketAlert,
         channel: Optional[str] = None,
         requester: Optional[UserAuthorization] = None,
-    ) -> NotificationDelivery:
+    ) -> NotificationDeliveryAttempt:
         """Deliver a MarketAlert to a target user after strict authorization & sanitization."""
-        if not isinstance(user_id, str) or not user_id.strip():
-            raise ValueError("user_id must be a non-empty string")
-        clean_uid = user_id.strip()
+        if not isinstance(target_user_id, str) or not target_user_id.strip():
+            raise ValueError("target_user_id must be a non-empty string")
+        clean_uid = target_user_id.strip()
 
         if not isinstance(alert, MarketAlert):
             raise ValueError("alert must be a MarketAlert instance")
 
-        delivery_id = f"notif_del_{uuid.uuid4().hex[:10]}"
+        user_auth, denied_attempt = self._evaluate_delivery_permission(requester, clean_uid)
+        if denied_attempt is not None:
+            return denied_attempt
 
-        # 1. Look up user authorization & delivery_enabled flag
-        user_auth: Optional[UserAuthorization] = None
-        if self._auth_service is not None:
-            user_auth = self._auth_service.get_authorized_user(clean_uid)
-
-        if user_auth is None and requester is not None and requester.user_id == clean_uid:
-            user_auth = requester
-
-        if user_auth is not None:
-            if not user_auth.delivery_enabled:
-                return NotificationDelivery(
-                    delivery_id=delivery_id,
-                    user_id=clean_uid,
-                    status=NOTIFICATION_DELIVERY_DENIED,
-                    reason=REASON_DELIVERY_DISABLED,
-                    alert=alert,
-                    channel=channel or "in_memory",
-                    detail=f"User {clean_uid} has delivery_enabled=False",
-                )
-        elif self._auth_service is not None:
-            # Service requires registered user
-            return NotificationDelivery(
-                delivery_id=delivery_id,
-                user_id=clean_uid,
-                status=NOTIFICATION_DELIVERY_DENIED,
-                reason=REASON_UNREGISTERED_USER,
-                alert=alert,
-                channel=channel or "in_memory",
-                detail=f"User {clean_uid} is not registered in UserAuthorizationService",
-            )
-
-        # 2. Check SecurityBoundaryService permission
-        allowed, sec_reason = self._security.authorize(
-            user=user_auth or requester,
-            resource="alerts",
-            action="deliver",
-        )
-        if not allowed:
-            return NotificationDelivery(
-                delivery_id=delivery_id,
-                user_id=clean_uid,
-                status=NOTIFICATION_DELIVERY_DENIED,
-                reason=REASON_SECURITY_DENIED,
-                alert=alert,
-                channel=channel or "in_memory",
-                detail=sec_reason,
-            )
-
-        # 3. Sanitize MarketAlert message and details before outbound dispatch
+        # Secret Sanitization before delivery
         sanitized_details = SecretSanitizer.sanitize_data(alert.details) if alert.details else None
         if sanitized_details is not None and not isinstance(sanitized_details, dict):
             sanitized_details = None
@@ -125,34 +181,10 @@ class NotificationDeliveryService:
             details=sanitized_details,
         )
 
-        # 4. Dispatch via outbound port
-        attempt: NotificationDeliveryAttempt = self._port.deliver_alert(
+        return self._port.deliver_alert(
             user_id=clean_uid,
             alert=sanitized_alert,
             channel=channel,
-        )
-
-        if not attempt.success:
-            return NotificationDelivery(
-                delivery_id=delivery_id,
-                user_id=clean_uid,
-                status=NOTIFICATION_DELIVERY_FAILED,
-                reason=REASON_CHANNEL_FAILED,
-                alert=sanitized_alert,
-                channel=attempt.channel,
-                detail=attempt.reason,
-                timestamp=attempt.timestamp,
-            )
-
-        return NotificationDelivery(
-            delivery_id=delivery_id,
-            user_id=clean_uid,
-            status=NOTIFICATION_DELIVERY_DELIVERED,
-            reason=attempt.reason,
-            alert=sanitized_alert,
-            channel=attempt.channel,
-            detail=attempt.detail,
-            timestamp=attempt.timestamp,
         )
 
     def describe(self) -> Dict[str, Any]:

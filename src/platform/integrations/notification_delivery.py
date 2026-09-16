@@ -1,25 +1,26 @@
 """Notification delivery integration port.
 
-Outbound Ports-and-Adapters boundary for delivering MarketAlert notifications
-to targeted users. Concrete delivery transport adapters live behind this port.
+Outbound Ports-and-Adapters boundary for delivering NotificationEvent and MarketAlert
+notifications to targeted users. Concrete delivery transport adapters live behind this port.
 """
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 from src.platform.domain.alert import MarketAlert
+from src.platform.domain.notification import NotificationEvent
 
 
 @dataclass(frozen=True)
 class NotificationDeliveryAttempt:
-    """Immutable infrastructure result of one outbound alert delivery attempt."""
+    """Immutable infrastructure result of one outbound delivery attempt."""
 
     success: bool
     user_id: str
     reason: str
-    channel: str = "in_memory"
+    channel: str = "in_process"
     detail: Optional[str] = None
     timestamp: float = 0.0
 
@@ -61,7 +62,17 @@ class NotificationDeliveryAttempt:
 
 
 class NotificationDeliveryPort(ABC):
-    """Abstract outbound port for delivering alerts/notifications to users."""
+    """Abstract outbound port for delivering events/alerts to targeted users."""
+
+    @abstractmethod
+    def deliver_event(
+        self,
+        user_id: str,
+        event: NotificationEvent,
+        channel: Optional[str] = None,
+    ) -> NotificationDeliveryAttempt:
+        """Deliver the given NotificationEvent to target user_id."""
+        raise NotImplementedError
 
     @abstractmethod
     def deliver_alert(

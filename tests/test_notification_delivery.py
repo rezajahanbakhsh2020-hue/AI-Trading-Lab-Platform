@@ -1,8 +1,8 @@
-"""Tests for the notification delivery architecture layer.
+"""Tests for the notification delivery architecture layer (PR #33 correction).
 
-Verifies domain models, port interfaces, in-memory provider adapter,
-NotificationDeliveryService, security/authorization boundaries, secret sanitization,
-and AlertService delivery integration.
+Verifies NotificationDeliveryPort, RecordingNotificationDeliveryAdapter,
+NotificationDeliveryService, strict user isolation, secret sanitization, honest
+in-process delivery semantics, adapter contract swapping, and AlertService integration.
 """
 
 from dataclasses import FrozenInstanceError
@@ -10,11 +10,10 @@ import time
 import pytest
 
 from src.platform.domain.alert import AlertRule, MarketAlert
-from src.platform.domain.notification_delivery import (
-    NOTIFICATION_DELIVERY_DELIVERED,
-    NOTIFICATION_DELIVERY_DENIED,
-    NOTIFICATION_DELIVERY_FAILED,
-    NotificationDelivery,
+from src.platform.domain.notification import (
+    NotificationCategory,
+    NotificationEvent,
+    NotificationSeverity,
 )
 from src.platform.domain.security import UserRole
 from src.platform.domain.user_authorization import UserAuthorization
@@ -26,13 +25,10 @@ from src.platform.providers.notification_delivery import RecordingNotificationDe
 from src.platform.services.alert_service import AlertService
 from src.platform.services.notification import NotificationService
 from src.platform.services.notification_delivery import (
-    REASON_CHANNEL_FAILED,
     REASON_DELIVERY_DISABLED,
-    REASON_SECURITY_DENIED,
     REASON_UNREGISTERED_USER,
     NotificationDeliveryService,
 )
-from src.platform.services.security import SecurityBoundaryService
 from src.platform.services.user_authorization import UserAuthorizationService
 
 
@@ -55,6 +51,23 @@ def _sample_alert(
     )
 
 
+def _sample_event(
+    event_id: str = "evt_1",
+    target_user_id: str = "usr_01",
+) -> NotificationEvent:
+    return NotificationEvent(
+        event_id=event_id,
+        event_type="SIGNAL_EMITTED",
+        category=NotificationCategory.SIGNAL,
+        severity=NotificationSeverity.INFO,
+        title="New Signal Emitted",
+        message="BUY signal for XAUUSD with secret api_key=secret_xyz123",
+        timestamp=time.time(),
+        target_user_id=target_user_id,
+        payload={"secret_key": "my_secret_key"},
+    )
+
+
 def _user(
     user_id: str = "usr_01",
     role: UserRole = UserRole.USER,
@@ -71,24 +84,24 @@ def _user(
 
 
 # ---------------------------------------------------------------------------
-# 1. Domain & Port Contract Tests
+# 1. Port Contract & Infrastructure Model Tests
 # ---------------------------------------------------------------------------
 
-def test_notification_delivery_attempt_domain_validation():
+def test_notification_delivery_attempt_contract():
     attempt = NotificationDeliveryAttempt(
         success=True,
         user_id="usr_01",
-        reason="delivered ok",
-        channel="email",
+        reason="recorded in-process",
+        channel="in_process",
         detail="detail msg",
     )
     assert attempt.success is True
     assert attempt.user_id == "usr_01"
-    assert attempt.channel == "email"
+    assert attempt.channel == "in_process"
 
     data = attempt.to_dict()
     assert data["success"] is True
-    assert data["channel"] == "email"
+    assert data["channel"] == "in_process"
 
     with pytest.raises(ValueError):
         NotificationDeliveryAttempt(success="not_a_bool", user_id="u", reason="r")  # type: ignore
@@ -97,95 +110,55 @@ def test_notification_delivery_attempt_domain_validation():
         NotificationDeliveryAttempt(success=True, user_id="   ", reason="r")
 
 
-def test_notification_delivery_domain_validation_and_immutability():
-    alert = _sample_alert()
-    deliv = NotificationDelivery(
-        delivery_id="del_01",
-        user_id="usr_01",
-        status="DELIVERED",
-        reason="delivered ok",
-        alert=alert,
-        channel="in_memory",
-    )
-    assert deliv.delivered is True
-    assert deliv.user_id == "usr_01"
-    assert deliv.alert.id == alert.id
-
-    data = deliv.to_dict()
-    assert data["delivered"] is True
-    assert data["status"] == NOTIFICATION_DELIVERY_DELIVERED
-
-    with pytest.raises(FrozenInstanceError):
-        deliv.status = "FAILED"  # type: ignore
-
-    with pytest.raises(ValueError):
-        NotificationDelivery(
-            delivery_id="d1",
-            user_id="u1",
-            status="INVALID_STATUS",
-            reason="r",
-            alert=alert,
-        )
-
-
 # ---------------------------------------------------------------------------
-# 2. Recording Adapter Tests
+# 2. Honest In-Process Recording Adapter Tests
 # ---------------------------------------------------------------------------
 
-def test_recording_adapter_delivers_and_records():
+def test_recording_adapter_delivers_alert_and_event_with_honest_semantics():
     adapter = RecordingNotificationDeliveryAdapter()
     alert = _sample_alert()
+    event = _sample_event()
 
-    attempt = adapter.deliver_alert(user_id="usr_01", alert=alert, channel="push")
-    assert attempt.success is True
-    assert attempt.channel == "push"
-    assert len(adapter.delivered) == 1
-    assert adapter.delivered[0]["alert"]["id"] == alert.id
+    att_alert = adapter.deliver_alert(user_id="usr_01", alert=alert)
+    assert att_alert.success is True
+    assert att_alert.channel == "in_process"
+    assert "recorded in-process" in att_alert.reason
 
-    desc = adapter.describe()
-    assert desc["name"] == "RecordingNotificationDeliveryAdapter"
-    assert desc["recorded_count"] == 1
+    att_event = adapter.deliver_event(user_id="usr_01", event=event)
+    assert att_event.success is True
+    assert att_event.channel == "in_process"
 
-
-def test_recording_adapter_channel_enablement_and_unavailability():
-    adapter = RecordingNotificationDeliveryAdapter(available=True)
-    alert = _sample_alert()
-
-    adapter.set_channel_enabled("email", False)
-    attempt_disabled = adapter.deliver_alert(user_id="usr_01", alert=alert, channel="email")
-    assert attempt_disabled.success is False
-    assert "unavailable" in attempt_disabled.reason
-
-    adapter.available = False
-    attempt_unavail = adapter.deliver_alert(user_id="usr_01", alert=alert, channel="in_memory")
-    assert attempt_unavail.success is False
+    assert len(adapter.attempts) == 2
+    assert adapter.describe()["recorded_count"] == 2
 
 
-def test_recording_adapter_forwards_to_notification_service():
+def test_recording_adapter_forwards_to_existing_notification_service():
     notif_svc = NotificationService()
     adapter = RecordingNotificationDeliveryAdapter(notification_service=notif_svc)
     alert = _sample_alert()
 
-    attempt = adapter.deliver_alert(user_id="usr_01", alert=alert)
-    assert attempt.success is True
+    att = adapter.deliver_alert(user_id="usr_01", alert=alert)
+    assert att.success is True
 
-    # Check that NotificationService received the inbox notification
+    # Confirm inbox received notification using existing Notification domain model
     user_auth = _user("usr_01")
-    user_notifs = notif_svc.get_notifications(requester=user_auth, target_user_id="usr_01")
-    assert len(user_notifs) == 1
-    assert "Alert: XAUUSD" in user_notifs[0].title
-    assert user_notifs[0].metadata["payload"]["alert_id"] == alert.id
+    notifs = notif_svc.get_notifications(requester=user_auth, target_user_id="usr_01")
+    assert len(notifs) == 1
+    assert notifs[0].category == NotificationCategory.MARKET_HEALTH
+    assert "Alert: XAUUSD" in notifs[0].title
 
 
 # ---------------------------------------------------------------------------
-# 3. NotificationDeliveryService Authorization & Sanitization Tests
+# 3. NotificationDeliveryService User Isolation & Authorization Tests
 # ---------------------------------------------------------------------------
 
-def test_delivery_service_success_path():
+def test_user_isolation_rejects_unauthorized_cross_user_delivery():
     adapter = RecordingNotificationDeliveryAdapter()
     auth_svc = UserAuthorizationService()
-    user = _user("usr_01", delivery_enabled=True)
-    auth_svc.register_user(user)
+    user1 = _user("usr_01", role=UserRole.USER)
+    user2 = _user("usr_02", role=UserRole.USER)
+    auth_svc.register_user(user1)
+    auth_svc.register_user(user2)
 
     delivery_svc = NotificationDeliveryService(
         delivery_port=adapter,
@@ -193,20 +166,23 @@ def test_delivery_service_success_path():
     )
 
     alert = _sample_alert()
-    res = delivery_svc.deliver_alert_to_user(user_id="usr_01", alert=alert)
+    # User 1 attempts to deliver alert to User 2's user_id -> MUST raise PermissionError
+    with pytest.raises(PermissionError) as exc_info:
+        delivery_svc.deliver_alert_to_user(
+            target_user_id="usr_02",
+            alert=alert,
+            requester=user1,
+        )
+    assert "not authorized to deliver notifications for user 'usr_02'" in str(exc_info.value)
 
-    assert res.delivered is True
-    assert res.status == NOTIFICATION_DELIVERY_DELIVERED
-    assert res.user_id == "usr_01"
-    # Verify sanitization stripped secret token from message and details
-    assert "secret_xyz123" not in res.alert.message
-    assert "[REDACTED]" in res.alert.message
-    assert res.alert.details["auth_token"] == "[REDACTED]"
 
-
-def test_delivery_service_unregistered_user():
+def test_admin_allowed_cross_user_delivery():
     adapter = RecordingNotificationDeliveryAdapter()
     auth_svc = UserAuthorizationService()
+    admin_user = _user("admin_user", role=UserRole.ADMIN)
+    target_user = _user("target_user", role=UserRole.USER)
+    auth_svc.register_user(admin_user)
+    auth_svc.register_user(target_user)
 
     delivery_svc = NotificationDeliveryService(
         delivery_port=adapter,
@@ -214,34 +190,17 @@ def test_delivery_service_unregistered_user():
     )
 
     alert = _sample_alert()
-    res = delivery_svc.deliver_alert_to_user(user_id="unregistered_user", alert=alert)
-
-    assert res.delivered is False
-    assert res.status == NOTIFICATION_DELIVERY_DENIED
-    assert res.reason == REASON_UNREGISTERED_USER
-
-
-def test_delivery_service_user_disabled_delivery():
-    adapter = RecordingNotificationDeliveryAdapter()
-    auth_svc = UserAuthorizationService()
-    user = _user("usr_disabled", delivery_enabled=False)
-    auth_svc.register_user(user)
-
-    delivery_svc = NotificationDeliveryService(
-        delivery_port=adapter,
-        user_auth_service=auth_svc,
+    res = delivery_svc.deliver_alert_to_user(
+        target_user_id="target_user",
+        alert=alert,
+        requester=admin_user,
     )
-
-    alert = _sample_alert()
-    res = delivery_svc.deliver_alert_to_user(user_id="usr_disabled", alert=alert)
-
-    assert res.delivered is False
-    assert res.status == NOTIFICATION_DELIVERY_DENIED
-    assert res.reason == REASON_DELIVERY_DISABLED
+    assert res.success is True
+    assert res.user_id == "target_user"
 
 
-def test_delivery_service_channel_failure():
-    adapter = RecordingNotificationDeliveryAdapter(available=False)
+def test_delivery_service_sanitizes_secrets():
+    adapter = RecordingNotificationDeliveryAdapter()
     auth_svc = UserAuthorizationService()
     user = _user("usr_01")
     auth_svc.register_user(user)
@@ -251,29 +210,46 @@ def test_delivery_service_channel_failure():
         user_auth_service=auth_svc,
     )
 
-    alert = _sample_alert()
-    res = delivery_svc.deliver_alert_to_user(user_id="usr_01", alert=alert)
+    alert = _sample_alert(message="Token token=secret_xyz123 exposed")
+    att = delivery_svc.deliver_alert_to_user(
+        target_user_id="usr_01",
+        alert=alert,
+        requester=user,
+    )
+    assert att.success is True
+    recorded_alert = adapter.attempts[0]["alert"]
+    assert "secret_xyz123" not in recorded_alert["message"]
+    assert "[REDACTED]" in recorded_alert["message"]
 
-    assert res.delivered is False
-    assert res.status == NOTIFICATION_DELIVERY_FAILED
-    assert res.reason == REASON_CHANNEL_FAILED
 
-
-# ---------------------------------------------------------------------------
-# 4. AlertService Delivery Integration & Adapter Replacement Tests
-# ---------------------------------------------------------------------------
-
-def test_alert_service_deliver_alert_integration():
+def test_delivery_service_disabled_user_rejected():
     adapter = RecordingNotificationDeliveryAdapter()
     auth_svc = UserAuthorizationService()
-    auth_svc.register_user(_user("usr_01"))
+    user_disabled = _user("usr_disabled", delivery_enabled=False)
+    auth_svc.register_user(user_disabled)
 
-    deliv_svc = NotificationDeliveryService(
+    delivery_svc = NotificationDeliveryService(
         delivery_port=adapter,
         user_auth_service=auth_svc,
     )
 
-    alert_svc = AlertService(delivery_port=deliv_svc)
+    alert = _sample_alert()
+    att = delivery_svc.deliver_alert_to_user(
+        target_user_id="usr_disabled",
+        alert=alert,
+        requester=user_disabled,
+    )
+    assert att.success is False
+    assert att.reason == REASON_DELIVERY_DISABLED
+
+
+# ---------------------------------------------------------------------------
+# 4. AlertService Integration & Replaceable Adapter Test Doubles
+# ---------------------------------------------------------------------------
+
+def test_alert_service_delivers_via_abstract_port():
+    adapter = RecordingNotificationDeliveryAdapter()
+    alert_svc = AlertService(delivery_port=adapter)
 
     rule = AlertRule(
         rule_id="r1",
@@ -285,44 +261,54 @@ def test_alert_service_deliver_alert_integration():
     alert = alert_svc.evaluate_rule(rule=rule, current_price=1950.0)
     assert alert is not None
 
-    deliv_res = alert_svc.deliver_alert(alert=alert, user_id="usr_01")
-    assert deliv_res is not None
-    assert deliv_res.delivered is True
-    assert deliv_res.user_id == "usr_01"
+    att = alert_svc.deliver_alert(alert=alert, user_id="usr_01")
+    assert att is not None
+    assert att.success is True
+    assert att.user_id == "usr_01"
 
 
-class CustomMockDeliveryAdapter(NotificationDeliveryPort):
-    """Custom replaceable adapter for testing contract swap."""
+class MockReplaceableDeliveryAdapter(NotificationDeliveryPort):
+    """Custom replaceable adapter for testing Port double substitution."""
 
     def __init__(self) -> None:
-        self.last_delivered_user: str = ""
+        self.delivered_targets: list[str] = []
+
+    def deliver_event(
+        self, user_id: str, event: NotificationEvent, channel: str | None = None
+    ) -> NotificationDeliveryAttempt:
+        self.delivered_targets.append(user_id)
+        return NotificationDeliveryAttempt(
+            success=True,
+            user_id=user_id,
+            reason="delivered event via replaceable adapter",
+            channel="custom_adapter",
+        )
 
     def deliver_alert(
         self, user_id: str, alert: MarketAlert, channel: str | None = None
     ) -> NotificationDeliveryAttempt:
-        self.last_delivered_user = user_id
+        self.delivered_targets.append(user_id)
         return NotificationDeliveryAttempt(
             success=True,
             user_id=user_id,
-            reason="custom adapter delivery ok",
-            channel="custom",
+            reason="delivered alert via replaceable adapter",
+            channel="custom_adapter",
         )
 
     def describe(self) -> dict[str, any]:
-        return {"name": "CustomMockDeliveryAdapter"}
+        return {"name": "MockReplaceableDeliveryAdapter"}
 
 
-def test_adapter_replacement_contract():
-    custom_adapter = CustomMockDeliveryAdapter()
-    delivery_svc = NotificationDeliveryService(delivery_port=custom_adapter)
+def test_replaceable_adapter_double():
+    mock_adapter = MockReplaceableDeliveryAdapter()
+    delivery_svc = NotificationDeliveryService(delivery_port=mock_adapter)
 
     alert = _sample_alert()
-    res = delivery_svc.deliver_alert_to_user(
-        user_id="usr_custom",
+    att = delivery_svc.deliver_alert_to_user(
+        target_user_id="usr_replaceable",
         alert=alert,
-        requester=_user("usr_custom"),
+        requester=_user("usr_replaceable"),
     )
-
-    assert res.delivered is True
-    assert custom_adapter.last_delivered_user == "usr_custom"
-    assert res.channel == "custom"
+    assert att.success is True
+    assert att.channel == "custom_adapter"
+    assert "usr_replaceable" in mock_adapter.delivered_targets

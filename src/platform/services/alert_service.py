@@ -91,7 +91,7 @@ class AlertService:
 
         if hasattr(self._delivery_port, "deliver_alert_to_user"):
             return self._delivery_port.deliver_alert_to_user(
-                user_id=user_id.strip(),
+                target_user_id=user_id.strip(),
                 alert=alert,
                 channel=channel,
             )

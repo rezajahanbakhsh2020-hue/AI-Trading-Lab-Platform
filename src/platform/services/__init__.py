@@ -144,6 +144,7 @@ from .strategy_validation import (
 from .user_authorization import UserAuthorizationService
 from .security import AuditLogger, SecretSanitizer, SecurityBoundaryService
 from .telegram_delivery import TelegramDeliveryService
+from .notification_delivery import NotificationDeliveryService
 from .signal_delivery import (
     REASON_CHANNEL_FAILED,
     REASON_CONSUMER_NOT_AUTHORIZED,

@@ -63,6 +63,7 @@ class AlertService:
         created_at: Optional[Union[int, float, str]] = None,
         clock: Optional[Callable[[], float]] = None,
         security_service: Optional[SecurityBoundaryService] = None,
+        delivery_port: Optional[Any] = None,
     ) -> None:
         if monitor is not None and not isinstance(monitor, ProviderMonitor):
             raise ValueError("monitor must be a ProviderMonitor")
@@ -72,6 +73,28 @@ class AlertService:
         self._created_at = created_at
         self._clock = clock if clock is not None else time.time
         self._security_service = security_service or SecurityBoundaryService()
+        self._delivery_port = delivery_port
+
+    def deliver_alert(
+        self,
+        alert: MarketAlert,
+        user_id: str,
+        channel: Optional[str] = None,
+    ) -> Optional[Any]:
+        """Dispatch a generated MarketAlert to target user via configured delivery_port."""
+        if not isinstance(alert, MarketAlert):
+            raise ValueError("alert must be a MarketAlert instance")
+        if not isinstance(user_id, str) or not user_id.strip():
+            raise ValueError("user_id must be a non-empty string")
+        if self._delivery_port is None:
+            return None
+
+        # Directly invoke deliver_alert on the delivery boundary contract without duck-typing
+        return self._delivery_port.deliver_alert(
+            user_id=user_id.strip(),
+            alert=alert,
+            channel=channel,
+        )
 
     def evaluate(
         self,

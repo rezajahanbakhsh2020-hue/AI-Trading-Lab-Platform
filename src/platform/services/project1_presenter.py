@@ -403,18 +403,39 @@ class Project1SignalPresenter:
                     symbol=symbol,
                     timeframe=signal_dict.get("timeframe") or timeframe,
                     market_data_provider_id="biquote_provider",
+                    user=user,
                 )
                 if bt_res is not None:
                     res_dict = bt_res.to_dict()
+                    dt = bt_res.detail or ""
+
+                    # Determine explicit lifecycle state from BacktestResult detail
+                    status_str = "available"
+                    if dt.startswith("unauthorized"):
+                        status_str = "unauthorized"
+                    elif dt.startswith("empty"):
+                        status_str = "empty"
+                    elif dt.startswith("unavailable"):
+                        status_str = "unavailable"
+                    elif dt.startswith("invalid"):
+                        status_str = "invalid"
+                    elif dt.startswith("failed"):
+                        status_str = "failed"
+
                     if user is not None and not user.is_admin:
                         res_dict = self._security_service.filter_protected_payload(user, res_dict)
+
                     perf_payload = {
-                        "status": "available",
-                        "message": "Backtest assessment calculated on observed market candles.",
+                        "status": status_str,
+                        "message": SecretSanitizer.sanitize_string(dt) if dt else "Backtest assessment evaluated.",
                         "data": res_dict,
                     }
-            except Exception:
-                pass
+            except Exception as exc:
+                perf_payload = {
+                    "status": "failed",
+                    "message": f"Backtest assessment failed: {SecretSanitizer.sanitize_string(str(exc))}",
+                    "data": None,
+                }
 
         return {
             "generatedAt": signal_dict.get("timestamp"),

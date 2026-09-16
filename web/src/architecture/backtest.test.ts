@@ -30,6 +30,25 @@ describe("backtest architecture", () => {
     expect(state.data).toBeNull();
   });
 
+  it("extracts empty, invalid, unauthorized, and failed states correctly", () => {
+    const snapshot = createHostSnapshotFromProject1(
+      SAMPLE_CONNECTED_PORT,
+      SAMPLE_REAL_PROJECT1_SIGNAL
+    );
+
+    snapshot.performance = { status: "empty", message: "no candles available", data: {} } as any;
+    expect(extractBacktestState(snapshot).status).toBe("empty");
+
+    snapshot.performance = { status: "invalid", message: "invalid parameters", data: {} } as any;
+    expect(extractBacktestState(snapshot).status).toBe("invalid");
+
+    snapshot.performance = { status: "unauthorized", message: "access denied", data: {} } as any;
+    expect(extractBacktestState(snapshot).status).toBe("unauthorized");
+
+    snapshot.performance = { status: "failed", message: "execution exception", data: {} } as any;
+    expect(extractBacktestState(snapshot).status).toBe("failed");
+  });
+
   it("extracts available state when performance assessment data exists", () => {
     const snapshot = createHostSnapshotFromProject1(
       SAMPLE_CONNECTED_PORT,

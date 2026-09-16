@@ -28,7 +28,7 @@ export interface BacktestData {
 }
 
 export interface BacktestState {
-  status: "available" | "unavailable" | "loading" | "error" | "disconnected";
+  status: "available" | "unavailable" | "loading" | "error" | "disconnected" | "empty" | "invalid" | "failed" | "unauthorized";
   message: string;
   data: BacktestData | null;
 }
@@ -48,10 +48,52 @@ export function extractBacktestState(snapshot: HostSnapshot): BacktestState {
     data?: Record<string, any>;
   };
 
-  if (!perf || perf.status === "unavailable" || !perf.data) {
+  if (!perf) {
     return {
       status: "unavailable",
-      message: perf?.message || "Backtest results are unavailable until a strategy assessment is executed.",
+      message: "Backtest results are unavailable until a strategy assessment is executed.",
+      data: null,
+    };
+  }
+
+  const statusStr = (perf.status || "unavailable").toLowerCase();
+
+  if (statusStr === "unauthorized") {
+    return {
+      status: "unauthorized",
+      message: perf.message || "Access denied: backtest assessment restricted.",
+      data: null,
+    };
+  }
+
+  if (statusStr === "empty") {
+    return {
+      status: "empty",
+      message: perf.message || "No market candles available for backtest execution.",
+      data: null,
+    };
+  }
+
+  if (statusStr === "invalid") {
+    return {
+      status: "invalid",
+      message: perf.message || "Backtest parameters or raw result structure invalid.",
+      data: null,
+    };
+  }
+
+  if (statusStr === "failed" || statusStr === "error") {
+    return {
+      status: "failed",
+      message: perf.message || "Backtest execution engine encountered an application failure.",
+      data: null,
+    };
+  }
+
+  if (statusStr === "unavailable" || !perf.data) {
+    return {
+      status: "unavailable",
+      message: perf.message || "Backtest results are unavailable until a strategy assessment is executed.",
       data: null,
     };
   }

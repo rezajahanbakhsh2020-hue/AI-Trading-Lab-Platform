@@ -51,6 +51,27 @@ export function BacktestViewer({ snapshot }: BacktestViewerProps) {
             />
           )}
 
+          {status === "empty" && !useSample && (
+            <EmptyState
+              title={t("empty.noBacktestTitle") || "Empty Backtest Result"}
+              message={realState.message}
+            />
+          )}
+
+          {status === "unauthorized" && !useSample && (
+            <EmptyState
+              title="Access Denied"
+              message={realState.message}
+            />
+          )}
+
+          {(status === "invalid" || status === "failed" || status === "error") && !useSample && (
+            <EmptyState
+              title="Backtest Execution Failed"
+              message={realState.message}
+            />
+          )}
+
           {status === "unavailable" && !useSample && (
             <EmptyState
               title={t("empty.noBacktestTitle") || "No Active Backtest Assessment"}

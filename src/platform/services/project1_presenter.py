@@ -27,6 +27,7 @@ class Project1SignalPresenter:
         self,
         port: Project1IntegrationPort,
         security_service: Optional[SecurityBoundaryService] = None,
+        backtest_service: Optional[Any] = None,
     ) -> None:
         if port is None or not isinstance(port, Project1IntegrationPort):
             raise ValueError("port must be a valid Project1IntegrationPort")
@@ -36,6 +37,7 @@ class Project1SignalPresenter:
             raise ValueError("security_service must be a SecurityBoundaryService instance")
         self._port = port
         self._security_service = security_service or SecurityBoundaryService()
+        self._backtest_service = backtest_service
 
     def present_signal(
         self,
@@ -331,6 +333,31 @@ class Project1SignalPresenter:
         if user is not None and not user.is_admin and not user.has_permission(Permission.READ_STRATEGY_PARAMETERS):
             strat_msg = "Strategy evaluated by Project 1."
 
+        # Process optional backtest assessment if available
+        perf_payload: Dict[str, Any] = {
+            "status": "unavailable",
+            "message": "Performance metrics are unavailable until Project 1 backtest outputs are connected.",
+        }
+        if self._backtest_service is not None and strat_name:
+            try:
+                bt_res = self._backtest_service.run_assessment(
+                    strategy_name=strat_name,
+                    symbol=symbol,
+                    timeframe=signal_dict.get("timeframe") or timeframe,
+                    market_data_provider_id="biquote_provider",
+                )
+                if bt_res is not None:
+                    res_dict = bt_res.to_dict()
+                    if user is not None and not user.is_admin:
+                        res_dict = self._security_service.filter_protected_payload(user, res_dict)
+                    perf_payload = {
+                        "status": "available",
+                        "message": "Backtest assessment calculated on observed market candles.",
+                        "data": res_dict,
+                    }
+            except Exception:
+                pass
+
         return {
             "generatedAt": signal_dict.get("timestamp"),
             "platform": {
@@ -372,10 +399,7 @@ class Project1SignalPresenter:
                 "message": f"Validated {action_str} signal emitted by Project 1.",
                 "metadata": signal_dict.get("metadata", {}),
             },
-            "performance": {
-                "status": "unavailable",
-                "message": "Performance metrics are unavailable until Project 1 backtest outputs are connected.",
-            },
+            "performance": perf_payload,
             "risk": {
                 "entry": entry,
                 "stopLoss": sl,

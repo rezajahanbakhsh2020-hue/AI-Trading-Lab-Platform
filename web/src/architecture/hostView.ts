@@ -483,9 +483,9 @@ export const PAGE_COPY: Record<
     summary: "Track primary commodities, FX pairs, and crypto assets in real time.",
   },
   signals: {
-    title: "Signals",
+    title: "Signals & Outbound Dispatch",
     kicker: "Presentation and delivery",
-    summary: "Signals are presented only when Project 1 emits them through the integration port.",
+    summary: "Validated Project 1 signal feed with multi-channel outbound delivery authorization (Telegram, Webhook, Inbox) and security boundary level masking.",
   },
   strategies: {
     title: "Strategies",

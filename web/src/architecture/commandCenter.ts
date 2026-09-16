@@ -81,7 +81,7 @@ export function queryCommandCenter(
     { id: "nav-dashboard", title: "Dashboard", category: "navigation", description: "Host overview & operational metrics", route: "/" },
     { id: "nav-markets", title: "Markets & Chart", category: "navigation", description: "Real-time quotes and interactive candles", route: "/markets" },
     { id: "nav-watchlist", title: "Watchlist", category: "navigation", description: "Personal workspace watchlists", route: "/watchlist" },
-    { id: "nav-signals", title: "Signals Feed", category: "navigation", description: "Validated Project 1 signal feed", route: "/signals" },
+    { id: "nav-signals", title: "Signals & Outbound Dispatch", category: "navigation", description: "Validated signal feed & Telegram/Webhook dispatch", route: "/signals" },
     { id: "nav-strategies", title: "Strategies", category: "navigation", description: "Strategy readiness & stability metrics", route: "/strategies" },
     { id: "nav-backtest", title: "Backtest", category: "navigation", description: "Walk-forward validation assessment", route: "/backtest" },
     { id: "nav-performance", title: "Performance", category: "navigation", description: "Sharpe ratio & win rate metrics", route: "/performance" },
@@ -134,7 +134,7 @@ export function queryCommandCenter(
   }
 
   // 3. Signals
-  if (!cleanQuery || cleanQuery.includes("sig") || cleanQuery.includes("buy") || cleanQuery.includes("sell") || cleanQuery.includes("xau")) {
+  if (!cleanQuery || cleanQuery.includes("sig") || cleanQuery.includes("buy") || cleanQuery.includes("sell") || cleanQuery.includes("xau") || cleanQuery.includes("dispatch") || cleanQuery.includes("tele")) {
     if (snapshot.signal.action) {
       const confStr = snapshot.signal.confidence != null ? `${(snapshot.signal.confidence * 100).toFixed(0)}%` : "N/A";
       allItems.push({
@@ -144,6 +144,14 @@ export function queryCommandCenter(
         description: `Confidence: ${confStr} | Timeframe: ${snapshot.market.timeframe}`,
         route: "/signals",
         badge: snapshot.signal.action,
+      });
+      allItems.push({
+        id: "signal-outbound-dispatch",
+        title: "Outbound Signal Delivery Dispatcher",
+        category: "signal",
+        description: "Dispatch signals to Telegram, Webhooks, or In-App Inbox",
+        route: "/signals#dispatch",
+        badge: "DISPATCH",
       });
     }
   }

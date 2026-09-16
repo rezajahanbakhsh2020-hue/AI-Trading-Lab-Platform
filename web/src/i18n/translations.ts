@@ -17,6 +17,23 @@ export const SUPPORTED_LANGUAGES: LanguageInfo[] = [
 ];
 
 export const enTranslations = {
+  authorization: {
+    title: "Autonomous Execution Gate",
+    kicker: "Deterministic Trade Readiness Assurance",
+    summary: "Safety gate evaluating signal tradability, stability, geometry, and risk/reward before autonomous execution dispatch.",
+    statusTitle: "Authorization Decision",
+    gateChecksTitle: "Execution Gate Checks Breakdown",
+    riskRewardTitle: "Risk / Reward Ratio Gate",
+    authorized: "AUTHORIZED FOR EXECUTION",
+    unauthorized: "UNAUTHORIZED / HELD",
+    noSignal: "HOLD (NO SIGNAL)",
+    disconnected: "DISCONNECTED",
+    statusLabel: "Status",
+    ratioLabel: "Risk / Reward Ratio",
+    timestampLabel: "Evaluated At",
+    passed: "PASSED",
+    failed: "FAILED / REJECTED",
+  },
   // Common UI & Navigation
   nav: {
     dashboard: "Dashboard",
@@ -36,6 +53,7 @@ export const enTranslations = {
     ai: "AI Assistant",
     alerts: "Alert Center",
     notifications: "Notifications",
+    authorization: "Autonomous Gate",
     audit: "Operational Control",
     settings: "Settings",
     logs: "Logs",
@@ -433,6 +451,23 @@ export const enTranslations = {
 export type TranslationKeys = typeof enTranslations;
 
 export const faTranslations: TranslationKeys = {
+  authorization: {
+    title: "دروازه تایید اجرای خودمختار",
+    kicker: "اطمینان قطعی از آمادگی معامله",
+    summary: "دروازه ایمنی ارزیابی معامله‌پذیری سیگنال، پایداری، هندسه سفارش و نسبت سود به زیان قبل از ارسال اجرای خودمختار.",
+    statusTitle: "تصمیم‌گیری مجوز اجرا",
+    gateChecksTitle: "تفکیک بررسی دروازه‌های اجرا",
+    riskRewardTitle: "دروازه نسبت ریسک به ریوارد",
+    authorized: "مجاز برای اجرا",
+    unauthorized: "غیرمجاز / متوقف شده",
+    noSignal: "توقف (بدون سیگنال)",
+    disconnected: "قطع شده",
+    statusLabel: "وضعیت",
+    ratioLabel: "نسبت ریسک به ریوارد",
+    timestampLabel: "ارزیابی شده در",
+    passed: "تایید شده",
+    failed: "رد شده / ناموفق",
+  },
   nav: {
     dashboard: "داشبورد",
     timeline: "خط زمان هوشمندی",
@@ -451,6 +486,7 @@ export const faTranslations: TranslationKeys = {
     ai: "دستیار هوش مصنوعی",
     alerts: "مرکز هشدارها",
     notifications: "اعلان‌ها",
+    authorization: "دروازه خودمختار",
     audit: "کنترل عملیاتی",
     settings: "تنظیمات",
     logs: "گزارش‌ها",
@@ -846,6 +882,23 @@ export const faTranslations: TranslationKeys = {
 };
 
 export const arTranslations: TranslationKeys = {
+  authorization: {
+    title: "بوابة تفويض التنفيذ الذاتي",
+    kicker: "ضمان جاهزية التداول الحتمية",
+    summary: "بوابة الأمان لتقييم قابلية تداول الإشارة، الاستقرار، الهندسة، ونسبة المخاطرة إلى المكافأة قبل إرسال التنفيذ الذاتي.",
+    statusTitle: "قرار التفويض",
+    gateChecksTitle: "تفصيل فحوصات بوابة التنفيذ",
+    riskRewardTitle: "بوابة نسبة المخاطرة إلى المكافأة",
+    authorized: "معتمد للتنفيذ",
+    unauthorized: "غير معتمد / معلق",
+    noSignal: "انتظار (لا توجد إشارة)",
+    disconnected: "غير متصل",
+    statusLabel: "الحالة",
+    ratioLabel: "نسبة المخاطرة إلى المكافأة",
+    timestampLabel: "تم التقييم في",
+    passed: "تم الاجتياز",
+    failed: "فشل / مرفوض",
+  },
   nav: {
     dashboard: "لوحة التحكم",
     timeline: "التسلسل الزمني للذكاء",
@@ -864,6 +917,7 @@ export const arTranslations: TranslationKeys = {
     ai: "مساعد الذكاء الاصطناعي",
     alerts: "مركز التنبيهات",
     notifications: "الإشعارات",
+    authorization: "البوابة الذاتية",
     audit: "التحكم التشغيلي",
     settings: "الإعدادات",
     logs: "السجلات",
@@ -1259,6 +1313,23 @@ export const arTranslations: TranslationKeys = {
 };
 
 export const trTranslations: TranslationKeys = {
+  authorization: {
+    title: "Otonom İnfaz Yetkilendirme Kapısı",
+    kicker: "Deterministik İşlem Hazırlık Güvencesi",
+    summary: "Otonom infaz öncesinde sinyal işlem edilebilirliği, kararlılık, geometri ve risk/ödül oranını değerlendiren güvenlik kapısı.",
+    statusTitle: "Yetkilendirme Kararı",
+    gateChecksTitle: "İnfaz Kapı Kontrolleri Detayı",
+    riskRewardTitle: "Risk / Ödül Oranı Kapısı",
+    authorized: "İNFAZ İÇİN YETKİLENDİRİLDİ",
+    unauthorized: "YETKİSİZ / BEKLETİLİYOR",
+    noSignal: "BEKLE (SİNYAL YOK)",
+    disconnected: "BAĞLANTI KESİLDİ",
+    statusLabel: "Durum",
+    ratioLabel: "Risk / Ödül Oranı",
+    timestampLabel: "Değerlendirilme Zamanı",
+    passed: "GEÇTİ",
+    failed: "BAŞARISIZ / REDDEDİLDİ",
+  },
   nav: {
     dashboard: "Kontrol Paneli",
     timeline: "İstihbarat Zaman Tüneli",
@@ -1277,6 +1348,7 @@ export const trTranslations: TranslationKeys = {
     ai: "Yapay Zeka Asistanı",
     alerts: "Uyarı Merkezi",
     notifications: "Bildirimler",
+    authorization: "Otonom Kapı",
     audit: "Operasyonel Kontrol",
     settings: "Ayarlar",
     logs: "Günlükler",

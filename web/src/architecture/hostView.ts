@@ -16,6 +16,7 @@ export const NAV_ITEMS = [
   { id: "performance", path: "/performance", label: "Performance", icon: "trending-up" },
   { id: "risk", path: "/risk", label: "Risk", icon: "shield" },
   { id: "audit", path: "/audit", label: "Operational Control", icon: "shield" },
+  { id: "authorization", path: "/authorization", label: "Autonomous Gate", icon: "shield" },
   { id: "health", path: "/health", label: "Health Center", icon: "activity" },
   { id: "monitoring", path: "/monitoring", label: "Monitoring", icon: "activity" },
   { id: "providers", path: "/providers", label: "Providers", icon: "layers" },
@@ -635,6 +636,11 @@ export const PAGE_COPY: Record<
     title: "Operational Control Plane & Platform Audit",
     kicker: "Production Audit & Lifecycle Observability",
     summary: "Complete operational control, lifecycle transition audit trail, security boundary tracking, and multi-tenant isolation monitoring.",
+  },
+  authorization: {
+    title: "Autonomous Execution Gate",
+    kicker: "Deterministic Trade Readiness Assurance",
+    summary: "Safety gate evaluating signal tradability, stability, geometry, and risk/reward before autonomous execution dispatch.",
   },
   alerts: {
     title: "Alert Center & Rule Engine",

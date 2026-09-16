@@ -20,6 +20,8 @@ export const enTranslations = {
   // Common UI & Navigation
   nav: {
     dashboard: "Dashboard",
+    timeline: "Intelligence Timeline",
+    screener: "Market Screener",
     markets: "Markets",
     watchlist: "Watchlist",
     signals: "Signals",
@@ -32,6 +34,7 @@ export const enTranslations = {
     providers: "Providers",
     academy: "Academy",
     ai: "AI Assistant",
+    alerts: "Alert Center",
     notifications: "Notifications",
     settings: "Settings",
     logs: "Logs",
@@ -341,6 +344,8 @@ export type TranslationKeys = typeof enTranslations;
 export const faTranslations: TranslationKeys = {
   nav: {
     dashboard: "داشبورد",
+    timeline: "خط زمان هوشمندی",
+    screener: "غربال‌گر بازار",
     markets: "بازارها",
     watchlist: "دیده‌بان",
     signals: "سیگنال‌ها",
@@ -353,6 +358,7 @@ export const faTranslations: TranslationKeys = {
     providers: "تامین‌کنندگان داده",
     academy: "آکادمی",
     ai: "دستیار هوش مصنوعی",
+    alerts: "مرکز هشدارها",
     notifications: "اعلان‌ها",
     settings: "تنظیمات",
     logs: "گزارش‌ها",
@@ -660,6 +666,8 @@ export const faTranslations: TranslationKeys = {
 export const arTranslations: TranslationKeys = {
   nav: {
     dashboard: "لوحة التحكم",
+    timeline: "التسلسل الزمني للذكاء",
+    screener: "مصفاة السوق",
     markets: "الأسواق",
     watchlist: "قائمة المراقبة",
     signals: "الإشارات",
@@ -672,6 +680,7 @@ export const arTranslations: TranslationKeys = {
     providers: "مزودو البيانات",
     academy: "الأكاديمية",
     ai: "مساعد الذكاء الاصطناعي",
+    alerts: "مركز التنبيهات",
     notifications: "الإشعارات",
     settings: "الإعدادات",
     logs: "السجلات",
@@ -979,6 +988,8 @@ export const arTranslations: TranslationKeys = {
 export const trTranslations: TranslationKeys = {
   nav: {
     dashboard: "Kontrol Paneli",
+    timeline: "İstihbarat Zaman Tüneli",
+    screener: "Piyasa Tarayıcısı",
     markets: "Piyasalar",
     watchlist: "İzleme Listesi",
     signals: "Sinyaller",
@@ -991,6 +1002,7 @@ export const trTranslations: TranslationKeys = {
     providers: "Veri Sağlayıcılar",
     academy: "Akademi",
     ai: "Yapay Zeka Asistanı",
+    alerts: "Uyarı Merkezi",
     notifications: "Bildirimler",
     settings: "Ayarlar",
     logs: "Günlükler",
@@ -1275,7 +1287,7 @@ export const trTranslations: TranslationKeys = {
       sourceValue: "Project1IntegrationPort Sözleşmesi üzerinden Proje 1",
       adapter: "Aktif Adaptör",
       market: "Birincil Piyasa Varlığı",
-      pattern: "Mimari Desen",
+      pattern: "Altıgen Mimari (Portlar ve Adaptörler)",
       patternValue: "Altıgen Mimari (Portlar ve Adaptörler)",
     },
     languageSettings: "Dil & Yerelleştirme",

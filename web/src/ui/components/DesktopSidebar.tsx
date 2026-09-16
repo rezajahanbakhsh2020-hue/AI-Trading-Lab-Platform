@@ -6,7 +6,7 @@ export function DesktopSidebar() {
   const { t } = useI18n();
 
   const workspaceNav = NAV_ITEMS.filter((item) =>
-    ["dashboard", "markets", "watchlist"].includes(item.id)
+    ["dashboard", "screener", "markets", "watchlist"].includes(item.id)
   );
 
   const intelligenceNav = NAV_ITEMS.filter((item) =>

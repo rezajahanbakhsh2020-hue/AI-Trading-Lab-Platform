@@ -12,9 +12,54 @@ Rules:
 
 from typing import Any, Dict, Optional
 
+from typing import Sequence
+from src.platform.domain.market import Candle
 from src.platform.domain.presented_signal import PresentedSignal
+from src.platform.integrations.backtest import BacktestSource
 from src.platform.integrations.project1 import Project1IntegrationPort
 from src.platform.services.lab_artifacts import LabArtifactService
+
+
+class LabArtifactBacktestAdapter(BacktestSource):
+    """Adapter bridging LabArtifactService to BacktestSource port."""
+
+    def __init__(self, service: LabArtifactService) -> None:
+        if service is None or not isinstance(service, LabArtifactService):
+            raise ValueError("service must be a valid LabArtifactService")
+        self._service = service
+
+    def run_backtest(
+        self,
+        strategy_name: str,
+        symbol: str,
+        timeframe: str,
+        candles: Sequence[Candle],
+        initial_capital: float = 10000.0,
+    ) -> Optional[Dict[str, Any]]:
+        # Read stability/backtest metrics from LabArtifactService
+        stability = self._service.get_stability(strategy_name=strategy_name)
+        if stability is None or not stability.metrics:
+            return None
+
+        m = stability.metrics
+        return {
+            "strategy_name": strategy_name,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "total_trades": int(m.get("total_trades", 0)),
+            "win_rate": float(m.get("win_rate", 0.0)),
+            "profit_factor": float(m.get("profit_factor", 0.0)),
+            "max_drawdown": float(m.get("max_drawdown", 0.0)),
+            "net_profit": float(m.get("net_profit", 0.0)),
+        }
+
+    def describe(self) -> Dict[str, Any]:
+        return {
+            "name": "LabArtifactBacktestAdapter",
+            "port": "BacktestSource",
+            "connected": True,
+            "source": self._service._source.describe(),
+        }
 
 
 class Project1LabArtifactAdapter(Project1IntegrationPort):

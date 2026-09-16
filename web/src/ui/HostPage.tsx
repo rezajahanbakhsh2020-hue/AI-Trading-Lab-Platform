@@ -15,6 +15,7 @@ import { NotificationCenter } from "./components/NotificationCenter";
 import { HealthCenter } from "./components/HealthCenter";
 import { IntelligenceTimeline } from "./components/IntelligenceTimeline";
 import { AIAssistant } from "./components/AIAssistant";
+import { BacktestViewer } from "./components/BacktestViewer";
 import {
   loadUserNotifications,
   saveUserNotifications,
@@ -439,23 +440,7 @@ function StrategiesPage({ snapshot }: { snapshot: HostSnapshot }) {
 }
 
 function BacktestPage({ snapshot }: { snapshot: HostSnapshot }) {
-  const { t } = useI18n();
-  return (
-    <div className="backtest-view">
-      <div className="card">
-        <div className="card-head">
-          <h3>{t("nav.backtest")}</h3>
-          <span className="status unavailable">{t("status.unavailable")}</span>
-        </div>
-        <div className="card-body">
-          <EmptyState
-            title={t("empty.noBacktestTitle")}
-            message={snapshot.performance.message}
-          />
-        </div>
-      </div>
-    </div>
-  );
+  return <BacktestViewer snapshot={snapshot} />;
 }
 
 function PerformancePage({ snapshot }: { snapshot: HostSnapshot }) {

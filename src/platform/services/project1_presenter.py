@@ -23,6 +23,7 @@ from src.platform.domain.trade_signal import TradeSignal
 from src.platform.domain.user_authorization import UserAuthorization
 from src.platform.integrations.project1 import Project1IntegrationPort
 from src.platform.services.autonomous_authorization import AutonomousAuthorizationService
+from src.platform.services.audit_control import PlatformAuditControlService
 from src.platform.services.security import SecretSanitizer, SecurityBoundaryService
 
 
@@ -35,6 +36,7 @@ class Project1SignalPresenter:
         security_service: Optional[SecurityBoundaryService] = None,
         backtest_service: Optional[Any] = None,
         authorization_service: Optional[AutonomousAuthorizationService] = None,
+        audit_control_service: Optional[PlatformAuditControlService] = None,
     ) -> None:
         if port is None or not isinstance(port, Project1IntegrationPort):
             raise ValueError("port must be a valid Project1IntegrationPort")
@@ -50,6 +52,7 @@ class Project1SignalPresenter:
         self._security_service = security_service or SecurityBoundaryService()
         self._backtest_service = backtest_service
         self._auth_service = authorization_service or AutonomousAuthorizationService()
+        self._audit_control_service = audit_control_service or PlatformAuditControlService(security_boundary=self._security_service)
 
     def present_signal(
         self,
@@ -457,12 +460,21 @@ class Project1SignalPresenter:
                     "data": None,
                 }
 
+        # Retrieve operational audit summary for HostSnapshot
+        _, _, audit_summary = self._audit_control_service.get_control_summary(user=user)
+        _, _, audit_events = self._audit_control_service.query_events(user=user, filter_params=None)
+
         return {
             "generatedAt": signal_dict.get("timestamp"),
             "platform": {
                 "name": "AI Trading Lab Platform",
                 "role": "Host application for AI-Trading-Lab",
                 "status": "ready",
+            },
+            "auditControl": {
+                "status": "available" if audit_summary is not None else "unavailable",
+                "summary": audit_summary.to_dict() if audit_summary else None,
+                "events": [e.to_dict() for e in audit_events[:50]] if audit_events else [],
             },
             "project1": {
                 "connected": True,

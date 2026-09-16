@@ -18,6 +18,7 @@ import { IntelligenceTimeline } from "./components/IntelligenceTimeline";
 import { AIAssistant } from "./components/AIAssistant";
 import { BacktestViewer } from "./components/BacktestViewer";
 import { IntelligenceWorkspace } from "./components/IntelligenceWorkspace";
+import { SignalDeliveryCenter } from "./components/SignalDeliveryCenter";
 import {
   loadUserNotifications,
   saveUserNotifications,
@@ -410,8 +411,9 @@ function WatchlistPage({
 
 function SignalsPage({ snapshot, onSync }: { snapshot: HostSnapshot; onSync?: () => void }) {
   return (
-    <div className="signals-view">
+    <div className="signals-view space-y-6">
       <SignalCard snapshot={snapshot} onSync={onSync} />
+      <SignalDeliveryCenter snapshot={snapshot} />
     </div>
   );
 }

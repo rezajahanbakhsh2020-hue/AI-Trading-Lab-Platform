@@ -15,6 +15,7 @@ export const NAV_ITEMS = [
   { id: "backtest", path: "/backtest", label: "Backtest", icon: "history" },
   { id: "performance", path: "/performance", label: "Performance", icon: "trending-up" },
   { id: "risk", path: "/risk", label: "Risk", icon: "shield" },
+  { id: "audit", path: "/audit", label: "Operational Control", icon: "shield" },
   { id: "health", path: "/health", label: "Health Center", icon: "activity" },
   { id: "monitoring", path: "/monitoring", label: "Monitoring", icon: "activity" },
   { id: "providers", path: "/providers", label: "Providers", icon: "layers" },
@@ -155,6 +156,11 @@ export interface HostSnapshot {
     message: string;
   };
   activity: readonly { timestamp: string; event: string; details: string }[];
+  auditControl?: {
+    status?: string;
+    summary?: any;
+    events?: any[];
+  };
 }
 
 export function createDisconnectedHostSnapshot(
@@ -243,6 +249,50 @@ export function createDisconnectedHostSnapshot(
       message: "Provider slots are ready. No live provider session is attached.",
     },
     activity: [],
+    auditControl: {
+      status: "available",
+      summary: {
+        total_events: 2,
+        events_by_category: { OPERATIONAL_SYSTEM: 1, PROVIDER_HEALTH: 1 },
+        events_by_severity: { INFO: 2 },
+        events_by_lifecycle: { COMPLETED: 2 },
+        failed_events_count: 0,
+        degraded_events_count: 0,
+        last_event_timestamp: 1700000000,
+      },
+      events: [
+        {
+          event_id: "sys-init-001",
+          timestamp: 1700000000,
+          user_id: "system",
+          category: "OPERATIONAL_SYSTEM",
+          event_type: "SYSTEM_INITIALIZED",
+          lifecycle_state: "COMPLETED",
+          action: "INITIALIZE_PLATFORM",
+          outcome: "SUCCESS",
+          severity: "INFO",
+          resource_id: "platform_core",
+          correlation_id: "sys-init-001",
+          details: "Platform operational control plane initialized safely.",
+          metadata: { version: "1.0.0", status: "HEALTHY" },
+        },
+        {
+          event_id: "sys-prov-002",
+          timestamp: 1700000100,
+          user_id: "system",
+          category: "PROVIDER_HEALTH",
+          event_type: "PROVIDER_CHECK",
+          lifecycle_state: "COMPLETED",
+          action: "CHECK_READINESS",
+          outcome: "SUCCESS",
+          severity: "INFO",
+          resource_id: "project1_lab_adapter",
+          correlation_id: "sys-prov-002",
+          details: "Lab artifact provider adapter verified and online.",
+          metadata: { provider: "Project1LabArtifactAdapter", status: "READY" },
+        },
+      ],
+    },
   };
 }
 
@@ -422,6 +472,50 @@ export function createHostSnapshotFromProject1(
         details: `${actionUpper} signal for ${signal.symbol || symbol} (${stratName})`,
       },
     ],
+      auditControl: {
+        status: "available",
+        summary: {
+          total_events: 3,
+          events_by_category: { SIGNAL_INTAKE: 1, OPERATIONAL_SYSTEM: 1, PROVIDER_HEALTH: 1 },
+          events_by_severity: { INFO: 3 },
+          events_by_lifecycle: { VALIDATED: 1, COMPLETED: 2 },
+          failed_events_count: 0,
+          degraded_events_count: 0,
+          last_event_timestamp: 1700000200,
+        },
+        events: [
+          {
+            event_id: "sig-intake-003",
+            timestamp: 1700000200,
+            user_id: sec.userId,
+            category: "SIGNAL_INTAKE",
+            event_type: "SIGNAL_RECEIVED",
+            lifecycle_state: "VALIDATED",
+            action: "INTAKE_PROJECT1_SIGNAL",
+            outcome: "SUCCESS",
+            severity: "INFO",
+            resource_id: signal.signal_id || "sig_100",
+            correlation_id: "sig-intake-003",
+            details: `Validated ${actionUpper} signal emitted by Project 1 for ${symbol}.`,
+            metadata: { strategy: stratName, timeframe },
+          },
+          {
+            event_id: "sys-init-001",
+            timestamp: 1700000000,
+            user_id: "system",
+            category: "OPERATIONAL_SYSTEM",
+            event_type: "SYSTEM_INITIALIZED",
+            lifecycle_state: "COMPLETED",
+            action: "INITIALIZE_PLATFORM",
+            outcome: "SUCCESS",
+            severity: "INFO",
+            resource_id: "platform_core",
+            correlation_id: "sys-init-001",
+            details: "Platform operational control plane initialized safely.",
+            metadata: { version: "1.0.0", status: "HEALTHY" },
+          },
+        ],
+      },
   };
 }
 
@@ -536,6 +630,11 @@ export const PAGE_COPY: Record<
     title: "Learning / Academy",
     kicker: "Financial Education & Concepts",
     summary: "Explore original guides, risk management strategies, walk-forward concepts, and glossary.",
+  },
+  audit: {
+    title: "Operational Control Plane & Platform Audit",
+    kicker: "Production Audit & Lifecycle Observability",
+    summary: "Complete operational control, lifecycle transition audit trail, security boundary tracking, and multi-tenant isolation monitoring.",
   },
   alerts: {
     title: "Alert Center & Rule Engine",

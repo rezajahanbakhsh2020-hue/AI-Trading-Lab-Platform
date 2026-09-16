@@ -160,6 +160,83 @@ export function BacktestViewer({ snapshot }: BacktestViewerProps) {
                 </div>
               </div>
 
+              {backtestData.walkForward && (
+                <div className="card space-y-4" style={{ padding: 16 }}>
+                  <div>
+                    <h4>{t("walkForward.title")}</h4>
+                    <p className="hint" style={{ fontSize: 13, marginTop: 2 }}>
+                      {t("walkForward.sub")}
+                    </p>
+                  </div>
+
+                  <div className="grid cols-4" style={{ gap: 12 }}>
+                    <div className="metric-box card" style={{ padding: 12 }}>
+                      <span className="hint">{t("walkForward.overallOosWinRate")}</span>
+                      <div className="metric text-green" style={{ fontSize: 18, fontWeight: 700, marginTop: 2 }}>
+                        {formatPercent(backtestData.walkForward.overallOutOfSampleWinRate)}
+                      </div>
+                    </div>
+                    <div className="metric-box card" style={{ padding: 12 }}>
+                      <span className="hint">{t("walkForward.overallOosPF")}</span>
+                      <div className="metric" style={{ fontSize: 18, fontWeight: 700, marginTop: 2 }}>
+                        {backtestData.walkForward.overallOutOfSampleProfitFactor.toFixed(2)}
+                      </div>
+                    </div>
+                    <div className="metric-box card" style={{ padding: 12 }}>
+                      <span className="hint">{t("walkForward.overallOosMaxDrawdown")}</span>
+                      <div className="metric text-red" style={{ fontSize: 18, fontWeight: 700, marginTop: 2 }}>
+                        {formatPercent(backtestData.walkForward.overallOutOfSampleMaxDrawdown)}
+                      </div>
+                    </div>
+                    <div className="metric-box card" style={{ padding: 12 }}>
+                      <span className="hint">{t("walkForward.overallOosNetProfit")}</span>
+                      <div className="metric text-green" style={{ fontSize: 18, fontWeight: 700, marginTop: 2 }}>
+                        {formatCurrency(backtestData.walkForward.overallOutOfSampleNetProfit)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {backtestData.walkForward.windows.length > 0 && (
+                    <div style={{ overflowX: "auto" }}>
+                      <table className="table" style={{ width: "100%", fontSize: 13 }}>
+                        <thead>
+                          <tr>
+                            <th>#</th>
+                            <th>{t("walkForward.inSampleWinRate")}</th>
+                            <th>{t("walkForward.inSamplePF")}</th>
+                            <th>{t("walkForward.outOfSampleWinRate")}</th>
+                            <th>{t("walkForward.outOfSamplePF")}</th>
+                            <th>{t("walkForward.outOfSampleDrawdown")}</th>
+                            <th>{t("walkForward.outOfSampleProfit")}</th>
+                            <th>{t("walkForward.efficiencyRatio")}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {backtestData.walkForward.windows.map((w) => (
+                            <tr key={w.windowIndex}>
+                              <td><strong>Window {w.windowIndex}</strong></td>
+                              <td>{formatPercent(w.inSampleWinRate)} ({w.inSampleTrades})</td>
+                              <td>{w.inSampleProfitFactor.toFixed(2)}</td>
+                              <td className="text-green">{formatPercent(w.outOfSampleWinRate)} ({w.outOfSampleTrades})</td>
+                              <td>{w.outOfSampleProfitFactor.toFixed(2)}</td>
+                              <td className="text-red">{formatPercent(w.outOfSampleMaxDrawdown)}</td>
+                              <td className={w.outOfSampleNetProfit >= 0 ? "text-green" : "text-red"}>
+                                {formatCurrency(w.outOfSampleNetProfit)}
+                              </td>
+                              <td>
+                                <span className={`chip ${w.efficiencyRatio >= 0.85 ? "ready-chip" : "warn-chip"}`}>
+                                  {w.efficiencyRatio.toFixed(2)}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="card" style={{ padding: 16 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <h4>{t("backtest.securityGateTitle") || "Security & Secret Boundary"}</h4>

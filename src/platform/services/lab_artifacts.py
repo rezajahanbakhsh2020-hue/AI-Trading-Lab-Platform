@@ -21,6 +21,7 @@ from typing import Optional
 
 from src.platform.domain import Signal, Stability, TradeSetup
 from src.platform.domain.security import Permission
+from src.platform.domain.walk_forward import WalkForwardResult, WalkForwardWindow
 from src.platform.domain.user_authorization import UserAuthorization
 from src.platform.integrations.lab import LabArtifactSource
 from src.platform.services.security import SecurityBoundaryService
@@ -130,6 +131,64 @@ class LabArtifactService:
             score=_require_field(raw, "score", "stability"),
             risk_level=_require_field(raw, "risk_level", "stability"),
             metrics=metrics,
+        )
+
+    def get_walk_forward(
+        self, strategy_name: str, symbol: str = "XAUUSD", timeframe: str = "1h", user: Optional[UserAuthorization] = None
+    ) -> Optional[WalkForwardResult]:
+        """Return a validated WalkForwardResult, or None when unavailable or unauthorized."""
+        _validate_strategy_name(strategy_name)
+
+        if user is not None:
+            allowed, _ = self._security_service.authorize(user, "signals", action="read")
+            if not allowed:
+                return None
+
+        raw = self._source.fetch_walk_forward(strategy_name=strategy_name)
+        if raw is None:
+            return None
+        _require_dict(raw, "walk_forward")
+
+        raw_windows = raw.get("windows", [])
+        windows_list = []
+        if isinstance(raw_windows, list):
+            for rw in raw_windows:
+                if isinstance(rw, dict):
+                    windows_list.append(
+                        WalkForwardWindow(
+                            window_index=int(rw.get("window_index", 0)),
+                            in_sample_trades=int(rw.get("in_sample_trades", 0)),
+                            in_sample_win_rate=float(rw.get("in_sample_win_rate", 0.0)),
+                            in_sample_profit_factor=float(rw.get("in_sample_profit_factor", 0.0)),
+                            out_of_sample_trades=int(rw.get("out_of_sample_trades", 0)),
+                            out_of_sample_win_rate=float(rw.get("out_of_sample_win_rate", 0.0)),
+                            out_of_sample_profit_factor=float(rw.get("out_of_sample_profit_factor", 0.0)),
+                            out_of_sample_max_drawdown=float(rw.get("out_of_sample_max_drawdown", 0.0)),
+                            out_of_sample_net_profit=float(rw.get("out_of_sample_net_profit", 0.0)),
+                            efficiency_ratio=float(rw.get("efficiency_ratio", 1.0)),
+                        )
+                    )
+
+        stab = None
+        stab_raw = raw.get("stability")
+        if isinstance(stab_raw, dict):
+            stab = Stability(
+                score=float(stab_raw.get("score", 0.0)),
+                risk_level=str(stab_raw.get("risk_level", "medium")),
+                metrics=stab_raw.get("metrics"),
+            )
+
+        return WalkForwardResult(
+            strategy_name=strategy_name,
+            symbol=raw.get("symbol", symbol),
+            timeframe=raw.get("timeframe", timeframe),
+            windows=tuple(windows_list),
+            overall_out_of_sample_win_rate=float(raw.get("overall_out_of_sample_win_rate", 0.0)),
+            overall_out_of_sample_profit_factor=float(raw.get("overall_out_of_sample_profit_factor", 0.0)),
+            overall_out_of_sample_max_drawdown=float(raw.get("overall_out_of_sample_max_drawdown", 0.0)),
+            overall_out_of_sample_net_profit=float(raw.get("overall_out_of_sample_net_profit", 0.0)),
+            stability=stab,
+            detail=raw.get("detail"),
         )
 
 

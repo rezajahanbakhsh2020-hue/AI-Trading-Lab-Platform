@@ -38,6 +38,10 @@ class LabArtifactSource(ABC):
         """Return a raw stability dict, or None when unavailable."""
         raise NotImplementedError
 
+    def fetch_walk_forward(self, strategy_name: str) -> Optional[Dict[str, Any]]:
+        """Return a raw walk-forward dict, or None when unavailable."""
+        return None
+
     @abstractmethod
     def close(self) -> None:
         """Cleanly release any resources."""

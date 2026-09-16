@@ -26,6 +26,14 @@ const mockSnapshot: HostSnapshot = {
   providers: { marketData: "connected", quote: "connected", message: "Providers ready" },
   performance: { status: "unavailable", message: "No perf data" },
   security: { userId: "test_user", role: "user", isAdmin: false, permissions: ["read:signals"], status: "enforced", message: "Authorized" },
+  authorization: {
+    status: "AUTHORIZED",
+    isAuthorized: true,
+    reason: "autonomous execution authorized",
+    checks: [],
+    riskRewardRatio: 2.0,
+    timestamp: 123456789,
+  },
   activity: [],
 };
 

@@ -86,6 +86,7 @@ export function queryCommandCenter(
     { id: "nav-backtest", title: "Backtest", category: "navigation", description: "Walk-forward validation assessment", route: "/backtest" },
     { id: "nav-performance", title: "Performance", category: "navigation", description: "Sharpe ratio & win rate metrics", route: "/performance" },
     { id: "nav-risk", title: "Risk Management", category: "navigation", description: "Position sizing & R:R calculator", route: "/risk" },
+    { id: "nav-authorization", title: "Autonomous Authorization", category: "navigation", description: "Autonomous execution authorization & assurance gates", route: "/authorization" },
     { id: "nav-health", title: "Health Center", category: "navigation", description: "Connection health & provider status", route: "/health" },
     { id: "nav-monitoring", title: "Monitoring", category: "navigation", description: "Data freshness & live observer", route: "/monitoring" },
     { id: "nav-providers", title: "Providers", category: "navigation", description: "Registered provider slots", route: "/providers" },

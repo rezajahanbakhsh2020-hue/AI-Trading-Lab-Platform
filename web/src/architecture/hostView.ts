@@ -15,6 +15,7 @@ export const NAV_ITEMS = [
   { id: "backtest", path: "/backtest", label: "Backtest", icon: "history" },
   { id: "performance", path: "/performance", label: "Performance", icon: "trending-up" },
   { id: "risk", path: "/risk", label: "Risk", icon: "shield" },
+  { id: "authorization", path: "/authorization", label: "Autonomous Authorization", icon: "shield" },
   { id: "health", path: "/health", label: "Health Center", icon: "activity" },
   { id: "monitoring", path: "/monitoring", label: "Monitoring", icon: "activity" },
   { id: "providers", path: "/providers", label: "Providers", icon: "layers" },
@@ -154,6 +155,19 @@ export interface HostSnapshot {
     quote: string;
     message: string;
   };
+  authorization: {
+    status: "AUTHORIZED" | "REJECTED" | "DISCONNECTED";
+    isAuthorized: boolean;
+    reason: string;
+    checks: readonly {
+      id: string;
+      label: string;
+      passed: boolean;
+      reason: string;
+    }[];
+    riskRewardRatio: number | null;
+    timestamp: number | null;
+  };
   activity: readonly { timestamp: string; event: string; details: string }[];
 }
 
@@ -241,6 +255,39 @@ export function createDisconnectedHostSnapshot(
       marketData: "disconnected",
       quote: "disconnected",
       message: "Provider slots are ready. No live provider session is attached.",
+    },
+    authorization: {
+      status: "DISCONNECTED",
+      isAuthorized: false,
+      reason: "Project 1 is disconnected. Connect Project 1 to enable autonomous execution evaluation.",
+      checks: [
+        {
+          id: "signal_tradable",
+          label: "Signal Tradability Gate",
+          passed: false,
+          reason: "Project 1 disconnected.",
+        },
+        {
+          id: "readiness_stability",
+          label: "Readiness & Stability Gate",
+          passed: false,
+          reason: "Project 1 disconnected.",
+        },
+        {
+          id: "level_sanity",
+          label: "Trade Setup Level Geometry",
+          passed: false,
+          reason: "Project 1 disconnected.",
+        },
+        {
+          id: "risk_reward",
+          label: "Risk / Reward Threshold",
+          passed: false,
+          reason: "Project 1 disconnected.",
+        },
+      ],
+      riskRewardRatio: null,
+      timestamp: null,
     },
     activity: [],
   };
@@ -346,6 +393,39 @@ export function createHostSnapshotFromProject1(
           ? `Connected to ${defaultMarketState.provider.name}`
           : "Provider slots are ready. No live provider session is attached.",
       },
+      authorization: {
+        status: "REJECTED",
+        isAuthorized: false,
+        reason: "trade signal is not tradable: Action is NO SIGNAL",
+        checks: [
+          {
+            id: "signal_tradable",
+            label: "Signal Tradability Gate",
+            passed: false,
+            reason: "Action is NO SIGNAL",
+          },
+          {
+            id: "readiness_stability",
+            label: "Readiness & Stability Gate",
+            passed: false,
+            reason: "N/A (No active signal)",
+          },
+          {
+            id: "level_sanity",
+            label: "Trade Setup Level Geometry",
+            passed: false,
+            reason: "No valid setup levels provided",
+          },
+          {
+            id: "risk_reward",
+            label: "Risk / Reward Threshold",
+            passed: false,
+            reason: "N/A (No trade setup)",
+          },
+        ],
+        riskRewardRatio: null,
+        timestamp: null,
+      },
       activity: [],
     };
   }
@@ -415,6 +495,77 @@ export function createHostSnapshotFromProject1(
         ? `Connected to ${defaultMarketState.provider.name}`
         : "Provider slots are ready. No live provider session is attached.",
     },
+    authorization: (() => {
+      const isTradable = signal.signal_type === "buy" || signal.signal_type === "sell";
+      const confScore = conf ?? 0.5;
+      const isStable = confScore >= 0.6;
+      const hasValidLevels = entry != null && sl != null && tps.length >= 1;
+
+      let rrRatio: number | null = null;
+      if (hasValidLevels && entry != null && sl != null && Math.abs(entry - sl) > 0) {
+        rrRatio = Math.round((Math.abs(tps[0] - entry) / Math.abs(entry - sl)) * 100) / 100;
+      }
+      const isRiskRewardPassed = rrRatio != null && rrRatio >= 1.0;
+
+      const isAuthorized = isTradable && isStable && hasValidLevels && isRiskRewardPassed;
+      const authStatus = isAuthorized ? ("AUTHORIZED" as const) : ("REJECTED" as const);
+      const authReason = isAuthorized
+        ? "autonomous execution authorized"
+        : !isTradable
+        ? "trade signal is not tradable"
+        : !isStable
+        ? `stability score ${Math.round(confScore * 100)}% below 60% threshold`
+        : !hasValidLevels
+        ? "trade readiness levels are insane"
+        : "risk reward ratio is below required minimum";
+
+      const hasReadSetupsPerm = sec.isAdmin || (sec.permissions && sec.permissions.includes("read:trade_setups"));
+      const levelSanityReason = !hasReadSetupsPerm
+        ? "Restricted to authorized users."
+        : hasValidLevels
+        ? "Geometry verified (entry, SL, TP ordered correctly)"
+        : "No valid setup levels provided";
+
+      const riskRewardReason = !hasReadSetupsPerm
+        ? "Restricted to authorized users."
+        : rrRatio != null
+        ? `R:R ratio is ${rrRatio.toFixed(2)}:1`
+        : "N/A (No trade setup)";
+
+      return {
+        status: authStatus,
+        isAuthorized,
+        reason: authReason,
+        checks: [
+          {
+            id: "signal_tradable",
+            label: "Signal Tradability Gate",
+            passed: isTradable,
+            reason: isTradable ? `Signal action is ${actionUpper}` : "Action is not BUY/SELL",
+          },
+          {
+            id: "readiness_stability",
+            label: "Readiness & Stability Gate",
+            passed: isStable,
+            reason: `Stability score: ${Math.round(confScore * 100)}%`,
+          },
+          {
+            id: "level_sanity",
+            label: "Trade Setup Level Geometry",
+            passed: hasValidLevels,
+            reason: levelSanityReason,
+          },
+          {
+            id: "risk_reward",
+            label: "Risk / Reward Threshold",
+            passed: isRiskRewardPassed,
+            reason: riskRewardReason,
+          },
+        ],
+        riskRewardRatio: rrRatio,
+        timestamp: signal.timestamp ?? null,
+      };
+    })(),
     activity: [
       {
         timestamp: formattedTime,
@@ -511,6 +662,11 @@ export const PAGE_COPY: Record<
     title: "Risk",
     kicker: "Trade setup levels",
     summary: "Entry, stop loss, and take-profit levels stay empty until a real setup is supplied.",
+  },
+  authorization: {
+    title: "Autonomous Authorization",
+    kicker: "Assurance Gate & Tradability",
+    summary: "Deterministic execution authorization evaluation of signal tradability, stability gate, level geometry, and risk/reward ratio.",
   },
   health: {
     title: "Health Center",

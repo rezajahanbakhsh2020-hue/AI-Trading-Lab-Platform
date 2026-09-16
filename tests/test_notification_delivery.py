@@ -1,8 +1,14 @@
-"""Tests for the notification delivery architecture layer (PR #33 correction).
+"""Tests for the notification delivery architecture layer (PR #33 final correction).
 
-Verifies NotificationDeliveryPort, RecordingNotificationDeliveryAdapter,
-NotificationDeliveryService, strict user isolation, secret sanitization, honest
-in-process delivery semantics, adapter contract swapping, and AlertService integration.
+Verifies:
+- NotificationDeliveryPort contract and NotificationDeliveryAttempt
+- Honest in-process delivery semantics (externally_delivered=False, channel='in_process')
+- RecordingNotificationDeliveryAdapter in-process recording and optional NotificationService inbox forwarding
+- Strict user isolation enforcement (unauthorized cross-user delivery rejection)
+- Security boundary authorization & SecretSanitizer secret redaction
+- Adapter replacement with a test double (MockReplaceableDeliveryAdapter)
+- Stable AlertService delivery integration without duck-typing
+- Preservation of existing NotificationService and Alert Center contracts
 """
 
 from dataclasses import FrozenInstanceError
@@ -36,7 +42,7 @@ def _sample_alert(
     alert_id: str = "alt_1",
     kind: str = "price",
     severity: str = "warning",
-    message: str = "Price reached 2000.00 with secret api_key=secret_xyz123",
+    message: str = "Price reached 2000.00 with secret token=secret_xyz123",
 ) -> MarketAlert:
     return MarketAlert(
         id=alert_id,
@@ -61,7 +67,7 @@ def _sample_event(
         category=NotificationCategory.SIGNAL,
         severity=NotificationSeverity.INFO,
         title="New Signal Emitted",
-        message="BUY signal for XAUUSD with secret api_key=secret_xyz123",
+        message="BUY signal for XAUUSD with token=secret_xyz123",
         timestamp=time.time(),
         target_user_id=target_user_id,
         payload={"secret_key": "my_secret_key"},
@@ -87,21 +93,24 @@ def _user(
 # 1. Port Contract & Infrastructure Model Tests
 # ---------------------------------------------------------------------------
 
-def test_notification_delivery_attempt_contract():
+def test_notification_delivery_attempt_honest_semantics():
     attempt = NotificationDeliveryAttempt(
         success=True,
         user_id="usr_01",
         reason="recorded in-process",
         channel="in_process",
+        externally_delivered=False,
         detail="detail msg",
     )
     assert attempt.success is True
     assert attempt.user_id == "usr_01"
     assert attempt.channel == "in_process"
+    assert attempt.externally_delivered is False
 
     data = attempt.to_dict()
     assert data["success"] is True
     assert data["channel"] == "in_process"
+    assert data["externally_delivered"] is False
 
     with pytest.raises(ValueError):
         NotificationDeliveryAttempt(success="not_a_bool", user_id="u", reason="r")  # type: ignore
@@ -122,11 +131,13 @@ def test_recording_adapter_delivers_alert_and_event_with_honest_semantics():
     att_alert = adapter.deliver_alert(user_id="usr_01", alert=alert)
     assert att_alert.success is True
     assert att_alert.channel == "in_process"
+    assert att_alert.externally_delivered is False
     assert "recorded in-process" in att_alert.reason
 
     att_event = adapter.deliver_event(user_id="usr_01", event=event)
     assert att_event.success is True
     assert att_event.channel == "in_process"
+    assert att_event.externally_delivered is False
 
     assert len(adapter.attempts) == 2
     assert adapter.describe()["recorded_count"] == 2
@@ -197,6 +208,7 @@ def test_admin_allowed_cross_user_delivery():
     )
     assert res.success is True
     assert res.user_id == "target_user"
+    assert res.externally_delivered is False
 
 
 def test_delivery_service_sanitizes_secrets():
@@ -265,6 +277,7 @@ def test_alert_service_delivers_via_abstract_port():
     assert att is not None
     assert att.success is True
     assert att.user_id == "usr_01"
+    assert att.externally_delivered is False
 
 
 class MockReplaceableDeliveryAdapter(NotificationDeliveryPort):
@@ -282,6 +295,7 @@ class MockReplaceableDeliveryAdapter(NotificationDeliveryPort):
             user_id=user_id,
             reason="delivered event via replaceable adapter",
             channel="custom_adapter",
+            externally_delivered=True,
         )
 
     def deliver_alert(
@@ -293,6 +307,7 @@ class MockReplaceableDeliveryAdapter(NotificationDeliveryPort):
             user_id=user_id,
             reason="delivered alert via replaceable adapter",
             channel="custom_adapter",
+            externally_delivered=True,
         )
 
     def describe(self) -> dict[str, any]:
@@ -311,4 +326,5 @@ def test_replaceable_adapter_double():
     )
     assert att.success is True
     assert att.channel == "custom_adapter"
+    assert att.externally_delivered is True
     assert "usr_replaceable" in mock_adapter.delivered_targets

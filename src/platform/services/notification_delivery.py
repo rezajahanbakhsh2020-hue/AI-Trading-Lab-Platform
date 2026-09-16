@@ -75,6 +75,7 @@ class NotificationDeliveryService:
                     user_id=clean_target,
                     reason=REASON_DELIVERY_DISABLED,
                     channel="in_process",
+                    externally_delivered=False,
                     detail=f"User '{clean_target}' has delivery_enabled=False",
                 )
         elif self._auth_service is not None:
@@ -83,6 +84,7 @@ class NotificationDeliveryService:
                 user_id=clean_target,
                 reason=REASON_UNREGISTERED_USER,
                 channel="in_process",
+                externally_delivered=False,
                 detail=f"User '{clean_target}' is not registered in UserAuthorizationService",
             )
 
@@ -98,6 +100,7 @@ class NotificationDeliveryService:
                 user_id=clean_target,
                 reason=REASON_SECURITY_DENIED,
                 channel="in_process",
+                externally_delivered=False,
                 detail=sec_reason,
             )
 
@@ -185,6 +188,21 @@ class NotificationDeliveryService:
             user_id=clean_uid,
             alert=sanitized_alert,
             channel=channel,
+        )
+
+    def deliver_alert(
+        self,
+        user_id: str,
+        alert: MarketAlert,
+        channel: Optional[str] = None,
+        requester: Optional[UserAuthorization] = None,
+    ) -> NotificationDeliveryAttempt:
+        """Stable contract method compatible with NotificationDeliveryPort."""
+        return self.deliver_alert_to_user(
+            target_user_id=user_id,
+            alert=alert,
+            channel=channel,
+            requester=requester,
         )
 
     def describe(self) -> Dict[str, Any]:

@@ -7,7 +7,7 @@ notifications to targeted users. Concrete delivery transport adapters live behin
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import time
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 
 from src.platform.domain.alert import MarketAlert
 from src.platform.domain.notification import NotificationEvent
@@ -21,6 +21,7 @@ class NotificationDeliveryAttempt:
     user_id: str
     reason: str
     channel: str = "in_process"
+    externally_delivered: bool = False
     detail: Optional[str] = None
     timestamp: float = 0.0
 
@@ -40,6 +41,9 @@ class NotificationDeliveryAttempt:
             raise ValueError("channel must be a non-empty string")
         object.__setattr__(self, "channel", self.channel.strip().lower())
 
+        if not isinstance(self.externally_delivered, bool):
+            raise ValueError("externally_delivered must be a boolean")
+
         if self.detail is not None:
             if not isinstance(self.detail, str) or not self.detail.strip():
                 raise ValueError("detail must be a non-empty string if provided")
@@ -56,6 +60,7 @@ class NotificationDeliveryAttempt:
             "user_id": self.user_id,
             "reason": self.reason,
             "channel": self.channel,
+            "externally_delivered": self.externally_delivered,
             "detail": self.detail,
             "timestamp": self.timestamp,
         }

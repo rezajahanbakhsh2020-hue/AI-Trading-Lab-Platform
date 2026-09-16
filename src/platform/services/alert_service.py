@@ -89,19 +89,12 @@ class AlertService:
         if self._delivery_port is None:
             return None
 
-        if hasattr(self._delivery_port, "deliver_alert_to_user"):
-            return self._delivery_port.deliver_alert_to_user(
-                target_user_id=user_id.strip(),
-                alert=alert,
-                channel=channel,
-            )
-        elif hasattr(self._delivery_port, "deliver_alert"):
-            return self._delivery_port.deliver_alert(
-                user_id=user_id.strip(),
-                alert=alert,
-                channel=channel,
-            )
-        return None
+        # Directly invoke deliver_alert on the delivery boundary contract without duck-typing
+        return self._delivery_port.deliver_alert(
+            user_id=user_id.strip(),
+            alert=alert,
+            channel=channel,
+        )
 
     def evaluate(
         self,

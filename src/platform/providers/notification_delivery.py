@@ -1,8 +1,9 @@
 """In-process notification delivery adapter.
 
 Records outbound notification/alert delivery attempts for testing and development
-with honest in-process semantics (channel='in_process'). Does NOT falsely claim external
-delivery. Optionally forwards to NotificationService for in-app inbox persistence.
+with honest in-process semantics (channel='in_process', externally_delivered=False).
+Does NOT falsely claim external delivery occurred. Optionally forwards to
+NotificationService for in-app inbox persistence.
 """
 
 from typing import Any, Dict, List, Optional
@@ -82,6 +83,7 @@ class RecordingNotificationDeliveryAdapter(NotificationDeliveryPort):
                 user_id=user_id.strip(),
                 reason=f"delivery channel '{ch}' is unavailable",
                 channel=ch,
+                externally_delivered=False,
                 detail=f"in-process delivery attempt failed on channel '{ch}'",
                 timestamp=ts,
             )
@@ -92,12 +94,13 @@ class RecordingNotificationDeliveryAdapter(NotificationDeliveryPort):
             })
             return attempt
 
-        # Honest in-process recorded attempt
+        # Honest in-process recorded attempt (externally_delivered is explicitly False)
         attempt = NotificationDeliveryAttempt(
             success=True,
             user_id=user_id.strip(),
             reason=f"event '{event.event_id}' recorded in-process via channel '{ch}'",
             channel=ch,
+            externally_delivered=False,
             detail=f"recorded in-process attempt {len(self.attempts) + 1}",
             timestamp=ts,
         )
@@ -135,6 +138,7 @@ class RecordingNotificationDeliveryAdapter(NotificationDeliveryPort):
                 user_id=user_id.strip(),
                 reason=f"delivery channel '{ch}' is unavailable",
                 channel=ch,
+                externally_delivered=False,
                 detail=f"in-process alert delivery attempt failed on channel '{ch}'",
                 timestamp=ts,
             )
@@ -150,6 +154,7 @@ class RecordingNotificationDeliveryAdapter(NotificationDeliveryPort):
             user_id=user_id.strip(),
             reason=f"alert '{alert.id}' recorded in-process via channel '{ch}'",
             channel=ch,
+            externally_delivered=False,
             detail=f"recorded in-process attempt {len(self.attempts) + 1}",
             timestamp=ts,
         )

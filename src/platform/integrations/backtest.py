@@ -31,6 +31,18 @@ class BacktestSource(ABC):
         """Return a raw backtest result dict, or None when backtest is unavailable."""
         raise NotImplementedError
 
+    def run_walk_forward_validation(
+        self,
+        strategy_name: str,
+        symbol: str,
+        timeframe: str,
+        candles: Sequence[Candle],
+        initial_capital: float = 10000.0,
+        window_count: int = 3,
+    ) -> Optional[Dict[str, Any]]:
+        """Return a raw walk-forward validation result dict, or None when unavailable."""
+        return None
+
     @abstractmethod
     def describe(self) -> Dict[str, Any]:
         """Return a small serializable description of the backtest source."""

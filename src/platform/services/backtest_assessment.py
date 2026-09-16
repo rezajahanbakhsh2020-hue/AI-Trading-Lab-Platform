@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional
 
 from src.platform.domain.backtest import BacktestResult
 from src.platform.domain.stability import Stability
+from src.platform.domain.walk_forward import WalkForwardResult, WalkForwardWindow
 from src.platform.domain.user_authorization import UserAuthorization
 from src.platform.integrations.backtest import BacktestSource
 from src.platform.services.provider_operations import ProviderOperations
@@ -181,6 +182,167 @@ class BacktestAssessmentService:
                 profit_factor=0.0,
                 max_drawdown=0.0,
                 net_profit=0.0,
+                stability=Stability(score=0.0, risk_level="critical"),
+                detail=f"failed: {SecretSanitizer.sanitize_string(str(exc))}",
+            )
+
+    def run_walk_forward_assessment(
+        self,
+        strategy_name: str,
+        symbol: str,
+        timeframe: str,
+        market_data_provider_id: str,
+        initial_capital: float = 10000.0,
+        candles_limit: int = 200,
+        window_count: int = 3,
+        user: Optional[UserAuthorization] = None,
+    ) -> WalkForwardResult:
+        """Run walk-forward validation over real candles, enforcing authorization and security bounds."""
+
+        _validate_string(strategy_name, "strategy_name")
+        _validate_string(symbol, "symbol")
+        _validate_string(timeframe, "timeframe")
+        _validate_string(market_data_provider_id, "market_data_provider_id")
+
+        if initial_capital <= 0:
+            raise ValueError("initial_capital must be greater than zero")
+
+        if user is not None:
+            allowed, reason = self._security_service.authorize(user, "signals", action="read")
+            if not allowed:
+                return WalkForwardResult(
+                    strategy_name=strategy_name,
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    windows=(),
+                    overall_out_of_sample_win_rate=0.0,
+                    overall_out_of_sample_profit_factor=0.0,
+                    overall_out_of_sample_max_drawdown=0.0,
+                    overall_out_of_sample_net_profit=0.0,
+                    stability=Stability(score=0.0, risk_level="critical"),
+                    detail=f"unauthorized: {reason}",
+                )
+
+        try:
+            candles_result = self._operations.fetch_candles(
+                provider_id=market_data_provider_id,
+                symbol=symbol,
+                timeframe=timeframe,
+                limit=candles_limit,
+            )
+
+            if not candles_result.candles:
+                return WalkForwardResult(
+                    strategy_name=strategy_name,
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    windows=(),
+                    overall_out_of_sample_win_rate=0.0,
+                    overall_out_of_sample_profit_factor=0.0,
+                    overall_out_of_sample_max_drawdown=0.0,
+                    overall_out_of_sample_net_profit=0.0,
+                    stability=Stability(score=0.0, risk_level="critical"),
+                    detail="empty: no candles available for walk-forward execution",
+                )
+
+            raw_wf = self._source.run_walk_forward_validation(
+                strategy_name=strategy_name,
+                symbol=symbol,
+                timeframe=timeframe,
+                candles=candles_result.candles,
+                initial_capital=initial_capital,
+                window_count=window_count,
+            )
+
+            if raw_wf is None:
+                return WalkForwardResult(
+                    strategy_name=strategy_name,
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    windows=(),
+                    overall_out_of_sample_win_rate=0.0,
+                    overall_out_of_sample_profit_factor=0.0,
+                    overall_out_of_sample_max_drawdown=0.0,
+                    overall_out_of_sample_net_profit=0.0,
+                    stability=Stability(score=0.0, risk_level="critical"),
+                    detail="unavailable: walk-forward validation unavailable from source",
+                )
+
+            _require_dict(raw_wf, "walk_forward")
+
+            raw_windows = raw_wf.get("windows", [])
+            windows_list = []
+            if isinstance(raw_windows, list):
+                for rw in raw_windows:
+                    if isinstance(rw, dict):
+                        windows_list.append(
+                            WalkForwardWindow(
+                                window_index=int(rw.get("window_index", 0)),
+                                in_sample_trades=int(rw.get("in_sample_trades", 0)),
+                                in_sample_win_rate=float(rw.get("in_sample_win_rate", 0.0)),
+                                in_sample_profit_factor=float(rw.get("in_sample_profit_factor", 0.0)),
+                                out_of_sample_trades=int(rw.get("out_of_sample_trades", 0)),
+                                out_of_sample_win_rate=float(rw.get("out_of_sample_win_rate", 0.0)),
+                                out_of_sample_profit_factor=float(rw.get("out_of_sample_profit_factor", 0.0)),
+                                out_of_sample_max_drawdown=float(rw.get("out_of_sample_max_drawdown", 0.0)),
+                                out_of_sample_net_profit=float(rw.get("out_of_sample_net_profit", 0.0)),
+                                efficiency_ratio=float(rw.get("efficiency_ratio", 1.0)),
+                            )
+                        )
+
+            oos_wr = float(raw_wf.get("overall_out_of_sample_win_rate", 0.0))
+            oos_pf = float(raw_wf.get("overall_out_of_sample_profit_factor", 0.0))
+            oos_dd = float(raw_wf.get("overall_out_of_sample_max_drawdown", 0.0))
+            oos_np = float(raw_wf.get("overall_out_of_sample_net_profit", 0.0))
+
+            stability = _assess_stability_from_backtest(
+                win_rate=oos_wr,
+                profit_factor=oos_pf,
+                max_drawdown=oos_dd,
+                net_profit=oos_np,
+                total_trades=sum(w.out_of_sample_trades for w in windows_list) or 10,
+            )
+
+            detail_msg = "walk-forward assessment completed successfully"
+            if "detail" in raw_wf and isinstance(raw_wf["detail"], str):
+                detail_msg = SecretSanitizer.sanitize_string(raw_wf["detail"])
+
+            return WalkForwardResult(
+                strategy_name=strategy_name,
+                symbol=symbol,
+                timeframe=timeframe,
+                windows=tuple(windows_list),
+                overall_out_of_sample_win_rate=oos_wr,
+                overall_out_of_sample_profit_factor=oos_pf,
+                overall_out_of_sample_max_drawdown=oos_dd,
+                overall_out_of_sample_net_profit=oos_np,
+                stability=stability,
+                detail=detail_msg,
+            )
+
+        except ValueError as ve:
+            return WalkForwardResult(
+                strategy_name=strategy_name,
+                symbol=symbol,
+                timeframe=timeframe,
+                windows=(),
+                overall_out_of_sample_win_rate=0.0,
+                overall_out_of_sample_profit_factor=0.0,
+                overall_out_of_sample_max_drawdown=0.0,
+                overall_out_of_sample_net_profit=0.0,
+                stability=Stability(score=0.0, risk_level="critical"),
+                detail=f"invalid: {str(ve)}",
+            )
+        except Exception as exc:
+            return WalkForwardResult(
+                strategy_name=strategy_name,
+                symbol=symbol,
+                timeframe=timeframe,
+                windows=(),
+                overall_out_of_sample_win_rate=0.0,
+                overall_out_of_sample_profit_factor=0.0,
+                overall_out_of_sample_max_drawdown=0.0,
+                overall_out_of_sample_net_profit=0.0,
                 stability=Stability(score=0.0, risk_level="critical"),
                 detail=f"failed: {SecretSanitizer.sanitize_string(str(exc))}",
             )

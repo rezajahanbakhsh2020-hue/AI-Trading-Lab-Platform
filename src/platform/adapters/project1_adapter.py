@@ -53,6 +53,21 @@ class LabArtifactBacktestAdapter(BacktestSource):
             "net_profit": float(m.get("net_profit", 0.0)),
         }
 
+    def run_walk_forward_validation(
+        self,
+        strategy_name: str,
+        symbol: str,
+        timeframe: str,
+        candles: Sequence[Candle],
+        initial_capital: float = 10000.0,
+        window_count: int = 3,
+    ) -> Optional[Dict[str, Any]]:
+        wf = self._service.get_walk_forward(strategy_name=strategy_name, symbol=symbol, timeframe=timeframe)
+        if wf is None:
+            return None
+
+        return wf.to_dict()
+
     def describe(self) -> Dict[str, Any]:
         return {
             "name": "LabArtifactBacktestAdapter",

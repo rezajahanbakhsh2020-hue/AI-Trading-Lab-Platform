@@ -425,6 +425,26 @@ class Project1SignalPresenter:
                     if user is not None and not user.is_admin:
                         res_dict = self._security_service.filter_protected_payload(user, res_dict)
 
+                    # Also evaluate walk-forward assessment if available
+                    wf_dict = None
+                    try:
+                        wf_res = self._backtest_service.run_walk_forward_assessment(
+                            strategy_name=strat_name,
+                            symbol=symbol,
+                            timeframe=signal_dict.get("timeframe") or timeframe,
+                            market_data_provider_id="biquote_provider",
+                            user=user,
+                        )
+                        if wf_res is not None and not (wf_res.detail or "").startswith("unavailable"):
+                            wf_dict = wf_res.to_dict()
+                            if user is not None and not user.is_admin:
+                                wf_dict = self._security_service.filter_protected_payload(user, wf_dict)
+                    except Exception:
+                        wf_dict = None
+
+                    if wf_dict:
+                        res_dict["walk_forward"] = wf_dict
+
                     perf_payload = {
                         "status": status_str,
                         "message": SecretSanitizer.sanitize_string(dt) if dt else "Backtest assessment evaluated.",

@@ -14,9 +14,15 @@ Rules:
 
 from typing import Any, Dict, Optional
 
+from src.platform.domain.readiness import Readiness
 from src.platform.domain.security import Permission
+from src.platform.domain.signal import Signal
+from src.platform.domain.stability import Stability
+from src.platform.domain.trade_setup import TradeSetup
+from src.platform.domain.trade_signal import TradeSignal
 from src.platform.domain.user_authorization import UserAuthorization
 from src.platform.integrations.project1 import Project1IntegrationPort
+from src.platform.services.autonomous_authorization import AutonomousAuthorizationService
 from src.platform.services.security import SecretSanitizer, SecurityBoundaryService
 
 
@@ -28,6 +34,7 @@ class Project1SignalPresenter:
         port: Project1IntegrationPort,
         security_service: Optional[SecurityBoundaryService] = None,
         backtest_service: Optional[Any] = None,
+        authorization_service: Optional[AutonomousAuthorizationService] = None,
     ) -> None:
         if port is None or not isinstance(port, Project1IntegrationPort):
             raise ValueError("port must be a valid Project1IntegrationPort")
@@ -35,9 +42,14 @@ class Project1SignalPresenter:
             security_service, SecurityBoundaryService
         ):
             raise ValueError("security_service must be a SecurityBoundaryService instance")
+        if authorization_service is not None and not isinstance(
+            authorization_service, AutonomousAuthorizationService
+        ):
+            raise ValueError("authorization_service must be an AutonomousAuthorizationService instance")
         self._port = port
         self._security_service = security_service or SecurityBoundaryService()
         self._backtest_service = backtest_service
+        self._auth_service = authorization_service or AutonomousAuthorizationService()
 
     def present_signal(
         self,
@@ -171,6 +183,14 @@ class Project1SignalPresenter:
                     "status": "unauthorized",
                     "message": pres["message"],
                 },
+                "authorization": {
+                    "status": "UNAUTHORIZED",
+                    "isAuthorized": False,
+                    "reason": pres["message"],
+                    "checks": [],
+                    "riskRewardRatio": None,
+                    "timestamp": None,
+                },
                 "performance": {
                     "status": "unavailable",
                     "message": "Performance metrics restricted.",
@@ -232,6 +252,14 @@ class Project1SignalPresenter:
                     "timestamp": None,
                     "status": "unavailable",
                     "message": "No Project 1 data connected yet.",
+                },
+                "authorization": {
+                    "status": "DISCONNECTED",
+                    "isAuthorized": False,
+                    "reason": "Project 1 is disconnected. Connect Project 1 to enable autonomous execution evaluation.",
+                    "checks": [],
+                    "riskRewardRatio": None,
+                    "timestamp": None,
                 },
                 "performance": {
                     "status": "unavailable",
@@ -296,6 +324,21 @@ class Project1SignalPresenter:
                     "status": "no-signal",
                     "message": pres["message"],
                 },
+                "authorization": {
+                    "status": "NO_SIGNAL",
+                    "isAuthorized": False,
+                    "reason": f"No active signal emitted by Project 1 for {symbol} ({timeframe}). Autonomous execution holds on NO SIGNAL.",
+                    "checks": [
+                        {
+                            "id": "signal_tradable",
+                            "label": "Signal Tradability Gate",
+                            "passed": False,
+                            "reason": "Signal action is NO SIGNAL / HOLD",
+                        }
+                    ],
+                    "riskRewardRatio": None,
+                    "timestamp": None,
+                },
                 "performance": {
                     "status": "unavailable",
                     "message": "Performance metrics are unavailable until Project 1 results are connected.",
@@ -322,16 +365,31 @@ class Project1SignalPresenter:
             }
 
         action_str = str(signal_dict["signal_type"]).upper()
-        strat_name = signal_dict.get("strategy_name")
+        strat_name = signal_dict.get("strategy_name") or "Project 1 Strategy"
         conf = signal_dict.get("confidence")
         entry = signal_dict.get("entry_price")
         sl = signal_dict.get("stop_loss")
         tps = list(signal_dict.get("take_profits") or [])
+        sig_ts = float(signal_dict.get("timestamp") or 0.0)
 
         # Mask strategy details for normal users if strategy info is protected
         strat_msg = f"Strategy '{strat_name}' owned and evaluated by Project 1."
         if user is not None and not user.is_admin and not user.has_permission(Permission.READ_STRATEGY_PARAMETERS):
             strat_msg = "Strategy evaluated by Project 1."
+
+        # Perform real deterministic Autonomous Authorization computation
+        auth_payload = self._compute_authorization(
+            action_str=action_str,
+            strat_name=strat_name,
+            symbol=symbol,
+            timeframe=signal_dict.get("timeframe") or timeframe,
+            timestamp=sig_ts,
+            confidence=conf,
+            entry=entry,
+            stop_loss=sl,
+            take_profits=tps,
+            user=user,
+        )
 
         # Process optional backtest assessment if available
         perf_payload: Dict[str, Any] = {
@@ -399,6 +457,7 @@ class Project1SignalPresenter:
                 "message": f"Validated {action_str} signal emitted by Project 1.",
                 "metadata": signal_dict.get("metadata", {}),
             },
+            "authorization": auth_payload,
             "performance": perf_payload,
             "risk": {
                 "entry": entry,
@@ -425,6 +484,112 @@ class Project1SignalPresenter:
                     "details": f"{action_str} signal for {symbol} ({strat_name})",
                 }
             ],
+        }
+
+    def _compute_authorization(
+        self,
+        action_str: str,
+        strat_name: str,
+        symbol: str,
+        timeframe: str,
+        timestamp: float,
+        confidence: Optional[float],
+        entry: Optional[float],
+        stop_loss: Optional[float],
+        take_profits: list,
+        user: Optional[UserAuthorization],
+    ) -> Dict[str, Any]:
+        """Compute deterministic autonomous execution authorization for presented signal."""
+        act_lower = action_str.lower()
+        is_tradable_action = act_lower in ("buy", "sell")
+
+        conf_val = confidence if confidence is not None else 0.5
+        stab = Stability(score=conf_val, risk_level="low" if conf_val >= 0.7 else "medium")
+        readiness = Readiness(approved=is_tradable_action, reason="Signal validated" if is_tradable_action else "Signal holds", timestamp=timestamp)
+
+        sig_domain = Signal(
+            action=act_lower if is_tradable_action else "hold",
+            confidence=conf_val,
+            timestamp=timestamp,
+            strategy_name=strat_name,
+        )
+
+        setup_domain = None
+        if entry is not None and stop_loss is not None and len(take_profits) >= 1:
+            try:
+                setup_domain = TradeSetup(
+                    symbol=symbol,
+                    entry_price=entry,
+                    stop_loss=stop_loss,
+                    take_profit_1=take_profits[0],
+                    take_profit_2=take_profits[1] if len(take_profits) > 1 else take_profits[0],
+                    take_profit_3=take_profits[2] if len(take_profits) > 2 else take_profits[0],
+                    timestamp=timestamp,
+                    direction=act_lower if is_tradable_action else "buy",
+                )
+            except Exception:
+                setup_domain = None
+
+        trade_sig = TradeSignal(
+            signal=sig_domain,
+            readiness=readiness,
+            stability=stab,
+            reason="Signal presented from Project 1",
+            tradable=is_tradable_action,
+            trade_setup=setup_domain,
+        )
+
+        auth_res = self._auth_service.authorize(
+            trade_signal=trade_sig,
+            timestamp=timestamp,
+        )
+
+        # Compute Risk/Reward ratio if setup exists
+        rr_ratio: Optional[float] = None
+        if setup_domain is not None:
+            rr_ratio = setup_domain.risk_reward_ratio()
+
+        checks = [
+            {
+                "id": "signal_tradable",
+                "label": "Signal Tradability Gate",
+                "passed": is_tradable_action,
+                "reason": f"Signal action is {action_str}" if is_tradable_action else "Action is not BUY/SELL",
+            },
+            {
+                "id": "readiness_stability",
+                "label": "Readiness & Stability Gate",
+                "passed": readiness.approved and stab.score >= 0.6,
+                "reason": f"Stability score: {int(stab.score * 100)}%" if stab.score >= 0.6 else f"Stability score {int(stab.score * 100)}% below 60% threshold",
+            },
+            {
+                "id": "level_sanity",
+                "label": "Trade Setup Level Geometry",
+                "passed": setup_domain is not None,
+                "reason": "Geometry verified (entry, SL, TP ordered correctly)" if setup_domain is not None else "No valid setup levels provided",
+            },
+            {
+                "id": "risk_reward",
+                "label": "Risk / Reward Threshold",
+                "passed": (rr_ratio is not None and rr_ratio >= 1.0),
+                "reason": f"R:R ratio is {rr_ratio:.2f}:1" if rr_ratio is not None else "N/A (No trade setup)",
+            },
+        ]
+
+        # Security boundary filtering if non-admin or unauthorized
+        if user is not None and not user.is_admin and not user.has_permission(Permission.READ_TRADE_SETUPS):
+            # Redact detailed level reasons for restricted user
+            for c in checks:
+                if c["id"] in ("level_sanity", "risk_reward"):
+                    c["reason"] = "Restricted to authorized users."
+
+        return {
+            "status": auth_res.status,
+            "isAuthorized": auth_res.is_authorized,
+            "reason": auth_res.reason,
+            "checks": checks,
+            "riskRewardRatio": round(rr_ratio, 2) if rr_ratio is not None else None,
+            "timestamp": timestamp,
         }
 
 

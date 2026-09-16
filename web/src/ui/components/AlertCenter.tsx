@@ -116,7 +116,7 @@ export function AlertCenter({ snapshot }: AlertCenterProps) {
             className={`btn ${activeTab === "alerts" ? "btn-primary" : "btn-secondary"}`}
             onClick={() => setActiveTab("alerts")}
           >
-            {t("nav.alerts") || "Alerts"} ({activeCount})
+            {t("nav.alerts")} ({activeCount})
           </button>
           <button
             className={`btn ${activeTab === "rules" ? "btn-primary" : "btn-secondary"}`}

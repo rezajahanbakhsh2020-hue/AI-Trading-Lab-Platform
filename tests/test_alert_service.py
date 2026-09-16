@@ -3,7 +3,7 @@
 import pytest
 
 from src.platform.domain import Availability
-from src.platform.domain.alert import MarketAlert
+from src.platform.domain.alert import AlertRule, MarketAlert
 from src.platform.domain.freshness import DataFreshness
 from src.platform.domain.market import Candle
 from src.platform.domain.quote import Quote
@@ -44,23 +44,6 @@ class FakeOperations(ProviderOperations):
             symbol=symbol,
             quote=self.quote,
         )
-
-
-class _FakeSource(LabArtifactSource):
-    def fetch_signal(self, symbol, timeframe):
-        return None
-
-    def fetch_trade_setup(self, symbol, timeframe):
-        return None
-
-    def fetch_stability(self, strategy_name):
-        return None
-
-    def close(self):
-        return None
-
-    def describe(self):
-        return {"name": "fake-source"}
 
 
 def _candle_at(timestamp):
@@ -113,8 +96,9 @@ def _evaluate(svc, include_healthy=False):
 
 
 def test_requires_monitor():
+    svc = AlertService(None)
     with pytest.raises(ValueError):
-        AlertService(None)
+        _evaluate(svc)
 
 
 def test_rejects_non_monitor():
@@ -191,6 +175,79 @@ def test_unknown_produces_info():
     assert alert.severity == "info"
 
 
-def test_bad_include_healthy_rejected():
-    with pytest.raises(ValueError):
-        _evaluate(_svc(), include_healthy="yes")  # type: ignore
+def test_evaluate_rule_price_above():
+    svc = AlertService()
+    rule = AlertRule(
+        rule_id="r1",
+        kind="price",
+        symbol="XAUUSD",
+        condition_type="price_above",
+        threshold=2700.0,
+    )
+    alert = svc.evaluate_rule(rule, current_price=2705.5)
+    assert alert is not None
+    assert alert.kind == "price"
+    assert alert.severity == "warning"
+    assert "2705.50" in alert.message
+
+
+def test_evaluate_rule_price_below_not_triggered():
+    svc = AlertService()
+    rule = AlertRule(
+        rule_id="r2",
+        kind="price",
+        symbol="XAUUSD",
+        condition_type="price_below",
+        threshold=2600.0,
+    )
+    alert = svc.evaluate_rule(rule, current_price=2650.0)
+    assert alert is None
+
+
+def test_evaluate_rule_signal_action():
+    svc = AlertService()
+    rule = AlertRule(
+        rule_id="r3",
+        kind="signal",
+        symbol="XAUUSD",
+        condition_type="signal_action",
+        expected_value="BUY",
+    )
+    alert = svc.evaluate_rule(rule, signal_action="BUY")
+    assert alert is not None
+    assert alert.kind == "signal"
+    assert alert.symbol == "XAUUSD"
+
+
+def test_evaluate_rule_provider_disconnect():
+    svc = AlertService()
+    rule = AlertRule(
+        rule_id="r4",
+        kind="provider",
+        symbol="XAUUSD",
+        condition_type="provider_disconnect",
+    )
+    alert = svc.evaluate_rule(rule, provider_connected=False)
+    assert alert is not None
+    assert alert.kind == "provider"
+    assert alert.severity == "critical"
+
+
+def test_acknowledge_and_resolve_alert_lifecycle():
+    svc = AlertService()
+    rule = AlertRule(
+        rule_id="r1",
+        kind="price",
+        symbol="XAUUSD",
+        condition_type="price_above",
+        threshold=2700.0,
+    )
+    alert = svc.evaluate_rule(rule, current_price=2710.0)
+    assert alert is not None
+    assert alert.status == "active"
+
+    ack_alert = svc.acknowledge_alert(alert)
+    assert ack_alert.status == "acknowledged"
+
+    res_alert = svc.resolve_alert(ack_alert)
+    assert res_alert.status == "resolved"

@@ -12,6 +12,7 @@ import { StrategyCard } from "./components/StrategyCard";
 import { AcademyViewer } from "./components/AcademyViewer";
 import { EmptyState } from "./components/EmptyState";
 import { NotificationCenter } from "./components/NotificationCenter";
+import { AlertCenter } from "./components/AlertCenter";
 import { HealthCenter } from "./components/HealthCenter";
 import { IntelligenceTimeline } from "./components/IntelligenceTimeline";
 import { AIAssistant } from "./components/AIAssistant";
@@ -159,6 +160,7 @@ export function HostPage({
       {normalizedPageId === "providers" && <ProvidersPage snapshot={snapshot} />}
       {(normalizedPageId === "academy" || pageId === "learning") && <AcademyPage />}
       {normalizedPageId === "ai" && <AIAssistant snapshot={snapshot} />}
+      {normalizedPageId === "alerts" && <AlertCenter snapshot={snapshot} />}
       {normalizedPageId === "notifications" && <NotificationsPage snapshot={snapshot} />}
       {normalizedPageId === "logs" && <LogsPage />}
       {normalizedPageId === "settings" && <SettingsPage snapshot={snapshot} />}

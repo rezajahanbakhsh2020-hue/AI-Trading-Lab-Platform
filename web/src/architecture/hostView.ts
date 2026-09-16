@@ -20,6 +20,7 @@ export const NAV_ITEMS = [
   { id: "providers", path: "/providers", label: "Providers", icon: "layers" },
   { id: "academy", path: "/academy", label: "Academy", icon: "book-open" },
   { id: "ai", path: "/ai", label: "AI Assistant", icon: "bot" },
+  { id: "alerts", path: "/alerts", label: "Alert Center", icon: "bell" },
   { id: "notifications", path: "/notifications", label: "Notifications", icon: "bell" },
   { id: "settings", path: "/settings", label: "Settings", icon: "settings" },
 ] as const;
@@ -535,6 +536,11 @@ export const PAGE_COPY: Record<
     title: "Learning / Academy",
     kicker: "Financial Education & Concepts",
     summary: "Explore original guides, risk management strategies, walk-forward concepts, and glossary.",
+  },
+  alerts: {
+    title: "Alert Center & Rule Engine",
+    kicker: "Real-Time Market & Signal Alerts",
+    summary: "Configure custom price thresholds, signal filters, and provider freshness rules with live snapshot evaluation.",
   },
   notifications: {
     title: "Notifications",

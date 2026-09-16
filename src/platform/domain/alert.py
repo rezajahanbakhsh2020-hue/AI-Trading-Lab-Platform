@@ -3,8 +3,7 @@
 Immutable value object representing a user-facing alert derived honestly
 from real monitored market state. Alerts are never fabricated: every message
 and detail is built only from data the platform actually observed. The
-captured source snapshot (``details``) is preserved verbatim victo the caller
-owns the interpretation..
+captured source snapshot (``details``) is preserved verbatim.
 """
 
 from collections.abc import Mapping
@@ -13,9 +12,17 @@ from typing import Any, Dict, Optional, Union
 import math
 import numbers
 
-VALID_ALERT_KINDS = ("freshness",)
+VALID_ALERT_KINDS = ("freshness", "price", "signal", "provider", "security")
 VALID_ALERT_SEVERITIES = ("info", "warning", "critical")
 VALID_ALERT_STATUSES = ("active", "acknowledged", "resolved")
+
+VALID_CONDITION_TYPES = (
+    "price_above",
+    "price_below",
+    "signal_action",
+    "confidence_below",
+    "provider_disconnect",
+)
 
 
 class _ImmutableDetails(dict):
@@ -37,27 +44,81 @@ class _ImmutableDetails(dict):
 
 
 @dataclass(frozen=True)
+class AlertRule:
+    """Immutable user-defined rule for generating alerts."""
+
+    rule_id: str
+    kind: str
+    symbol: str
+    condition_type: str
+    threshold: Optional[float] = None
+    expected_value: Optional[str] = None
+    timeframe: str = "1h"
+    enabled: bool = True
+    created_at: Union[int, float, str] = 0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.rule_id, str) or not self.rule_id.strip():
+            raise ValueError("rule_id must be a non-empty string")
+        object.__setattr__(self, "rule_id", self.rule_id.strip())
+
+        if not isinstance(self.kind, str) or self.kind.strip().lower() not in VALID_ALERT_KINDS:
+            raise ValueError(f"kind must be one of: {', '.join(VALID_ALERT_KINDS)}")
+        object.__setattr__(self, "kind", self.kind.strip().lower())
+
+        if not isinstance(self.symbol, str) or not self.symbol.strip():
+            raise ValueError("symbol must be a non-empty string")
+        object.__setattr__(self, "symbol", self.symbol.strip())
+
+        if (
+            not isinstance(self.condition_type, str)
+            or self.condition_type.strip().lower() not in VALID_CONDITION_TYPES
+        ):
+            raise ValueError(f"condition_type must be one of: {', '.join(VALID_CONDITION_TYPES)}")
+        object.__setattr__(self, "condition_type", self.condition_type.strip().lower())
+
+        if not isinstance(self.timeframe, str) or not self.timeframe.strip():
+            raise ValueError("timeframe must be a non-empty string")
+        object.__setattr__(self, "timeframe", self.timeframe.strip())
+
+        if not isinstance(self.enabled, bool):
+            raise ValueError("enabled must be a boolean")
+
+        if self.threshold is not None:
+            if isinstance(self.threshold, bool) or not isinstance(self.threshold, (int, float)):
+                raise ValueError("threshold must be a numeric value")
+            if not math.isfinite(self.threshold):
+                raise ValueError("threshold must be finite")
+            object.__setattr__(self, "threshold", float(self.threshold))
+
+        if self.expected_value is not None:
+            if not isinstance(self.expected_value, str):
+                raise ValueError("expected_value must be a string")
+            object.__setattr__(self, "expected_value", self.expected_value.strip())
+
+        if (
+            isinstance(self.created_at, bool)
+            or not isinstance(self.created_at, (int, float, str))
+        ):
+            raise ValueError("created_at must be an int, float, or ISO string")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "rule_id": self.rule_id,
+            "kind": self.kind,
+            "symbol": self.symbol,
+            "condition_type": self.condition_type,
+            "threshold": self.threshold,
+            "expected_value": self.expected_value,
+            "timeframe": self.timeframe,
+            "enabled": self.enabled,
+            "created_at": self.created_at,
+        }
+
+
+@dataclass(frozen=True)
 class MarketAlert:
-    """Immutable user-facing alert derived from real monitored state.
-
-
-
-    Attribute semantics:
-    - id: deterministic, human-readable identifier derived from the alert kind,
-      observed status,,and market context (never fabricated market data).
-    - kind: alert category (currently only "freshness").
-    - severity: "info" (unknown state), "warning" (stale,, or
-      "critical" (unavailable.
-    - status: lifecycle state ("active" until a caller acknowledges/resolves it;
-      this model stores normalized status without any background transitions).
-    - message: human-readable summary built strictly from observed fields.
-
-
-
-    - details: verbatim captured source snapshot (e.g. aforementioned freshness dict,
-      provider ids,, candle count,, quote status); ``None`` when no source snapshot
-      was supplied,, never invented..
-    """
+    """Immutable user-facing alert derived from real monitored state."""
 
     id: str
     kind: str
@@ -112,10 +173,10 @@ class MarketAlert:
             isinstance(self.created_at, bool)
             or not isinstance(self.created_at, (int, float, str))
         ):
-            raise ValueError("created_at must be an int, float,, or ISO-formatted string")
+            raise ValueError("created_at must be an int, float, or ISO-formatted string")
         if isinstance(self.created_at, str) and not self.created_at.strip():
             raise ValueError("created_at string must not be empty or whitespace")
-        if isinstance(self.created_at, (int, float))and not math.isfinite(self.created_at):
+        if isinstance(self.created_at, (int, float)) and not math.isfinite(self.created_at):
             raise ValueError("numeric created_at must be finite")
 
         if self.details is not None:

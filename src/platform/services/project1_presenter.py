@@ -24,6 +24,7 @@ from src.platform.domain.user_authorization import UserAuthorization
 from src.platform.integrations.project1 import Project1IntegrationPort
 from src.platform.services.autonomous_authorization import AutonomousAuthorizationService
 from src.platform.services.audit_control import PlatformAuditControlService
+from src.platform.services.execution_gateway import ExecutionGatewayService
 from src.platform.services.order_intent import OrderIntentService
 from src.platform.services.security import SecretSanitizer, SecurityBoundaryService
 
@@ -56,6 +57,11 @@ class Project1SignalPresenter:
         self._auth_service = authorization_service or AutonomousAuthorizationService()
         self._audit_control_service = audit_control_service or PlatformAuditControlService(security_boundary=self._security_service)
         self._order_intent_service = order_intent_service or OrderIntentService(
+            security_boundary=self._security_service,
+            audit_control=self._audit_control_service,
+        )
+        self._execution_gateway_service = ExecutionGatewayService(
+            order_intent_service=self._order_intent_service,
             security_boundary=self._security_service,
             audit_control=self._audit_control_service,
         )
@@ -249,6 +255,7 @@ class Project1SignalPresenter:
                 },
                 "activity": [],
                 "orderIntents": self.get_order_intents_payload(user=user),
+                "executionGateway": self._execution_gateway_service.get_boundary_status(user=user),
             }
 
         if not is_connected:
@@ -584,6 +591,7 @@ class Project1SignalPresenter:
                 }
             ],
             "orderIntents": self.get_order_intents_payload(user=user),
+            "executionGateway": self._execution_gateway_service.get_boundary_status(user=user),
         }
 
     def _compute_authorization_object(

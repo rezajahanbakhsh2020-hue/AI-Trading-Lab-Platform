@@ -81,19 +81,39 @@ export function OrderIntentViewer({
     }
   };
 
+  const execGw = snapshot.executionGateway;
+
   return (
     <div className="order-intent-viewer space-y-6">
-      {/* Non-Execution Disclosure Banner */}
+      {/* Non-Execution Disclosure Banner & Gateway Status */}
       <section className="card bg-amber-950/20 border-amber-500/30">
-        <div className="card-body flex items-start gap-3 p-4">
-          <span className="text-amber-400 text-xl">ℹ️</span>
-          <div>
-            <h4 className="font-semibold text-amber-300 text-sm mb-1">
-              {t("orderIntent.stagedOrderIntent")}
-            </h4>
-            <p className="text-xs text-amber-200/80 leading-relaxed">
-              {t("orderIntent.disclosure")}
-            </p>
+        <div className="card-body p-4 space-y-3">
+          <div className="flex items-start gap-3">
+            <span className="text-amber-400 text-xl">ℹ️</span>
+            <div>
+              <h4 className="font-semibold text-amber-300 text-sm mb-1">
+                {t("orderIntent.stagedOrderIntent")}
+              </h4>
+              <p className="text-xs text-amber-200/80 leading-relaxed">
+                {t("orderIntent.disclosure")}
+              </p>
+            </div>
+          </div>
+
+          {/* Execution Gateway Capability Status */}
+          <div className="border-t border-amber-500/20 pt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2 text-amber-200">
+              <span className="font-semibold">{t("orderIntent.executionBoundaryTitle")}:</span>
+              <span className="font-mono uppercase bg-amber-900/40 px-2 py-0.5 rounded border border-amber-500/30">
+                {execGw?.status || "unconfigured"}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-amber-300/80 text-[11px]">
+              <span>{t("orderIntent.allowsExecution")}:</span>
+              <span className="font-mono font-bold text-rose-400">
+                {execGw?.allows_execution ? "TRUE" : t("orderIntent.disabledExecution")}
+              </span>
+            </div>
           </div>
         </div>
       </section>

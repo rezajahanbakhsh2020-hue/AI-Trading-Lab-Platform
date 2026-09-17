@@ -36,6 +36,7 @@ __all__ = [
     "TradeReadinessService",
     "TradeSignalService",
     "AutonomousAuthorizationService",
+    "OrderIntentService",
     "REASON_AUTHORIZED",
     "REASON_SIGNAL_NOT_TRADABLE",
     "REASON_PROVIDER_REQUIRED",
@@ -125,6 +126,7 @@ from .autonomous_authorization import (
     REASON_SIGNAL_NOT_TRADABLE,
     AutonomousAuthorizationService,
 )
+from .order_intent import OrderIntentService
 from .trading_workflow import (
     REASON_PROVIDER_NOT_READY,
     REASON_WORKFLOW_DENIED,

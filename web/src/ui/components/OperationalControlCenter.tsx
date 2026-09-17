@@ -17,6 +17,7 @@ export function OperationalControlCenter({ snapshot }: OperationalControlCenterP
   const { t } = useI18n();
   const auditState = extractAuditControlState(snapshot);
   const { summary, events, status } = auditState;
+  const execMon = snapshot.executionMonitoring;
 
   const [categoryFilter, setCategoryFilter] = useState<AuditCategory | 'ALL'>('ALL');
   const [severityFilter, setSeverityFilter] = useState<AuditEventSeverity | 'ALL'>('ALL');
@@ -59,6 +60,41 @@ export function OperationalControlCenter({ snapshot }: OperationalControlCenterP
           </div>
         </div>
       </div>
+
+      {/* Execution Gateway & Reconciliation Summary Card */}
+      {execMon && (
+        <div className="card" style={{ padding: 16 }}>
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+            <h4 className="font-bold text-sm text-amber-300">
+              ⚡ {t("orderIntent.reconciliationTitle")}
+            </h4>
+            <span className="chip text-xs bg-amber-900/30 text-amber-300 border border-amber-500/30">
+              {t("orderIntent.monitoredIntents")}: {execMon.total_order_intents_monitored}
+            </span>
+          </div>
+          <div className="grid cols-3 gap-3 text-xs">
+            <div>
+              <span className="hint block mb-1">{t("orderIntent.executionAttemptsTitle")}:</span>
+              <strong className="text-base font-mono">{execMon.total_execution_attempts}</strong>
+            </div>
+            <div>
+              <span className="hint block mb-1">{t("orderIntent.reconciliationStatus")}:</span>
+              <strong className="text-base font-mono text-amber-400">
+                {execMon.reconciliation_status_counts?.NOT_CONFIGURED || 0} {t("orderIntent.notConfiguredRec")}
+              </strong>
+            </div>
+            <div>
+              <span className="hint block mb-1">{t("orderIntent.allowsExecution")}:</span>
+              <strong className="text-base font-mono text-rose-400">
+                {execMon.boundary?.allows_execution ? "TRUE" : t("orderIntent.disabledExecution")}
+              </strong>
+            </div>
+          </div>
+          <p className="hint text-xs mt-2 italic text-amber-200/70">
+            {t("orderIntent.reconciliationNotice")}
+          </p>
+        </div>
+      )}
 
       {/* Operational Summary Grid */}
       {summary && (

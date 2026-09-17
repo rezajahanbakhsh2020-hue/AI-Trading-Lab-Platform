@@ -6,7 +6,10 @@ user isolation, OrderIntent lifecycle checks, command derivation, and audit logg
 
 import pytest
 
-from src.platform.adapters.execution_gateway import UnavailableExecutionAdapter
+from src.platform.adapters.execution_gateway import (
+    UnavailableExecutionAdapter,
+    UnavailableExecutionReconciliationAdapter,
+)
 from src.platform.domain.audit_control import AuditCategory, OperationalLifecycleState
 from src.platform.domain.autonomous_authorization import (
     AUTHORIZATION_STATUS_AUTHORIZED,
@@ -15,6 +18,8 @@ from src.platform.domain.autonomous_authorization import (
 from src.platform.domain.execution_gateway import (
     ExecutionAttemptResult,
     ExecutionBoundaryStatus,
+    ExecutionReconciliationRecord,
+    ExecutionReconciliationStatus,
     ExecutionRequestCommand,
 )
 from src.platform.domain.order_intent import OrderIntent, OrderLifecycleState
@@ -373,3 +378,72 @@ def test_execution_gateway_service_adapter_exception_fail_closed():
     assert res.externally_executed is False
     assert "secret_token" not in res.detail
     assert "[REDACTED]" in res.detail
+
+
+def test_execution_reconciliation_unconfigured_fail_closed():
+    sec_boundary = SecurityBoundaryService()
+    audit_control = PlatformAuditControlService(security_boundary=sec_boundary)
+    order_service = OrderIntentService(security_boundary=sec_boundary, audit_control=audit_control)
+
+    user = UserAuthorization(user_id="user_rec_1", auth_code="code_1", role=UserRole.USER, permissions=(Permission.READ_SIGNALS,))
+
+    sig = Signal(action="buy", confidence=0.85, timestamp=1700000000.0, strategy_name="Strat1")
+    setup = TradeSetup(
+        symbol="XAUUSD", entry_price=2650.0, stop_loss=2635.0, take_profit_1=2670.0, take_profit_2=2690.0, take_profit_3=2710.0, timestamp=1700000000.0, direction="buy"
+    )
+    trade_sig = TradeSignal(signal=sig, tradable=True, trade_setup=setup, readiness=Readiness(approved=True, reason="OK", timestamp=1700000000.0), stability=Stability(score=0.85, risk_level="low"), reason="OK")
+    auth = AutonomousAuthorization(status=AUTHORIZATION_STATUS_AUTHORIZED, reason="OK", timestamp=1700000000.0, trade_signal=trade_sig)
+
+    _, _, intent = order_service.create_order_intent(
+        user=user, authorization=auth, idempotency_key="idemp_rec_test", symbol="XAUUSD"
+    )
+
+    service = ExecutionGatewayService(
+        order_intent_service=order_service,
+        security_boundary=sec_boundary,
+        audit_control=audit_control,
+    )
+
+    ok, msg, rec_data = service.reconcile_execution(user=user, order_intent_id=intent.order_intent_id)
+
+    assert ok is True
+    assert rec_data["status"] == ExecutionReconciliationStatus.NOT_CONFIGURED.value
+    assert rec_data["externally_executed"] is False
+    assert rec_data["internal_state"] == OrderLifecycleState.STAGED.value
+    assert "No external execution provider configured" in rec_data["reason"]
+
+    # Retrieve monitoring summary
+    summary = service.get_execution_monitoring_summary(user=user)
+    assert summary["status"] == "active"
+    assert summary["total_order_intents_monitored"] == 1
+    assert summary["reconciliation_status_counts"][ExecutionReconciliationStatus.NOT_CONFIGURED.value] == 1
+
+
+def test_execution_reconciliation_tenant_isolation():
+    sec_boundary = SecurityBoundaryService()
+    audit_control = PlatformAuditControlService(security_boundary=sec_boundary)
+    order_service = OrderIntentService(security_boundary=sec_boundary, audit_control=audit_control)
+
+    user1 = UserAuthorization(user_id="user_1", auth_code="code_1", role=UserRole.USER, permissions=(Permission.READ_SIGNALS,))
+    user2 = UserAuthorization(user_id="user_2", auth_code="code_2", role=UserRole.USER, permissions=(Permission.READ_SIGNALS,))
+
+    sig = Signal(action="buy", confidence=0.85, timestamp=1700000000.0, strategy_name="Strat1")
+    setup = TradeSetup(
+        symbol="XAUUSD", entry_price=2650.0, stop_loss=2635.0, take_profit_1=2670.0, take_profit_2=2690.0, take_profit_3=2710.0, timestamp=1700000000.0, direction="buy"
+    )
+    trade_sig = TradeSignal(signal=sig, tradable=True, trade_setup=setup, readiness=Readiness(approved=True, reason="OK", timestamp=1700000000.0), stability=Stability(score=0.85, risk_level="low"), reason="OK")
+    auth = AutonomousAuthorization(status=AUTHORIZATION_STATUS_AUTHORIZED, reason="OK", timestamp=1700000000.0, trade_signal=trade_sig)
+
+    _, _, intent = order_service.create_order_intent(
+        user=user1, authorization=auth, idempotency_key="idemp_rec_iso", symbol="XAUUSD"
+    )
+
+    service = ExecutionGatewayService(
+        order_intent_service=order_service, security_boundary=sec_boundary, audit_control=audit_control
+    )
+
+    # User 2 cannot reconcile User 1's intent
+    ok, msg, rec_data = service.reconcile_execution(user=user2, order_intent_id=intent.order_intent_id)
+    assert ok is False
+    assert rec_data is None
+    assert "not accessible" in msg.lower()

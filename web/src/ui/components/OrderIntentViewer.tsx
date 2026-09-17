@@ -254,6 +254,23 @@ export function OrderIntentViewer({
                     )}
                   </div>
 
+                  {/* Reconciliation Status Section */}
+                  {intent.reconciliation && (
+                    <div className="border-t border-line/50 pt-2 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-muted block">
+                          {t("orderIntent.reconciliationTitle")}:
+                        </span>
+                        <span className="chip text-[10px] bg-amber-900/30 text-amber-300 border border-amber-500/30">
+                          {t(`orderIntent.${intent.reconciliation.status.toLowerCase()}Rec` as any) || intent.reconciliation.status}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-muted leading-tight">
+                        {intent.reconciliation.reason}
+                      </p>
+                    </div>
+                  )}
+
                   {/* Execution attempts history */}
                   {intent.execution_attempts && intent.execution_attempts.length > 0 && (
                     <div className="border-t border-line/50 pt-2 space-y-1">

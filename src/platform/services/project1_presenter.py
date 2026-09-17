@@ -169,6 +169,12 @@ class Project1SignalPresenter:
             )
             intent_dict["execution_attempts"] = attempts if ok_att else []
 
+            ok_rec, _, rec_record = self._execution_gateway_service.get_reconciliation_record(
+                user=user,
+                order_intent_id=intent.order_intent_id,
+            )
+            intent_dict["reconciliation"] = rec_record if ok_rec else None
+
             if user is not None and not user.is_admin:
                 intent_dict = self._security_service.filter_protected_payload(user, intent_dict)
             else:
@@ -613,6 +619,7 @@ class Project1SignalPresenter:
             ],
             "orderIntents": self.get_order_intents_payload(user=user),
             "executionGateway": self._execution_gateway_service.get_boundary_status(user=user),
+            "executionMonitoring": self._execution_gateway_service.get_execution_monitoring_summary(user=user),
         }
 
     def _compute_authorization_object(

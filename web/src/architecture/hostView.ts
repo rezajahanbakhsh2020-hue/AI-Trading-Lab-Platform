@@ -1,6 +1,6 @@
 import type { Candle, ProviderMetadata, Quote, MarketDataStatus } from "./marketData";
 import type { OrderIntentPayload } from "./orderIntent";
-import type { ExecutionGatewayStatusPayload } from "./executionGateway";
+import type { ExecutionGatewayStatusPayload, ExecutionMonitoringSummaryPayload } from "./executionGateway";
 
 export const PLATFORM_NAME = "AI Trading Lab Platform";
 export const PLATFORM_ROLE = "Host application for AI-Trading-Lab";
@@ -166,6 +166,7 @@ export interface HostSnapshot {
   };
   orderIntents?: readonly OrderIntentPayload[];
   executionGateway?: ExecutionGatewayStatusPayload;
+  executionMonitoring?: ExecutionMonitoringSummaryPayload;
 }
 
 export function createDisconnectedHostSnapshot(

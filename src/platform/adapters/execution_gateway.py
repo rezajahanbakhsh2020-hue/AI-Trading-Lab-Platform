@@ -11,9 +11,14 @@ from typing import Any, Dict
 from src.platform.domain.execution_gateway import (
     ExecutionAttemptResult,
     ExecutionBoundaryStatus,
+    ExecutionReconciliationRecord,
+    ExecutionReconciliationStatus,
     ExecutionRequestCommand,
 )
-from src.platform.integrations.execution_gateway import ExecutionGatewayPort
+from src.platform.integrations.execution_gateway import (
+    ExecutionGatewayPort,
+    ExecutionReconciliationPort,
+)
 
 
 class UnavailableExecutionAdapter(ExecutionGatewayPort):
@@ -50,4 +55,36 @@ class UnavailableExecutionAdapter(ExecutionGatewayPort):
             "connected": False,
             "allows_execution": False,
             "message": "Execution gateway unconfigured. Real broker execution adapter is omitted.",
+        }
+
+
+class UnavailableExecutionReconciliationAdapter(ExecutionReconciliationPort):
+    """Adapter for unconfigured execution reconciliation environment.
+
+    Returns empty evidence with configured=False and allows_reconciliation=False.
+    """
+
+    def __init__(self, provider_id: str = "unavailable_execution_reconciliation_adapter") -> None:
+        self.provider_id = provider_id
+
+    def fetch_external_evidence(
+        self, order_intent_id: str, user_id: str
+    ) -> Dict[str, Any]:
+        return {
+            "configured": False,
+            "connected": False,
+            "external_evidence_found": False,
+            "external_state": None,
+            "externally_executed": False,
+            "provider_id": self.provider_id,
+            "message": "No external execution provider is configured for Project 2.",
+        }
+
+    def describe(self) -> Dict[str, Any]:
+        return {
+            "provider_id": self.provider_id,
+            "configured": False,
+            "connected": False,
+            "allows_reconciliation": False,
+            "message": "Execution reconciliation adapter unconfigured. External evidence unavailable.",
         }

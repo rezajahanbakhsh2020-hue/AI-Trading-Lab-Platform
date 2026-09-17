@@ -14,6 +14,27 @@ export type ExecutionBoundaryStatus =
   | "FAILED_AT_BOUNDARY"
   | "SUBMITTED_TO_PORT";
 
+export type ExecutionReconciliationStatus =
+  | "NOT_CONFIGURED"
+  | "NO_EXTERNAL_EVIDENCE"
+  | "MATCHED"
+  | "DISCREPANCY"
+  | "UNAVAILABLE";
+
+export interface ExecutionReconciliationRecordPayload {
+  reconciliation_id: string;
+  order_intent_id: string;
+  user_id: string;
+  status: ExecutionReconciliationStatus;
+  reason: string;
+  internal_state: string;
+  external_evidence_found: boolean;
+  external_state?: string | null;
+  externally_executed: boolean;
+  timestamp: number;
+  details?: string | null;
+}
+
 export interface ExecutionGatewayStatusPayload {
   boundary_name: string;
   status: "configured" | "unconfigured";
@@ -25,6 +46,22 @@ export interface ExecutionGatewayStatusPayload {
     allows_execution: boolean;
     message: string;
   };
+  reconciliation_provider?: {
+    provider_id: string;
+    configured: boolean;
+    connected: boolean;
+    allows_reconciliation?: boolean;
+    message: string;
+  };
+  notice: string;
+}
+
+export interface ExecutionMonitoringSummaryPayload {
+  status: string;
+  total_order_intents_monitored: number;
+  total_execution_attempts: number;
+  reconciliation_status_counts: Record<string, number>;
+  boundary?: ExecutionGatewayStatusPayload;
   notice: string;
 }
 

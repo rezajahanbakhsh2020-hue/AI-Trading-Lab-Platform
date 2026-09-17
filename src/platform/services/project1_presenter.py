@@ -24,6 +24,7 @@ from src.platform.domain.user_authorization import UserAuthorization
 from src.platform.integrations.project1 import Project1IntegrationPort
 from src.platform.services.autonomous_authorization import AutonomousAuthorizationService
 from src.platform.services.audit_control import PlatformAuditControlService
+from src.platform.services.order_intent import OrderIntentService
 from src.platform.services.security import SecretSanitizer, SecurityBoundaryService
 
 
@@ -37,6 +38,7 @@ class Project1SignalPresenter:
         backtest_service: Optional[Any] = None,
         authorization_service: Optional[AutonomousAuthorizationService] = None,
         audit_control_service: Optional[PlatformAuditControlService] = None,
+        order_intent_service: Optional[OrderIntentService] = None,
     ) -> None:
         if port is None or not isinstance(port, Project1IntegrationPort):
             raise ValueError("port must be a valid Project1IntegrationPort")
@@ -53,6 +55,10 @@ class Project1SignalPresenter:
         self._backtest_service = backtest_service
         self._auth_service = authorization_service or AutonomousAuthorizationService()
         self._audit_control_service = audit_control_service or PlatformAuditControlService(security_boundary=self._security_service)
+        self._order_intent_service = order_intent_service or OrderIntentService(
+            security_boundary=self._security_service,
+            audit_control=self._audit_control_service,
+        )
 
     def present_signal(
         self,
@@ -132,6 +138,31 @@ class Project1SignalPresenter:
             "signal": sig_dict,
             "message": f"Active {presented_signal.signal_type.upper()} signal from {presented_signal.strategy_name or 'Project 1'}.",
         }
+
+    def get_order_intents_payload(
+        self,
+        user: Optional[UserAuthorization] = None,
+        symbol: Optional[str] = None,
+        lifecycle_state: Optional[str] = None,
+    ) -> list:
+        """Fetch and present sanitized OrderIntents for the authenticated user with strict isolation."""
+        success, _, intents = self._order_intent_service.list_order_intents(
+            user=user,
+            symbol=symbol,
+            lifecycle_state=lifecycle_state,
+        )
+        if not success or not intents:
+            return []
+
+        payloads = []
+        for intent in intents:
+            intent_dict = intent.to_dict()
+            if user is not None and not user.is_admin:
+                intent_dict = self._security_service.filter_protected_payload(user, intent_dict)
+            else:
+                intent_dict = SecretSanitizer.sanitize_data(intent_dict)
+            payloads.append(intent_dict)
+        return payloads
 
     def build_host_snapshot(
         self,
@@ -217,6 +248,7 @@ class Project1SignalPresenter:
                     "message": "Provider information restricted.",
                 },
                 "activity": [],
+                "orderIntents": self.get_order_intents_payload(user=user),
             }
 
         if not is_connected:
@@ -287,6 +319,7 @@ class Project1SignalPresenter:
                     "message": "Provider slots are ready. No live provider session is attached.",
                 },
                 "activity": [],
+                "orderIntents": self.get_order_intents_payload(user=user),
             }
 
         # Connected port handling
@@ -365,6 +398,7 @@ class Project1SignalPresenter:
                     "message": "Provider slots are ready. No live provider session is attached.",
                 },
                 "activity": [],
+                "orderIntents": self.get_order_intents_payload(user=user),
             }
 
         action_str = str(signal_dict["signal_type"]).upper()
@@ -537,6 +571,7 @@ class Project1SignalPresenter:
                     "details": f"{action_str} signal for {symbol} ({strat_name})",
                 }
             ],
+            "orderIntents": self.get_order_intents_payload(user=user),
         }
 
     def _compute_authorization(

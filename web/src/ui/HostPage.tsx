@@ -20,6 +20,7 @@ import { BacktestViewer } from "./components/BacktestViewer";
 import { IntelligenceWorkspace } from "./components/IntelligenceWorkspace";
 import { SignalDeliveryCenter } from "./components/SignalDeliveryCenter";
 import { OperationalControlCenter } from "./components/OperationalControlCenter";
+import { OrderIntentViewer } from "./components/OrderIntentViewer";
 import {
   loadUserNotifications,
   saveUserNotifications,
@@ -158,6 +159,7 @@ export function HostPage({
       {normalizedPageId === "performance" && <PerformancePage snapshot={snapshot} />}
       {normalizedPageId === "risk" && <RiskPage snapshot={snapshot} />}
       {normalizedPageId === "audit" && <OperationalControlCenter snapshot={snapshot} />}
+      {normalizedPageId === "intents" && <OrderIntentViewer snapshot={snapshot} />}
       {normalizedPageId === "health" && <HealthCenter snapshot={snapshot} onRefresh={onSync} />}
       {normalizedPageId === "monitoring" && <MonitoringPage snapshot={snapshot} />}
       {normalizedPageId === "providers" && <ProvidersPage snapshot={snapshot} />}

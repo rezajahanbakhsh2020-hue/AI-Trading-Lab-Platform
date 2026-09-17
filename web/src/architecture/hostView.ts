@@ -1,4 +1,5 @@
 import type { Candle, ProviderMetadata, Quote, MarketDataStatus } from "./marketData";
+import type { OrderIntentPayload } from "./orderIntent";
 
 export const PLATFORM_NAME = "AI Trading Lab Platform";
 export const PLATFORM_ROLE = "Host application for AI-Trading-Lab";
@@ -23,6 +24,7 @@ export const NAV_ITEMS = [
   { id: "ai", path: "/ai", label: "AI Assistant", icon: "bot" },
   { id: "alerts", path: "/alerts", label: "Alert Center", icon: "bell" },
   { id: "notifications", path: "/notifications", label: "Notifications", icon: "bell" },
+  { id: "intents", path: "/intents", label: "Order Intents", icon: "file-text" },
   { id: "settings", path: "/settings", label: "Settings", icon: "settings" },
 ] as const;
 
@@ -161,6 +163,7 @@ export interface HostSnapshot {
     summary?: any;
     events?: any[];
   };
+  orderIntents?: readonly OrderIntentPayload[];
 }
 
 export function createDisconnectedHostSnapshot(
@@ -249,6 +252,7 @@ export function createDisconnectedHostSnapshot(
       message: "Provider slots are ready. No live provider session is attached.",
     },
     activity: [],
+    orderIntents: [],
     auditControl: {
       status: "available",
       summary: {
@@ -397,6 +401,7 @@ export function createHostSnapshotFromProject1(
           : "Provider slots are ready. No live provider session is attached.",
       },
       activity: [],
+      orderIntents: [],
     };
   }
 
@@ -470,6 +475,28 @@ export function createHostSnapshotFromProject1(
         timestamp: formattedTime,
         event: "Signal Received",
         details: `${actionUpper} signal for ${signal.symbol || symbol} (${stratName})`,
+      },
+    ],
+    orderIntents: [
+      {
+        order_intent_id: `ord_intent_${signal.signal_id || "sample_100"}`,
+        authorization_id: `auth_${signal.timestamp}_${stratName}`,
+        user_id: sec.userId,
+        symbol: signal.symbol || symbol,
+        direction: (signal.signal_type?.toLowerCase() === "sell" ? "sell" : "buy") as "buy" | "sell",
+        order_type: "market",
+        requested_price: entry,
+        requested_quantity: 1.0,
+        stop_loss: sl,
+        take_profit_1: tps[0] ?? null,
+        take_profit_2: tps[1] ?? null,
+        take_profit_3: tps[2] ?? null,
+        time_in_force: "GTC",
+        idempotency_key: `idemp_${signal.signal_id || "sample_100"}`,
+        creation_timestamp: signal.timestamp,
+        lifecycle_state: "STAGED",
+        is_staged: true,
+        is_terminal: false,
       },
     ],
       auditControl: {
@@ -645,6 +672,11 @@ export const PAGE_COPY: Record<
     title: "Notifications",
     kicker: "System & Signal Feed",
     summary: "Real-time alerts, integration status events, and system messages.",
+  },
+  intents: {
+    title: "Order Intent Control Plane",
+    kicker: "Authorized Pre-Execution Staged Intents",
+    summary: "View and manage pre-authorized order intents. Intents represent staged trading intentions and NOT executed broker orders.",
   },
   logs: {
     title: "Logs",

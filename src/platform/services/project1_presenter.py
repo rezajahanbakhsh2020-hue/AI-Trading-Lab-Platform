@@ -163,12 +163,33 @@ class Project1SignalPresenter:
         payloads = []
         for intent in intents:
             intent_dict = intent.to_dict()
+            ok_att, _, attempts = self._execution_gateway_service.get_execution_attempts(
+                user=user,
+                order_intent_id=intent.order_intent_id,
+            )
+            intent_dict["execution_attempts"] = attempts if ok_att else []
+
             if user is not None and not user.is_admin:
                 intent_dict = self._security_service.filter_protected_payload(user, intent_dict)
             else:
                 intent_dict = SecretSanitizer.sanitize_data(intent_dict)
             payloads.append(intent_dict)
         return payloads
+
+    def request_execution(
+        self,
+        user: Optional[UserAuthorization],
+        order_intent_id: str,
+        execution_command_id: Optional[str] = None,
+        timestamp: Optional[float] = None,
+    ):
+        """Submit an execution request for a staged OrderIntent through the execution gateway boundary."""
+        return self._execution_gateway_service.request_execution(
+            user=user,
+            order_intent_id=order_intent_id,
+            execution_command_id=execution_command_id,
+            timestamp=timestamp,
+        )
 
     def build_host_snapshot(
         self,

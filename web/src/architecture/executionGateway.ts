@@ -10,6 +10,8 @@ export type ExecutionBoundaryStatus =
   | "REJECTED_UNAUTHORIZED"
   | "REJECTED_UNAVAILABLE"
   | "REJECTED_INVALID_STATE"
+  | "ACCEPTED_AT_BOUNDARY"
+  | "FAILED_AT_BOUNDARY"
   | "SUBMITTED_TO_PORT";
 
 export interface ExecutionGatewayStatusPayload {
@@ -36,6 +38,9 @@ export interface ExecutionAttemptResultPayload {
   detail?: string | null;
   timestamp: number;
   provider_id: string;
+  is_accepted?: boolean;
+  is_rejected?: boolean;
+  is_failed?: boolean;
 }
 
 /**

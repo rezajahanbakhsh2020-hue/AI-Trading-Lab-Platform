@@ -17,6 +17,7 @@ from .freshness import DataFreshness
 from .instrument import Instrument
 from .market import Candle
 from .market_overview import MarketOverview
+from .order_intent import OrderIntent, OrderLifecycleState
 from .presented_signal import PresentedSignal
 from .provider_readiness import (
     PROVIDER_STATUS_NOT_READY,
@@ -79,6 +80,8 @@ __all__ = [
     "DataFreshness",
     "Instrument",
     "MarketOverview",
+    "OrderIntent",
+    "OrderLifecycleState",
     "PresentedSignal",
     "PROVIDER_STATUS_NOT_READY",
     "PROVIDER_STATUS_READY",

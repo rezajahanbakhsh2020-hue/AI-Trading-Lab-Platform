@@ -29,7 +29,7 @@ export function OrderIntentViewer({
   const [searchQuery, setSearchQuery] = useState("");
   const [stateFilter, setStateFilter] = useState<OrderLifecycleState | "ALL">("ALL");
   const [localIntents, setLocalIntents] = useState<OrderIntentPayload[]>(
-    () => snapshot.orderIntents ? [...snapshot.orderIntents] : []
+    () => (snapshot.orderIntents ? [...snapshot.orderIntents] : [])
   );
 
   const initialIntents = snapshot.orderIntents ? [...snapshot.orderIntents] : [];
@@ -86,33 +86,33 @@ export function OrderIntentViewer({
   const execGw = snapshot.executionGateway;
 
   return (
-    <div className="order-intent-viewer space-y-6">
+    <div className="order-intent-viewer space-v-6">
       {/* Non-Execution Disclosure Banner & Gateway Status */}
-      <section className="card bg-amber-950/20 border-amber-500/30">
-        <div className="card-body p-4 space-y-3">
-          <div className="flex items-start gap-3">
-            <span className="text-amber-400 text-xl">ℹ️</span>
+      <section className="card execution-disclosure-card">
+        <div className="card-body">
+          <div className="disclosure-header">
+            <span className="disclosure-icon" aria-hidden="true">ℹ️</span>
             <div>
-              <h4 className="font-semibold text-amber-300 text-sm mb-1">
+              <h4 className="disclosure-title">
                 {t("orderIntent.stagedOrderIntent")}
               </h4>
-              <p className="text-xs text-amber-200/80 leading-relaxed">
+              <p className="disclosure-text">
                 {t("orderIntent.disclosure")}
               </p>
             </div>
           </div>
 
           {/* Execution Gateway Capability Status */}
-          <div className="border-t border-amber-500/20 pt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-2 text-amber-200">
-              <span className="font-semibold">{t("orderIntent.executionBoundaryTitle")}:</span>
-              <span className="font-mono uppercase bg-amber-900/40 px-2 py-0.5 rounded border border-amber-500/30">
+          <div className="gateway-status-bar">
+            <div className="gateway-status-item">
+              <span className="gateway-status-label">{t("orderIntent.executionBoundaryTitle")}:</span>
+              <span className="gateway-status-badge">
                 {execGw?.status || "unconfigured"}
               </span>
             </div>
-            <div className="flex items-center gap-2 text-amber-300/80 text-[11px]">
-              <span>{t("orderIntent.allowsExecution")}:</span>
-              <span className="font-mono font-bold text-rose-400">
+            <div className="gateway-status-item">
+              <span className="gateway-status-label">{t("orderIntent.allowsExecution")}:</span>
+              <span className="gateway-status-value text-red">
                 {execGw?.allows_execution ? "TRUE" : t("orderIntent.disabledExecution")}
               </span>
             </div>
@@ -122,11 +122,11 @@ export function OrderIntentViewer({
 
       {/* Control Bar: Search & Filter */}
       <section className="card">
-        <div className="card-body p-4 flex flex-col md:flex-row gap-4 justify-between items-stretch md:items-center">
-          <div className="flex-1 min-w-[240px]">
+        <div className="card-body control-bar">
+          <div className="control-search">
             <input
               type="text"
-              className="input w-full"
+              className="input-search"
               placeholder={t("orderIntent.searchPlaceholder")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -134,12 +134,13 @@ export function OrderIntentViewer({
             />
           </div>
 
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-muted whitespace-nowrap">
+          <div className="control-filter">
+            <label className="filter-label" htmlFor="order-intent-state-filter">
               {t("orderIntent.filterState")}:
             </label>
             <select
-              className="select text-sm"
+              id="order-intent-state-filter"
+              className="select-filter"
               value={stateFilter}
               onChange={(e) =>
                 setStateFilter(e.target.value as OrderLifecycleState | "ALL")
@@ -158,72 +159,64 @@ export function OrderIntentViewer({
 
       {/* Order Intent List / Cards */}
       {filtered.length === 0 ? (
-        <section className="card text-center py-12">
-          <div className="card-body">
-            <p className="text-2xl mb-2">📋</p>
-            <h3 className="text-lg font-semibold mb-1">
-              {t("orderIntent.emptyTitle")}
-            </h3>
-            <p className="text-xs text-muted">{t("orderIntent.emptySub")}</p>
+        <section className="card empty-card-view">
+          <div className="card-body empty-state">
+            <div className="empty-icon-ring" aria-hidden="true">📋</div>
+            <h4>{t("orderIntent.emptyTitle")}</h4>
+            <p className="hint">{t("orderIntent.emptySub")}</p>
           </div>
         </section>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid cols-2 order-intent-grid">
           {filtered.map((intent) => {
             const isBuy = intent.direction === "buy";
             const createdDate = new Date(intent.creation_timestamp * 1000).toUTCString();
 
             return (
-              <section key={intent.order_intent_id} className="card">
-                <div className="card-head flex items-center justify-between border-b border-line p-4">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`font-bold text-sm px-2 py-0.5 rounded ${
-                        isBuy
-                          ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                          : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
-                      }`}
-                    >
+              <section key={intent.order_intent_id} className="card order-intent-card">
+                <div className="card-head intent-card-header">
+                  <div className="intent-title-group">
+                    <span className={`badge-direction ${isBuy ? "buy" : "sell"}`}>
                       {intent.direction.toUpperCase()}
                     </span>
-                    <strong className="text-base font-semibold">{intent.symbol}</strong>
-                    <span className="text-xs text-muted">({intent.order_type.toUpperCase()})</span>
+                    <strong className="intent-symbol">{intent.symbol}</strong>
+                    <span className="hint">({intent.order_type.toUpperCase()})</span>
                   </div>
                   <span className={getStateBadgeClass(intent.lifecycle_state)}>
                     {t(`orderIntent.${intent.lifecycle_state.toLowerCase()}` as any) || intent.lifecycle_state}
                   </span>
                 </div>
 
-                <div className="card-body p-4 space-y-3">
+                <div className="card-body intent-card-body">
                   {/* Prices & Geometry */}
-                  <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="grid cols-2 level-grid">
                     <div>
-                      <span className="text-muted block">{t("orderIntent.requestedPrice")}</span>
-                      <b className="font-mono">
+                      <span className="hint">{t("orderIntent.requestedPrice")}</span>
+                      <b className="mono-val">
                         {intent.requested_price != null
                           ? formatCurrency(intent.requested_price)
                           : t("status.unavailable")}
                       </b>
                     </div>
                     <div>
-                      <span className="text-muted block">{t("orderIntent.requestedQuantity")}</span>
-                      <b className="font-mono">
+                      <span className="hint">{t("orderIntent.requestedQuantity")}</span>
+                      <b className="mono-val">
                         {intent.requested_quantity != null
                           ? intent.requested_quantity
                           : t("status.unavailable")}
                       </b>
                     </div>
                     <div>
-                      <span className="text-muted block">{t("orderIntent.stopLoss")}</span>
-                      <b className="font-mono text-rose-400">
+                      <span className="hint">{t("orderIntent.stopLoss")}</span>
+                      <b className="mono-val text-red">
                         {intent.stop_loss != null
                           ? formatCurrency(intent.stop_loss)
                           : t("status.unavailable")}
                       </b>
                     </div>
                     <div>
-                      <span className="text-muted block">{t("orderIntent.takeProfits")}</span>
-                      <b className="font-mono text-emerald-400">
+                      <span className="hint">{t("orderIntent.takeProfits")}</span>
+                      <b className="mono-val text-green">
                         {intent.take_profit_1 != null
                           ? formatCurrency(intent.take_profit_1)
                           : t("status.unavailable")}
@@ -232,23 +225,23 @@ export function OrderIntentViewer({
                   </div>
 
                   {/* Metadata identifiers */}
-                  <div className="border-t border-line/50 pt-2 space-y-1 text-[11px] text-muted">
-                    <div className="flex justify-between">
+                  <div className="intent-meta-section">
+                    <div className="intent-meta-row">
                       <span>{t("orderIntent.intentId")}:</span>
-                      <span className="font-mono text-foreground">{intent.order_intent_id}</span>
+                      <span className="mono-val">{intent.order_intent_id}</span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="intent-meta-row">
                       <span>{t("orderIntent.idempotencyKey")}:</span>
-                      <span className="font-mono text-foreground truncate max-w-[180px]">
+                      <span className="mono-val text-truncate">
                         {intent.idempotency_key}
                       </span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="intent-meta-row">
                       <span>{t("orderIntent.creationTime")}:</span>
                       <span>{createdDate}</span>
                     </div>
                     {intent.rejection_reason && (
-                      <div className="text-rose-400 pt-1">
+                      <div className="text-red hint-reason">
                         <b>Reason:</b> {intent.rejection_reason}
                       </div>
                     )}
@@ -256,16 +249,16 @@ export function OrderIntentViewer({
 
                   {/* Reconciliation Status Section */}
                   {intent.reconciliation && (
-                    <div className="border-t border-line/50 pt-2 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-semibold text-muted block">
+                    <div className="reconciliation-section">
+                      <div className="reconciliation-header">
+                        <span className="hint font-semibold">
                           {t("orderIntent.reconciliationTitle")}:
                         </span>
-                        <span className="chip text-[10px] bg-amber-900/30 text-amber-300 border border-amber-500/30">
+                        <span className="chip warn-chip">
                           {t(`orderIntent.${intent.reconciliation.status.toLowerCase()}Rec` as any) || intent.reconciliation.status}
                         </span>
                       </div>
-                      <p className="text-[10px] text-muted leading-tight">
+                      <p className="hint">
                         {intent.reconciliation.reason}
                       </p>
                     </div>
@@ -273,25 +266,22 @@ export function OrderIntentViewer({
 
                   {/* Execution attempts history */}
                   {intent.execution_attempts && intent.execution_attempts.length > 0 && (
-                    <div className="border-t border-line/50 pt-2 space-y-1">
-                      <span className="text-[11px] font-semibold text-muted block">
+                    <div className="execution-attempts-section">
+                      <span className="hint font-semibold">
                         {t("orderIntent.executionAttemptsTitle")}:
                       </span>
                       {intent.execution_attempts.map((att, idx) => (
-                        <div
-                          key={idx}
-                          className="bg-black/20 p-2 rounded text-[11px] border border-line/30 space-y-0.5"
-                        >
-                          <div className="flex justify-between items-center">
-                            <span className="font-mono font-bold uppercase text-amber-400">
+                        <div key={idx} className="attempt-item-box">
+                          <div className="attempt-item-header">
+                            <span className="mono-val font-bold uppercase text-amber">
                               {att.status}
                             </span>
-                            <span className="text-[10px] text-muted">
+                            <span className="hint text-dim">
                               {new Date(att.timestamp * 1000).toLocaleTimeString()}
                             </span>
                           </div>
-                          <p className="text-muted text-[10px] leading-tight">{att.reason}</p>
-                          <div className="text-[9px] text-rose-400/80 font-mono">
+                          <p className="hint">{att.reason}</p>
+                          <div className="mono-disclaimer text-red">
                             {t("orderIntent.externalExecutionDisclaimer")}
                           </div>
                         </div>
@@ -301,29 +291,33 @@ export function OrderIntentViewer({
 
                   {/* Actions for legal state transitions & gateway submission */}
                   {intent.is_staged && (
-                    <div className="border-t border-line/50 pt-3 flex flex-wrap items-center justify-between gap-2">
+                    <div className="intent-actions-row">
                       <button
-                        className="btn btn-primary text-xs px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white"
+                        className="btn btn-primary btn-action-gateway"
                         onClick={() => onRequestExecution && onRequestExecution(intent.order_intent_id)}
+                        aria-label={t("orderIntent.requestExecutionAction")}
                       >
                         ⚡ {t("orderIntent.requestExecutionAction")}
                       </button>
-                      <div className="flex items-center gap-1.5">
+                      <div className="btn-action-group">
                         <button
-                          className="btn btn-secondary text-xs px-2 py-1 text-rose-400 border-rose-500/30 hover:bg-rose-500/10"
+                          className="btn btn-secondary btn-cancel"
                           onClick={() => handleAction(intent, "CANCELLED")}
+                          aria-label={t("orderIntent.cancelAction")}
                         >
                           {t("orderIntent.cancelAction")}
                         </button>
                         <button
-                          className="btn btn-secondary text-xs px-2 py-1 text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
+                          className="btn btn-secondary btn-reject"
                           onClick={() => handleAction(intent, "REJECTED")}
+                          aria-label={t("orderIntent.rejectAction")}
                         >
                           {t("orderIntent.rejectAction")}
                         </button>
                         <button
-                          className="btn btn-secondary text-xs px-2 py-1 text-muted hover:bg-white/5"
+                          className="btn btn-secondary btn-expire"
                           onClick={() => handleAction(intent, "EXPIRED")}
+                          aria-label={t("orderIntent.expireAction")}
                         >
                           {t("orderIntent.expireAction")}
                         </button>

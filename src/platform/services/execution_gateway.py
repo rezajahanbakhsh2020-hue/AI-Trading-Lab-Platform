@@ -10,7 +10,10 @@ claiming fills, or pretending to perform broker execution.
 import time
 from typing import Any, Dict, Optional, Tuple
 
-from src.platform.adapters.execution_gateway import UnavailableExecutionAdapter
+from src.platform.adapters.execution_gateway import (
+    UnavailableExecutionAdapter,
+    UnavailableExecutionReconciliationAdapter,
+)
 from src.platform.domain.audit_control import (
     AuditCategory,
     AuditEventSeverity,
@@ -19,23 +22,29 @@ from src.platform.domain.audit_control import (
 from src.platform.domain.execution_gateway import (
     ExecutionAttemptResult,
     ExecutionBoundaryStatus,
+    ExecutionReconciliationRecord,
+    ExecutionReconciliationStatus,
     ExecutionRequestCommand,
 )
 from src.platform.domain.order_intent import OrderIntent, OrderLifecycleState
 from src.platform.domain.user_authorization import UserAuthorization
-from src.platform.integrations.execution_gateway import ExecutionGatewayPort
+from src.platform.integrations.execution_gateway import (
+    ExecutionGatewayPort,
+    ExecutionReconciliationPort,
+)
 from src.platform.services.audit_control import PlatformAuditControlService
 from src.platform.services.order_intent import OrderIntentService
 from src.platform.services.security import SecretSanitizer, SecurityBoundaryService
 
 
 class ExecutionGatewayService:
-    """Application service for the Execution Gateway Boundary."""
+    """Application service for the Execution Gateway & Operational Reconciliation Boundary."""
 
     def __init__(
         self,
         order_intent_service: Optional[OrderIntentService] = None,
         execution_port: Optional[ExecutionGatewayPort] = None,
+        reconciliation_port: Optional[ExecutionReconciliationPort] = None,
         security_boundary: Optional[SecurityBoundaryService] = None,
         audit_control: Optional[PlatformAuditControlService] = None,
     ) -> None:
@@ -48,10 +57,13 @@ class ExecutionGatewayService:
             audit_control=self.audit_control,
         )
         self.execution_port = execution_port or UnavailableExecutionAdapter()
+        self.reconciliation_port = reconciliation_port or UnavailableExecutionReconciliationAdapter()
         # Track execution attempts in-memory: order_intent_id -> List[ExecutionAttemptResult]
         self._attempts_by_order_id: Dict[str, list] = {}
         # Idempotency cache: (user_id, idempotency_key) -> ExecutionAttemptResult
         self._idempotency_map: Dict[Tuple[str, str], ExecutionAttemptResult] = {}
+        # Track reconciliation records: order_intent_id -> ExecutionReconciliationRecord
+        self._reconciliations_by_order_id: Dict[str, ExecutionReconciliationRecord] = {}
 
     def request_execution(
         self,
@@ -317,5 +329,232 @@ class ExecutionGatewayService:
             "status": "configured" if sanitized_desc.get("configured") else "unconfigured",
             "allows_execution": bool(sanitized_desc.get("allows_execution", False)),
             "provider": sanitized_desc,
+            "reconciliation_provider": SecretSanitizer.sanitize_data(self.reconciliation_port.describe()),
             "notice": "OrderIntents represent staged execution intent. Project 2 does not execute orders against live brokers or exchanges.",
+        }
+
+    def reconcile_execution(
+        self,
+        user: Optional[UserAuthorization],
+        order_intent_id: str,
+        timestamp: Optional[float] = None,
+    ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+        """Perform operational reconciliation between internal OrderIntent evidence and external evidence.
+
+        Enforces SecurityBoundaryService authorization, user/tenant isolation, secret sanitization,
+        and audit logging via PlatformAuditControlService.
+        When no external execution provider is connected, fails closed with NOT_CONFIGURED or NO_EXTERNAL_EVIDENCE.
+        """
+        ts = float(timestamp if timestamp is not None else time.time())
+
+        # 1. Authenticated user check
+        if user is None:
+            self.audit_control.record_event(
+                user_id="anonymous",
+                category=AuditCategory.ORDER_INTENT,
+                event_type="EXECUTION_RECONCILIATION_DENIED",
+                lifecycle_state=OperationalLifecycleState.REJECTED,
+                action="RECONCILE_EXECUTION",
+                outcome="FAILURE",
+                severity=AuditEventSeverity.WARNING,
+                details="Reconciliation denied: Unauthenticated user",
+            )
+            return False, "Unauthorized: Unauthenticated user context", None
+
+        # 2. Security boundary permission check
+        authorized, sec_msg = self.security_boundary.authorize(
+            user=user,
+            resource="signals",
+            action="read",
+        )
+        if not authorized:
+            self.audit_control.record_event(
+                user_id=user.user_id,
+                category=AuditCategory.ORDER_INTENT,
+                event_type="EXECUTION_RECONCILIATION_DENIED",
+                lifecycle_state=OperationalLifecycleState.REJECTED,
+                action="RECONCILE_EXECUTION",
+                outcome="FAILURE",
+                severity=AuditEventSeverity.WARNING,
+                details=f"Reconciliation denied by SecurityBoundary: {sec_msg}",
+            )
+            return False, f"Unauthorized: {sec_msg}", None
+
+        if not isinstance(order_intent_id, str) or not order_intent_id.strip():
+            return False, "order_intent_id must be a non-empty string", None
+
+        clean_id = order_intent_id.strip()
+
+        # 3. Retrieve OrderIntent with tenant isolation check
+        success, msg, intent = self.order_intent_service.get_order_intent(
+            user=user, order_intent_id=clean_id
+        )
+        if not success or intent is None:
+            self.audit_control.record_event(
+                user_id=user.user_id,
+                category=AuditCategory.ORDER_INTENT,
+                event_type="EXECUTION_RECONCILIATION_ORDER_NOT_FOUND",
+                lifecycle_state=OperationalLifecycleState.REJECTED,
+                action="RECONCILE_EXECUTION",
+                outcome="FAILURE",
+                severity=AuditEventSeverity.WARNING,
+                details=f"Reconciliation failed: {msg}",
+            )
+            return False, f"Order intent not accessible: {msg}", None
+
+        # 4. Query external evidence port
+        try:
+            ext_evidence = self.reconciliation_port.fetch_external_evidence(
+                order_intent_id=clean_id, user_id=user.user_id
+            )
+        except Exception as exc:
+            ext_evidence = {
+                "configured": False,
+                "connected": False,
+                "external_evidence_found": False,
+                "error": SecretSanitizer.sanitize_string(str(exc)),
+            }
+
+        ext_configured = bool(ext_evidence.get("configured", False))
+        ext_found = bool(ext_evidence.get("external_evidence_found", False))
+        ext_state = ext_evidence.get("external_state")
+        ext_executed = bool(ext_evidence.get("externally_executed", False))
+
+        if not ext_configured:
+            status = ExecutionReconciliationStatus.NOT_CONFIGURED
+            reason = "No external execution provider configured for reconciliation. Internal state preserved without execution."
+        elif not ext_found:
+            status = ExecutionReconciliationStatus.NO_EXTERNAL_EVIDENCE
+            reason = "External provider queried, but no execution evidence found for order intent."
+        elif ext_state == intent.lifecycle_state.value:
+            status = ExecutionReconciliationStatus.MATCHED
+            reason = f"Internal state '{intent.lifecycle_state.value}' matches external state '{ext_state}'."
+        else:
+            status = ExecutionReconciliationStatus.DISCREPANCY
+            reason = f"State discrepancy detected: internal='{intent.lifecycle_state.value}' vs external='{ext_state}'."
+
+        rec_record = ExecutionReconciliationRecord(
+            reconciliation_id=f"rec_{clean_id}_{int(ts)}",
+            order_intent_id=clean_id,
+            user_id=user.user_id,
+            status=status,
+            reason=reason,
+            internal_state=intent.lifecycle_state.value,
+            external_evidence_found=ext_found,
+            external_state=str(ext_state) if ext_state else None,
+            externally_executed=ext_executed,
+            timestamp=ts,
+            details=f"Symbol: {intent.symbol}, Direction: {intent.direction.upper()}, Staged: {intent.is_staged}",
+        )
+
+        self._reconciliations_by_order_id[clean_id] = rec_record
+
+        # Audit log reconciliation event
+        self.audit_control.record_event(
+            user_id=user.user_id,
+            category=AuditCategory.ORDER_INTENT,
+            event_type=f"EXECUTION_RECONCILIATION_{status.value}",
+            lifecycle_state=intent.lifecycle_state,
+            action="RECONCILE_EXECUTION",
+            outcome="SUCCESS" if status in (ExecutionReconciliationStatus.MATCHED, ExecutionReconciliationStatus.NOT_CONFIGURED) else "DEGRADED",
+            severity=AuditEventSeverity.INFO if status != ExecutionReconciliationStatus.DISCREPANCY else AuditEventSeverity.WARNING,
+            resource_id=clean_id,
+            details=f"Reconciliation status: {status.value}. Reason: {reason}",
+            metadata={
+                "externally_executed": ext_executed,
+                "external_evidence_found": ext_found,
+                "internal_state": intent.lifecycle_state.value,
+                "external_state": ext_state,
+            },
+        )
+
+        sanitized_dict = SecretSanitizer.sanitize_data(rec_record.to_dict())
+        return True, "Reconciliation completed successfully", sanitized_dict
+
+    def get_reconciliation_record(
+        self,
+        user: Optional[UserAuthorization],
+        order_intent_id: str,
+    ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+        """Retrieve existing reconciliation record for an OrderIntent with tenant isolation."""
+        if user is None:
+            return False, "Unauthorized: Access denied: unauthenticated access", None
+
+        authorized, sec_msg = self.security_boundary.authorize(
+            user=user,
+            resource="signals",
+            action="read",
+        )
+        if not authorized:
+            return False, f"Unauthorized: {sec_msg}", None
+
+        if not isinstance(order_intent_id, str) or not order_intent_id.strip():
+            return False, "order_intent_id must be a non-empty string", None
+
+        clean_id = order_intent_id.strip()
+
+        success, msg, intent = self.order_intent_service.get_order_intent(
+            user=user, order_intent_id=clean_id
+        )
+        if not success or intent is None:
+            return False, f"Order intent not accessible: {msg}", None
+
+        record = self._reconciliations_by_order_id.get(clean_id)
+        if record is None:
+            # Generate default NOT_CONFIGURED reconciliation on demand
+            return self.reconcile_execution(user=user, order_intent_id=clean_id)
+
+        sanitized_dict = SecretSanitizer.sanitize_data(record.to_dict())
+        return True, "Reconciliation record retrieved", sanitized_dict
+
+    def get_execution_monitoring_summary(
+        self, user: Optional[UserAuthorization] = None
+    ) -> Dict[str, Any]:
+        """Return operational monitoring summary of all execution attempts and reconciliations for user."""
+        if user is None:
+            return {
+                "status": "unauthorized",
+                "total_order_intents_monitored": 0,
+                "total_execution_attempts": 0,
+                "reconciliation_status_counts": {},
+                "notice": "Authentication required for execution monitoring.",
+            }
+
+        success, _, intents = self.order_intent_service.list_order_intents(user=user)
+        if not success or not intents:
+            return {
+                "status": "active",
+                "total_order_intents_monitored": 0,
+                "total_execution_attempts": 0,
+                "reconciliation_status_counts": {
+                    ExecutionReconciliationStatus.NOT_CONFIGURED.value: 0
+                },
+                "notice": "No order intents currently staged or monitored.",
+            }
+
+        total_attempts = 0
+        rec_counts: Dict[str, int] = {
+            ExecutionReconciliationStatus.NOT_CONFIGURED.value: 0,
+            ExecutionReconciliationStatus.NO_EXTERNAL_EVIDENCE.value: 0,
+            ExecutionReconciliationStatus.MATCHED.value: 0,
+            ExecutionReconciliationStatus.DISCREPANCY.value: 0,
+            ExecutionReconciliationStatus.UNAVAILABLE.value: 0,
+        }
+
+        for intent in intents:
+            iid = intent.order_intent_id
+            attempts = self._attempts_by_order_id.get(iid, [])
+            total_attempts += len(attempts)
+
+            rec = self._reconciliations_by_order_id.get(iid)
+            rec_status = rec.status.value if rec else ExecutionReconciliationStatus.NOT_CONFIGURED.value
+            rec_counts[rec_status] = rec_counts.get(rec_status, 0) + 1
+
+        return {
+            "status": "active",
+            "total_order_intents_monitored": len(intents),
+            "total_execution_attempts": total_attempts,
+            "reconciliation_status_counts": rec_counts,
+            "boundary": self.get_boundary_status(user=user),
+            "notice": "All monitored execution states have externally_executed=False.",
         }

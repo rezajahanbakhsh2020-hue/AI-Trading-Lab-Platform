@@ -10,6 +10,7 @@ from typing import Any, Dict
 
 from src.platform.domain.execution_gateway import (
     ExecutionAttemptResult,
+    ExecutionReconciliationRecord,
     ExecutionRequestCommand,
 )
 
@@ -27,4 +28,20 @@ class ExecutionGatewayPort(ABC):
     @abstractmethod
     def describe(self) -> Dict[str, Any]:
         """Return an I/O-free description of the execution gateway provider boundary."""
+        raise NotImplementedError
+
+
+class ExecutionReconciliationPort(ABC):
+    """Abstract outbound port for querying external execution evidence for reconciliation."""
+
+    @abstractmethod
+    def fetch_external_evidence(
+        self, order_intent_id: str, user_id: str
+    ) -> Dict[str, Any]:
+        """Fetch external execution evidence for a given OrderIntent identity if available."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def describe(self) -> Dict[str, Any]:
+        """Return an I/O-free description of the execution reconciliation provider boundary."""
         raise NotImplementedError

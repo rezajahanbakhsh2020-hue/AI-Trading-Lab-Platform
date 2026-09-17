@@ -28,6 +28,16 @@ class ExecutionBoundaryStatus(str, Enum):
     SUBMITTED_TO_PORT = "SUBMITTED_TO_PORT"
 
 
+class ExecutionReconciliationStatus(str, Enum):
+    """Domain state model for execution lifecycle reconciliation outcomes."""
+
+    NOT_CONFIGURED = "NOT_CONFIGURED"
+    NO_EXTERNAL_EVIDENCE = "NO_EXTERNAL_EVIDENCE"
+    MATCHED = "MATCHED"
+    DISCREPANCY = "DISCREPANCY"
+    UNAVAILABLE = "UNAVAILABLE"
+
+
 @dataclass(frozen=True)
 class ExecutionRequestCommand:
     """Immutable execution request command derived directly from an authorized OrderIntent.
@@ -269,4 +279,93 @@ class ExecutionAttemptResult:
             "is_accepted": self.is_accepted,
             "is_rejected": self.is_rejected,
             "is_failed": self.is_failed,
+        }
+
+
+@dataclass(frozen=True)
+class ExecutionReconciliationRecord:
+    """Immutable domain model representing an execution lifecycle reconciliation result.
+
+    Compares internal platform execution lifecycle evidence against external provider evidence.
+    When no external execution adapter is connected, status is NOT_CONFIGURED or NO_EXTERNAL_EVIDENCE
+    and externally_executed remains strictly False.
+    """
+
+    reconciliation_id: str
+    order_intent_id: str
+    user_id: str
+    status: ExecutionReconciliationStatus
+    reason: str
+    internal_state: str
+    external_evidence_found: bool = False
+    external_state: Optional[str] = None
+    externally_executed: bool = False
+    timestamp: float = 0.0
+    details: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.reconciliation_id, str) or not self.reconciliation_id.strip():
+            raise ValueError("reconciliation_id must be a non-empty string")
+        object.__setattr__(self, "reconciliation_id", self.reconciliation_id.strip())
+
+        if not isinstance(self.order_intent_id, str) or not self.order_intent_id.strip():
+            raise ValueError("order_intent_id must be a non-empty string")
+        object.__setattr__(self, "order_intent_id", self.order_intent_id.strip())
+
+        if not isinstance(self.user_id, str) or not self.user_id.strip():
+            raise ValueError("user_id must be a non-empty string")
+        object.__setattr__(self, "user_id", self.user_id.strip())
+
+        if isinstance(self.status, str):
+            try:
+                status_enum = ExecutionReconciliationStatus(self.status.upper())
+            except ValueError:
+                raise ValueError(f"status must be a valid ExecutionReconciliationStatus, got {self.status!r}")
+            object.__setattr__(self, "status", status_enum)
+        elif not isinstance(self.status, ExecutionReconciliationStatus):
+            raise ValueError("status must be an ExecutionReconciliationStatus instance")
+
+        if not isinstance(self.reason, str) or not self.reason.strip():
+            raise ValueError("reason must be a non-empty string")
+        object.__setattr__(self, "reason", self.reason.strip())
+
+        if not isinstance(self.internal_state, str) or not self.internal_state.strip():
+            raise ValueError("internal_state must be a non-empty string")
+        object.__setattr__(self, "internal_state", self.internal_state.strip())
+
+        if not isinstance(self.external_evidence_found, bool):
+            raise ValueError("external_evidence_found must be a boolean")
+
+        if self.external_state is not None:
+            if not isinstance(self.external_state, str) or not self.external_state.strip():
+                raise ValueError("external_state must be a non-empty string if provided")
+            object.__setattr__(self, "external_state", self.external_state.strip())
+
+        if not isinstance(self.externally_executed, bool):
+            raise ValueError("externally_executed must be a boolean")
+
+        if isinstance(self.timestamp, bool) or not isinstance(self.timestamp, numbers.Real):
+            raise ValueError("timestamp must be a non-negative real number")
+        ts_float = float(self.timestamp) if float(self.timestamp) > 0 else time.time()
+        object.__setattr__(self, "timestamp", ts_float)
+
+        if self.details is not None:
+            if not isinstance(self.details, str) or not self.details.strip():
+                raise ValueError("details must be a non-empty string if provided")
+            object.__setattr__(self, "details", self.details.strip())
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Return dictionary representation of ExecutionReconciliationRecord."""
+        return {
+            "reconciliation_id": self.reconciliation_id,
+            "order_intent_id": self.order_intent_id,
+            "user_id": self.user_id,
+            "status": self.status.value,
+            "reason": self.reason,
+            "internal_state": self.internal_state,
+            "external_evidence_found": self.external_evidence_found,
+            "external_state": self.external_state,
+            "externally_executed": self.externally_executed,
+            "timestamp": self.timestamp,
+            "details": self.details,
         }

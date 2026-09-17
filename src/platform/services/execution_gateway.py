@@ -33,7 +33,6 @@ class ExecutionGatewayService:
     """Application service for the Execution Gateway Boundary."""
 
     def __init__(
-
         self,
         order_intent_service: Optional[OrderIntentService] = None,
         execution_port: Optional[ExecutionGatewayPort] = None,
@@ -49,6 +48,10 @@ class ExecutionGatewayService:
             audit_control=self.audit_control,
         )
         self.execution_port = execution_port or UnavailableExecutionAdapter()
+        # Track execution attempts in-memory: order_intent_id -> List[ExecutionAttemptResult]
+        self._attempts_by_order_id: Dict[str, list] = {}
+        # Idempotency cache: (user_id, idempotency_key) -> ExecutionAttemptResult
+        self._idempotency_map: Dict[Tuple[str, str], ExecutionAttemptResult] = {}
 
     def request_execution(
         self,
@@ -195,16 +198,61 @@ class ExecutionGatewayService:
                 timestamp=ts,
             )
 
-        # 6. Submit command to ExecutionGatewayPort
-        result = self.execution_port.request_execution(cmd)
+        # 5b. Idempotency check for execution command
+        idemp_pair = (user.user_id, cmd.idempotency_key)
+        if idemp_pair in self._idempotency_map:
+            existing_result = self._idempotency_map[idemp_pair]
+            self.audit_control.record_event(
+                user_id=user.user_id,
+                category=AuditCategory.ORDER_INTENT,
+                event_type="EXECUTION_REQUEST_IDEMPOTENT_DUPLICATE",
+                lifecycle_state=OperationalLifecycleState.STAGED if existing_result.success else OperationalLifecycleState.REJECTED,
+                action="REQUEST_EXECUTION",
+                outcome="SUCCESS" if existing_result.success else "REJECTED",
+                severity=AuditEventSeverity.INFO,
+                resource_id=order_intent_id,
+                correlation_id=cmd.idempotency_key,
+                details="Returned existing execution attempt result for idempotent key without duplicate boundary call.",
+            )
+            return existing_result
+
+        # 6. Submit command to ExecutionGatewayPort with fail-closed exception boundary
+        try:
+            result = self.execution_port.request_execution(cmd)
+        except Exception as exc:
+            err_detail = f"Execution boundary adapter threw exception: {SecretSanitizer.sanitize_string(str(exc))}"
+            result = ExecutionAttemptResult(
+                success=False,
+                user_id=user.user_id,
+                order_intent_id=order_intent_id,
+                status=ExecutionBoundaryStatus.FAILED_AT_BOUNDARY,
+                reason="Execution boundary adapter exception encountered (fail-closed).",
+                externally_executed=False,
+                detail=err_detail,
+                timestamp=ts,
+            )
+
+        # Cache in idempotency map and attempt log
+        self._idempotency_map[idemp_pair] = result
+        if order_intent_id not in self._attempts_by_order_id:
+            self._attempts_by_order_id[order_intent_id] = []
+        self._attempts_by_order_id[order_intent_id].append(result)
 
         # 7. Audit log execution attempt
-        audit_severity = AuditEventSeverity.INFO if result.success else AuditEventSeverity.WARNING
+        audit_severity = (
+            AuditEventSeverity.INFO
+            if result.success
+            else (
+                AuditEventSeverity.ERROR
+                if result.status == ExecutionBoundaryStatus.FAILED_AT_BOUNDARY
+                else AuditEventSeverity.WARNING
+            )
+        )
         self.audit_control.record_event(
             user_id=user.user_id,
             category=AuditCategory.ORDER_INTENT,
             event_type=f"EXECUTION_BOUNDARY_{result.status.value}",
-            lifecycle_state=OperationalLifecycleState.REJECTED if not result.success else OperationalLifecycleState.STAGED,
+            lifecycle_state=OperationalLifecycleState.STAGED if result.success else OperationalLifecycleState.REJECTED,
             action="REQUEST_EXECUTION",
             outcome="SUCCESS" if result.success else "REJECTED",
             severity=audit_severity,
@@ -221,6 +269,41 @@ class ExecutionGatewayService:
         )
 
         return result
+
+    def get_execution_attempts(
+        self,
+        user: Optional[UserAuthorization],
+        order_intent_id: str,
+    ) -> Tuple[bool, str, list]:
+        """Retrieve execution attempts for a given OrderIntent with tenant isolation."""
+        if user is None:
+            return False, "Unauthorized: Access denied: unauthenticated access", []
+
+        authorized, sec_msg = self.security_boundary.authorize(
+            user=user,
+            resource="signals",
+            action="read",
+        )
+        if not authorized:
+            return False, f"Unauthorized: {sec_msg}", []
+
+        if not isinstance(order_intent_id, str) or not order_intent_id.strip():
+            return False, "order_intent_id must be a non-empty string", []
+
+        clean_id = order_intent_id.strip()
+
+        # Check tenant isolation via OrderIntentService
+        success, msg, intent = self.order_intent_service.get_order_intent(
+            user=user, order_intent_id=clean_id
+        )
+        if not success or intent is None:
+            return False, f"Order intent not accessible: {msg}", []
+
+        attempts = self._attempts_by_order_id.get(clean_id, [])
+        sanitized_attempts = [
+            SecretSanitizer.sanitize_data(att.to_dict()) for att in attempts
+        ]
+        return True, "Execution attempts retrieved successfully", sanitized_attempts
 
     def get_boundary_status(
         self, user: Optional[UserAuthorization] = None

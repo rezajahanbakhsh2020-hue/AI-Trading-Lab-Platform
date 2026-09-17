@@ -23,6 +23,8 @@ class ExecutionBoundaryStatus(str, Enum):
     REJECTED_UNAUTHORIZED = "REJECTED_UNAUTHORIZED"
     REJECTED_UNAVAILABLE = "REJECTED_UNAVAILABLE"
     REJECTED_INVALID_STATE = "REJECTED_INVALID_STATE"
+    ACCEPTED_AT_BOUNDARY = "ACCEPTED_AT_BOUNDARY"
+    FAILED_AT_BOUNDARY = "FAILED_AT_BOUNDARY"
     SUBMITTED_TO_PORT = "SUBMITTED_TO_PORT"
 
 
@@ -229,6 +231,29 @@ class ExecutionAttemptResult:
             raise ValueError("provider_id must be a non-empty string")
         object.__setattr__(self, "provider_id", self.provider_id.strip())
 
+    @property
+    def is_accepted(self) -> bool:
+        """Return True if execution request was accepted or submitted at boundary."""
+        return self.status in (
+            ExecutionBoundaryStatus.ACCEPTED_AT_BOUNDARY,
+            ExecutionBoundaryStatus.SUBMITTED_TO_PORT,
+        )
+
+    @property
+    def is_rejected(self) -> bool:
+        """Return True if execution request was rejected at boundary."""
+        return self.status in (
+            ExecutionBoundaryStatus.REJECTED_UNAUTHORIZED,
+            ExecutionBoundaryStatus.REJECTED_UNAVAILABLE,
+            ExecutionBoundaryStatus.REJECTED_INVALID_STATE,
+            ExecutionBoundaryStatus.UNCONFIGURED,
+        )
+
+    @property
+    def is_failed(self) -> bool:
+        """Return True if execution attempt resulted in a boundary failure."""
+        return self.status == ExecutionBoundaryStatus.FAILED_AT_BOUNDARY
+
     def to_dict(self) -> Dict[str, Any]:
         """Return dictionary representation of ExecutionAttemptResult."""
         return {
@@ -241,4 +266,7 @@ class ExecutionAttemptResult:
             "detail": self.detail,
             "timestamp": self.timestamp,
             "provider_id": self.provider_id,
+            "is_accepted": self.is_accepted,
+            "is_rejected": self.is_rejected,
+            "is_failed": self.is_failed,
         }

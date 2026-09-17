@@ -6,6 +6,8 @@
 
 export type OrderLifecycleState = "STAGED" | "REJECTED" | "CANCELLED" | "EXPIRED";
 
+import type { ExecutionAttemptResultPayload } from "./executionGateway";
+
 export interface OrderIntentPayload {
   order_intent_id: string;
   authorization_id: string;
@@ -26,6 +28,7 @@ export interface OrderIntentPayload {
   is_staged: boolean;
   is_terminal: boolean;
   rejection_reason?: string | null;
+  execution_attempts?: ExecutionAttemptResultPayload[];
 }
 
 /**

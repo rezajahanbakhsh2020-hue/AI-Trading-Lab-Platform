@@ -16,11 +16,13 @@ interface OrderIntentViewerProps {
     targetState: OrderLifecycleState,
     reason?: string
   ) => void;
+  onRequestExecution?: (intentId: string) => void;
 }
 
 export function OrderIntentViewer({
   snapshot,
   onTransitionIntent,
+  onRequestExecution,
 }: OrderIntentViewerProps) {
   const { t, formatCurrency } = useI18n();
 
@@ -252,27 +254,63 @@ export function OrderIntentViewer({
                     )}
                   </div>
 
-                  {/* Actions for legal state transitions */}
+                  {/* Execution attempts history */}
+                  {intent.execution_attempts && intent.execution_attempts.length > 0 && (
+                    <div className="border-t border-line/50 pt-2 space-y-1">
+                      <span className="text-[11px] font-semibold text-muted block">
+                        {t("orderIntent.executionAttemptsTitle")}:
+                      </span>
+                      {intent.execution_attempts.map((att, idx) => (
+                        <div
+                          key={idx}
+                          className="bg-black/20 p-2 rounded text-[11px] border border-line/30 space-y-0.5"
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className="font-mono font-bold uppercase text-amber-400">
+                              {att.status}
+                            </span>
+                            <span className="text-[10px] text-muted">
+                              {new Date(att.timestamp * 1000).toLocaleTimeString()}
+                            </span>
+                          </div>
+                          <p className="text-muted text-[10px] leading-tight">{att.reason}</p>
+                          <div className="text-[9px] text-rose-400/80 font-mono">
+                            {t("orderIntent.externalExecutionDisclaimer")}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Actions for legal state transitions & gateway submission */}
                   {intent.is_staged && (
-                    <div className="border-t border-line/50 pt-3 flex items-center justify-end gap-2">
+                    <div className="border-t border-line/50 pt-3 flex flex-wrap items-center justify-between gap-2">
                       <button
-                        className="btn btn-secondary text-xs px-3 py-1 text-rose-400 border-rose-500/30 hover:bg-rose-500/10"
-                        onClick={() => handleAction(intent, "CANCELLED")}
+                        className="btn btn-primary text-xs px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white"
+                        onClick={() => onRequestExecution && onRequestExecution(intent.order_intent_id)}
                       >
-                        {t("orderIntent.cancelAction")}
+                        ⚡ {t("orderIntent.requestExecutionAction")}
                       </button>
-                      <button
-                        className="btn btn-secondary text-xs px-3 py-1 text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
-                        onClick={() => handleAction(intent, "REJECTED")}
-                      >
-                        {t("orderIntent.rejectAction")}
-                      </button>
-                      <button
-                        className="btn btn-secondary text-xs px-3 py-1 text-muted hover:bg-white/5"
-                        onClick={() => handleAction(intent, "EXPIRED")}
-                      >
-                        {t("orderIntent.expireAction")}
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          className="btn btn-secondary text-xs px-2 py-1 text-rose-400 border-rose-500/30 hover:bg-rose-500/10"
+                          onClick={() => handleAction(intent, "CANCELLED")}
+                        >
+                          {t("orderIntent.cancelAction")}
+                        </button>
+                        <button
+                          className="btn btn-secondary text-xs px-2 py-1 text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
+                          onClick={() => handleAction(intent, "REJECTED")}
+                        >
+                          {t("orderIntent.rejectAction")}
+                        </button>
+                        <button
+                          className="btn btn-secondary text-xs px-2 py-1 text-muted hover:bg-white/5"
+                          onClick={() => handleAction(intent, "EXPIRED")}
+                        >
+                          {t("orderIntent.expireAction")}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>

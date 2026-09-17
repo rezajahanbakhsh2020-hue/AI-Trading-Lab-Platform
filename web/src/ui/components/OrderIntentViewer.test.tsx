@@ -61,4 +61,39 @@ describe("OrderIntentViewer component", () => {
       "User requested cancellation"
     );
   });
+
+  it("renders reconciliation status and handles request execution click", () => {
+    const handleRequestExecution = vi.fn();
+    const snapWithRec = {
+      ...snapshot,
+      orderIntents: [
+        {
+          ...snapshot.orderIntents![0],
+          reconciliation: {
+            reconciliation_id: "rec_100",
+            order_intent_id: snapshot.orderIntents![0].order_intent_id,
+            user_id: "user_test",
+            status: "NOT_CONFIGURED" as const,
+            internal_state: "STAGED",
+            external_evidence_found: false,
+            reason: "Fail-closed reconciliation: No external execution provider.",
+            timestamp: 1700000000,
+            last_check_timestamp: 1700000000,
+            externally_executed: false,
+          },
+        },
+      ],
+    };
+
+    render(
+      <I18nProvider>
+        <OrderIntentViewer snapshot={snapWithRec} onRequestExecution={handleRequestExecution} />
+      </I18nProvider>
+    );
+
+    expect(screen.getByText(/Operational Execution Reconciliation/i)).not.toBeNull();
+    const execBtn = screen.getByText(/Submit to Execution Boundary/i);
+    fireEvent.click(execBtn);
+    expect(handleRequestExecution).toHaveBeenCalledWith(expect.stringContaining("ord_intent_"));
+  });
 });

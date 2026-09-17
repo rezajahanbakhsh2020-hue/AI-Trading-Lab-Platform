@@ -39,49 +39,47 @@ export function SignalDeliveryCenter({ snapshot }: SignalDeliveryCenterProps) {
   };
 
   return (
-    <div className="signal-delivery-center space-y-6" dir={direction}>
+    <div className="signal-delivery-center space-v-6" dir={direction}>
       {/* Configured Outbound Channels Grid */}
       <section className="card">
-        <div className="card-head flex justify-between items-center flex-wrap gap-2">
+        <div className="card-head flex-header-row">
           <div>
-            <p className="kicker" style={{ margin: 0, opacity: 0.8 }}>
+            <p className="kicker">
               {t("signalDelivery.activeChannelsTitle")}
             </p>
-            <h3 style={{ margin: "4px 0 0 0" }}>{t("signalDelivery.title")}</h3>
+            <h2>{t("signalDelivery.title")}</h2>
           </div>
           <button
             className="btn btn-primary"
             disabled={isDispatching || !snapshot.project1.connected}
             onClick={() => handleDispatch(selectedChannel)}
-            style={{ fontSize: 13, padding: "8px 14px" }}
+            aria-label={t("signalDelivery.dispatchTestButton")}
           >
             {isDispatching ? t("signalDelivery.dispatching") : t("signalDelivery.dispatchTestButton")}
           </button>
         </div>
 
-        <div className="card-body" style={{ marginTop: 16 }}>
-          <div className="grid cols-3" style={{ gap: 12 }}>
+        <div className="card-body">
+          <div className="grid cols-3 channel-grid">
             {channels.map((ch) => (
               <button
                 key={ch.channelId}
-                className={`card ${selectedChannel === ch.channelId ? "active-channel-card" : ""}`}
+                className={`card channel-card ${selectedChannel === ch.channelId ? "active" : ""}`}
                 onClick={() => setSelectedChannel(ch.channelId)}
-                style={{
-                  textAlign: "left",
-                  cursor: "pointer",
-                  padding: 12,
-                  border: selectedChannel === ch.channelId ? "2px solid var(--color-primary, #3b82f6)" : "1px solid var(--color-border, #374151)",
-                }}
+                aria-pressed={selectedChannel === ch.channelId}
+                aria-label={`${ch.channelName} - ${ch.enabled ? 'Active' : 'Inactive'}`}
               >
-                <div className="flex justify-between items-center" style={{ marginBottom: 6 }}>
+                <div className="card-head channel-card-head">
                   <strong>{ch.channelName}</strong>
                   <span className={`status ${ch.enabled ? "ready" : "unavailable"}`}>
                     {ch.enabled ? "ACTIVE" : "INACTIVE"}
                   </span>
                 </div>
-                <p className="hint text-xs" style={{ margin: 0 }}>
-                  Destination: {ch.destination}
-                </p>
+                <div className="card-body channel-card-body">
+                  <p className="hint text-xs">
+                    Destination: {ch.destination}
+                  </p>
+                </div>
               </button>
             ))}
           </div>
@@ -89,43 +87,45 @@ export function SignalDeliveryCenter({ snapshot }: SignalDeliveryCenterProps) {
       </section>
 
       {/* Authorization Policy & Security Boundary Cards */}
-      <div className="grid cols-2" style={{ gap: 16 }}>
+      <div className="grid cols-2">
         <section className="card">
           <div className="card-head">
             <h3>{t("signalDelivery.authorizationPolicyTitle")}</h3>
             <span className="status ready">ENFORCED</span>
           </div>
           <div className="card-body">
-            <table className="table">
-              <tbody>
-                <tr>
-                  <th>{t("signalDelivery.permissionCheck")}</th>
-                  <td>
-                    <span className={`chip ${isAdmin || permissions.includes("read:signals") ? "ready-chip" : "danger-chip"}`}>
-                      {isAdmin || permissions.includes("read:signals") ? "PASSED" : "FAILED"}
-                    </span>
-                  </td>
-                </tr>
-                <tr>
-                  <th>{t("signalDelivery.deliveryEnabledCheck")}</th>
-                  <td>
-                    <span className="chip ready-chip">PASSED</span>
-                  </td>
-                </tr>
-                <tr>
-                  <th>{t("signalDelivery.symbolPolicyCheck")}</th>
-                  <td>
-                    <span className="chip ready-chip">PASSED (XAUUSD)</span>
-                  </td>
-                </tr>
-                <tr>
-                  <th>{t("signalDelivery.strategyPolicyCheck")}</th>
-                  <td>
-                    <span className="chip ready-chip">PASSED (ALL STRATEGIES)</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <div className="table-responsive">
+              <table className="table">
+                <tbody>
+                  <tr>
+                    <th>{t("signalDelivery.permissionCheck")}</th>
+                    <td>
+                      <span className={`chip ${isAdmin || permissions.includes("read:signals") ? "ready-chip" : "danger-chip"}`}>
+                        {isAdmin || permissions.includes("read:signals") ? "PASSED" : "FAILED"}
+                      </span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>{t("signalDelivery.deliveryEnabledCheck")}</th>
+                    <td>
+                      <span className="chip ready-chip">PASSED</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>{t("signalDelivery.symbolPolicyCheck")}</th>
+                    <td>
+                      <span className="chip ready-chip">PASSED (XAUUSD)</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>{t("signalDelivery.strategyPolicyCheck")}</th>
+                    <td>
+                      <span className="chip ready-chip">PASSED (ALL STRATEGIES)</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
 
@@ -142,16 +142,16 @@ export function SignalDeliveryCenter({ snapshot }: SignalDeliveryCenterProps) {
                 ? t("signalDelivery.fullSetupVisible")
                 : t("signalDelivery.setupMaskedNotice")}
             </p>
-            <div className="levels" style={{ background: "var(--color-bg-secondary, #1f2937)", padding: 12, borderRadius: 6 }}>
-              <div className="level" style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+            <div className="levels">
+              <div className="level">
                 <span>Entry Price:</span>
                 <b>{hasSetupPermission && snapshot.risk.entry != null ? `$${snapshot.risk.entry}` : "[MASKED - RESTRICTED ROLE]"}</b>
               </div>
-              <div className="level" style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+              <div className="level">
                 <span>Stop Loss:</span>
                 <b>{hasSetupPermission && snapshot.risk.stopLoss != null ? `$${snapshot.risk.stopLoss}` : "[MASKED - RESTRICTED ROLE]"}</b>
               </div>
-              <div className="level" style={{ display: "flex", justifyContent: "space-between" }}>
+              <div className="level">
                 <span>Take Profit 1:</span>
                 <b>{hasSetupPermission && snapshot.risk.takeProfits[0] != null ? `$${snapshot.risk.takeProfits[0]}` : "[MASKED - RESTRICTED ROLE]"}</b>
               </div>
@@ -162,7 +162,7 @@ export function SignalDeliveryCenter({ snapshot }: SignalDeliveryCenterProps) {
 
       {/* Delivery Audit Log Table */}
       <section className="card">
-        <div className="card-head flex justify-between items-center">
+        <div className="card-head flex-header-row">
           <h3>{t("signalDelivery.auditLogTitle")}</h3>
           <span className="chip">{history.length} Records</span>
         </div>
@@ -182,15 +182,15 @@ export function SignalDeliveryCenter({ snapshot }: SignalDeliveryCenterProps) {
               <tbody>
                 {history.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center hint" style={{ padding: 20 }}>
+                    <td colSpan={6} className="text-center hint py-6">
                       {t("signalDelivery.noRecords")}
                     </td>
                   </tr>
                 ) : (
                   history.map((item) => (
                     <tr key={item.id}>
-                      <td style={{ fontSize: 12 }}>{item.timestamp}</td>
-                      <td><code>{item.consumerId}</code></td>
+                      <td className="hint">{item.timestamp}</td>
+                      <td><code className="mono-val">{item.consumerId}</code></td>
                       <td>
                         <span className="chip">{item.channel.toUpperCase()}</span>
                       </td>
@@ -199,8 +199,8 @@ export function SignalDeliveryCenter({ snapshot }: SignalDeliveryCenterProps) {
                           {item.status === "DELIVERED" ? t("signalDelivery.delivered") : t("signalDelivery.notDelivered")}
                         </span>
                       </td>
-                      <td style={{ fontSize: 13 }}>{item.reason}</td>
-                      <td style={{ fontSize: 12, opacity: 0.8 }}>{item.detail || "-"}</td>
+                      <td>{item.reason}</td>
+                      <td className="hint">{item.detail || "-"}</td>
                     </tr>
                   ))
                 )}

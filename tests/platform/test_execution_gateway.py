@@ -447,3 +447,65 @@ def test_execution_reconciliation_tenant_isolation():
     assert ok is False
     assert rec_data is None
     assert "not accessible" in msg.lower()
+
+
+def test_execution_reconciliation_discrepancy_and_no_evidence_handling():
+    sec_boundary = SecurityBoundaryService()
+    audit_control = PlatformAuditControlService(security_boundary=sec_boundary)
+    order_service = OrderIntentService(security_boundary=sec_boundary, audit_control=audit_control)
+
+    user = UserAuthorization(user_id="user_rec_disc", auth_code="code_disc", role=UserRole.USER, permissions=(Permission.READ_SIGNALS,))
+
+    sig = Signal(action="buy", confidence=0.85, timestamp=1700000000.0, strategy_name="Strat1")
+    setup = TradeSetup(
+        symbol="XAUUSD", entry_price=2650.0, stop_loss=2635.0, take_profit_1=2670.0, take_profit_2=2690.0, take_profit_3=2710.0, timestamp=1700000000.0, direction="buy"
+    )
+    trade_sig = TradeSignal(signal=sig, tradable=True, trade_setup=setup, readiness=Readiness(approved=True, reason="OK", timestamp=1700000000.0), stability=Stability(score=0.85, risk_level="low"), reason="OK")
+    auth = AutonomousAuthorization(status=AUTHORIZATION_STATUS_AUTHORIZED, reason="OK", timestamp=1700000000.0, trade_signal=trade_sig)
+
+    _, _, intent = order_service.create_order_intent(
+        user=user, authorization=auth, idempotency_key="idemp_rec_disc", symbol="XAUUSD"
+    )
+
+    class MockReconciliationAdapter:
+        def __init__(self, found: bool, ext_state: str):
+            self.found = found
+            self.ext_state = ext_state
+        def fetch_external_evidence(self, order_intent_id, user_id):
+            return {
+                "configured": True,
+                "connected": True,
+                "external_evidence_found": self.found,
+                "external_state": self.ext_state,
+                "externally_executed": False,
+            }
+        def describe(self):
+            return {"configured": True}
+
+    # Case A: External evidence found but state discrepancy
+    service_disc = ExecutionGatewayService(
+        order_intent_service=order_service,
+        reconciliation_port=MockReconciliationAdapter(found=True, ext_state="CANCELLED"),
+        security_boundary=sec_boundary,
+        audit_control=audit_control,
+    )
+
+    ok, msg, rec_disc = service_disc.reconcile_execution(user=user, order_intent_id=intent.order_intent_id)
+    assert ok is True
+    assert rec_disc["status"] == ExecutionReconciliationStatus.DISCREPANCY.value
+    assert rec_disc["externally_executed"] is False
+    assert "State discrepancy detected" in rec_disc["reason"]
+
+    # Case B: Configured external provider but no evidence found
+    service_no_ev = ExecutionGatewayService(
+        order_intent_service=order_service,
+        reconciliation_port=MockReconciliationAdapter(found=False, ext_state=None),
+        security_boundary=sec_boundary,
+        audit_control=audit_control,
+    )
+
+    ok, msg, rec_no_ev = service_no_ev.reconcile_execution(user=user, order_intent_id=intent.order_intent_id)
+    assert ok is True
+    assert rec_no_ev["status"] == ExecutionReconciliationStatus.NO_EXTERNAL_EVIDENCE.value
+    assert rec_no_ev["externally_executed"] is False
+    assert "no execution evidence found" in rec_no_ev["reason"]

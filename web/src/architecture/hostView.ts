@@ -306,7 +306,8 @@ export function createHostSnapshotFromProject1(
   symbol: string = PRIMARY_MARKET,
   timeframe: string = "1h",
   marketState?: Partial<MarketStateSnapshot>,
-  securityProfile?: UserSecurityProfile
+  securityProfile?: UserSecurityProfile,
+  orderIntentsOverride?: readonly OrderIntentPayload[]
 ): HostSnapshot {
   const defaultMarketState: MarketStateSnapshot = {
     symbol,
@@ -477,28 +478,30 @@ export function createHostSnapshotFromProject1(
         details: `${actionUpper} signal for ${signal.symbol || symbol} (${stratName})`,
       },
     ],
-    orderIntents: [
-      {
-        order_intent_id: `ord_intent_${signal.signal_id || "sample_100"}`,
-        authorization_id: `auth_${signal.timestamp}_${stratName}`,
-        user_id: sec.userId,
-        symbol: signal.symbol || symbol,
-        direction: (signal.signal_type?.toLowerCase() === "sell" ? "sell" : "buy") as "buy" | "sell",
-        order_type: "market",
-        requested_price: entry,
-        requested_quantity: 1.0,
-        stop_loss: sl,
-        take_profit_1: tps[0] ?? null,
-        take_profit_2: tps[1] ?? null,
-        take_profit_3: tps[2] ?? null,
-        time_in_force: "GTC",
-        idempotency_key: `idemp_${signal.signal_id || "sample_100"}`,
-        creation_timestamp: signal.timestamp,
-        lifecycle_state: "STAGED",
-        is_staged: true,
-        is_terminal: false,
-      },
-    ],
+    orderIntents: orderIntentsOverride
+      ? [...orderIntentsOverride]
+      : [
+          {
+            order_intent_id: `ord_intent_${signal.signal_id || "sample_100"}`,
+            authorization_id: `auth_${signal.timestamp}_${stratName}`,
+            user_id: sec.userId,
+            symbol: signal.symbol || symbol,
+            direction: (signal.signal_type?.toLowerCase() === "sell" ? "sell" : "buy") as "buy" | "sell",
+            order_type: "market",
+            requested_price: entry,
+            requested_quantity: 1.0,
+            stop_loss: sl,
+            take_profit_1: tps[0] ?? null,
+            take_profit_2: tps[1] ?? null,
+            take_profit_3: tps[2] ?? null,
+            time_in_force: "GTC",
+            idempotency_key: `snap_idemp_${sec.userId}_${(signal.symbol || symbol).toLowerCase()}_${signal.signal_id || "sample_100"}`,
+            creation_timestamp: signal.timestamp,
+            lifecycle_state: "STAGED",
+            is_staged: true,
+            is_terminal: false,
+          },
+        ],
       auditControl: {
         status: "available",
         summary: {

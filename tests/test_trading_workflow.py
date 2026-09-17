@@ -17,7 +17,10 @@ from src.platform.domain.trading_workflow import (
     WORKFLOW_STATUS_NOT_READY,
     TradingWorkflowResult,
 )
+from src.platform.domain.security import Permission, UserRole
+from src.platform.domain.user_authorization import UserAuthorization
 from src.platform.services.autonomous_authorization import AutonomousAuthorizationService
+from src.platform.services.order_intent import OrderIntentService
 from src.platform.services.provider_selection import ProviderSelectionService
 from src.platform.services.trade_signal import TradeSignalService
 from src.platform.services.trading_workflow import (
@@ -201,3 +204,42 @@ def test_trading_workflow_result_to_dict():
     assert d["is_executed"] is True
     assert "authorization" in d
     assert "trade_signal" in d
+
+
+def test_trading_workflow_stages_order_intent_end_to_end():
+    auth_svc = AutonomousAuthorizationService()
+    order_intent_svc = OrderIntentService()
+    workflow_svc = TradingWorkflowService(
+        authorization_service=auth_svc,
+        order_intent_service=order_intent_svc,
+    )
+
+    user = UserAuthorization(
+        user_id="trader_1",
+        auth_code="code_1",
+        role=UserRole.USER,
+        permissions=(Permission.READ_SIGNALS, Permission.READ_TRADE_SETUPS),
+    )
+
+    res = workflow_svc.run_workflow(
+        symbol="XAUUSD",
+        timeframe="1h",
+        strategy_result=_strategy_result(action="buy", timestamp=100.0),
+        timestamp=100.0,
+        user=user,
+        idempotency_key="wf_idemp_100",
+    )
+
+    assert res.status == WORKFLOW_STATUS_EXECUTED
+    assert res.order_intent is not None
+    assert res.order_intent.user_id == "trader_1"
+    assert res.order_intent.symbol == "XAUUSD"
+    assert res.order_intent.direction == "buy"
+    assert res.order_intent.lifecycle_state == "STAGED"
+    assert res.order_intent.idempotency_key == "wf_idemp_100"
+
+    # Verify OrderIntentService holds the staged intent
+    success, _, intents = order_intent_svc.list_order_intents(user=user)
+    assert success is True
+    assert len(intents) == 1
+    assert intents[0].order_intent_id == res.order_intent.order_intent_id

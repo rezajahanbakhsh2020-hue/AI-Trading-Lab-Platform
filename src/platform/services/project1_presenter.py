@@ -12,7 +12,7 @@ Rules:
   active, and no-signal (empty) states.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from src.platform.domain.readiness import Readiness
 from src.platform.domain.security import Permission
@@ -415,7 +415,7 @@ class Project1SignalPresenter:
             strat_msg = "Strategy evaluated by Project 1."
 
         # Perform real deterministic Autonomous Authorization computation
-        auth_payload = self._compute_authorization(
+        auth_obj, auth_payload = self._compute_authorization_object(
             action_str=action_str,
             strat_name=strat_name,
             symbol=symbol,
@@ -427,6 +427,18 @@ class Project1SignalPresenter:
             take_profits=tps,
             user=user,
         )
+
+        # Stage OrderIntent if authorized and user is provided
+        if auth_obj.is_authorized and user is not None:
+            sig_id = signal_dict.get("signal_id") or f"sig_{int(sig_ts)}"
+            idemp_key = f"snap_idemp_{user.user_id}_{symbol.lower()}_{sig_id}"
+            self._order_intent_service.create_order_intent(
+                user=user,
+                authorization=auth_obj,
+                idempotency_key=idemp_key,
+                symbol=symbol,
+                timestamp=sig_ts,
+            )
 
         # Process optional backtest assessment if available
         perf_payload: Dict[str, Any] = {
@@ -574,7 +586,7 @@ class Project1SignalPresenter:
             "orderIntents": self.get_order_intents_payload(user=user),
         }
 
-    def _compute_authorization(
+    def _compute_authorization_object(
         self,
         action_str: str,
         strat_name: str,
@@ -586,7 +598,7 @@ class Project1SignalPresenter:
         stop_loss: Optional[float],
         take_profits: list,
         user: Optional[UserAuthorization],
-    ) -> Dict[str, Any]:
+    ) -> Tuple[Any, Dict[str, Any]]:
         """Compute deterministic autonomous execution authorization for presented signal."""
         act_lower = action_str.lower()
         is_tradable_action = act_lower in ("buy", "sell")
@@ -671,7 +683,7 @@ class Project1SignalPresenter:
                 if c["id"] in ("level_sanity", "risk_reward"):
                     c["reason"] = "Restricted to authorized users."
 
-        return {
+        return auth_res, {
             "status": auth_res.status,
             "isAuthorized": auth_res.is_authorized,
             "reason": auth_res.reason,
@@ -679,6 +691,34 @@ class Project1SignalPresenter:
             "riskRewardRatio": round(rr_ratio, 2) if rr_ratio is not None else None,
             "timestamp": timestamp,
         }
+
+    def _compute_authorization(
+        self,
+        action_str: str,
+        strat_name: str,
+        symbol: str,
+        timeframe: str,
+        timestamp: float,
+        confidence: Optional[float],
+        entry: Optional[float],
+        stop_loss: Optional[float],
+        take_profits: list,
+        user: Optional[UserAuthorization],
+    ) -> Dict[str, Any]:
+        """Compute deterministic autonomous execution authorization dict payload."""
+        _, payload = self._compute_authorization_object(
+            action_str=action_str,
+            strat_name=strat_name,
+            symbol=symbol,
+            timeframe=timeframe,
+            timestamp=timestamp,
+            confidence=confidence,
+            entry=entry,
+            stop_loss=stop_loss,
+            take_profits=take_profits,
+            user=user,
+        )
+        return payload
 
 
 def _validate_symbol(symbol: str) -> None:

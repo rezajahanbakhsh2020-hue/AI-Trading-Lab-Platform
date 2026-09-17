@@ -259,3 +259,50 @@ def test_presenter_order_intents_payload_and_isolation():
     # Verify host snapshot for user_b carries empty orderIntents
     snapshot_b = presenter.build_host_snapshot(user=user_b)
     assert snapshot_b["orderIntents"] == []
+
+
+def test_presenter_build_host_snapshot_auto_stages_authorized_signal():
+    from src.platform.domain.security import Permission
+    from src.platform.domain.user_authorization import UserAuthorization
+    from src.platform.services.order_intent import OrderIntentService
+
+    source = DummyLabArtifactSource(
+        signal_data={
+            "action": "BUY",
+            "strategy_name": "GoldTrendv1",
+            "timestamp": 1700000000.0,
+            "confidence": 0.88,
+        },
+        setup_data={
+            "symbol": "XAUUSD",
+            "entry_price": 2650.50,
+            "stop_loss": 2635.00,
+            "take_profit_1": 2670.00,
+            "take_profit_2": 2690.00,
+            "take_profit_3": 2710.00,
+            "timestamp": 1700000000.0,
+            "direction": "BUY",
+        },
+    )
+    service = LabArtifactService(source)
+    adapter = Project1LabArtifactAdapter(service)
+    order_intent_service = OrderIntentService()
+    presenter = Project1SignalPresenter(adapter, order_intent_service=order_intent_service)
+
+    user = UserAuthorization(
+        user_id="user_stage_test",
+        auth_code="code_123",
+        role="user",
+        permissions=[Permission.READ_SIGNALS, Permission.READ_TRADE_SETUPS],
+    )
+
+    snapshot = presenter.build_host_snapshot("XAUUSD", "1h", user=user)
+    assert snapshot["authorization"]["isAuthorized"] is True
+    assert len(snapshot["orderIntents"]) == 1
+
+    staged_intent = snapshot["orderIntents"][0]
+    assert staged_intent["user_id"] == "user_stage_test"
+    assert staged_intent["symbol"] == "XAUUSD"
+    assert staged_intent["direction"] == "buy"
+    assert staged_intent["requested_price"] == 2650.50
+    assert staged_intent["lifecycle_state"] == "STAGED"

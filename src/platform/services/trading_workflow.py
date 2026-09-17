@@ -22,7 +22,9 @@ from src.platform.domain.trading_workflow import (
 from src.platform.domain.readiness import Readiness
 from src.platform.domain.stability import Stability
 from src.platform.domain.strategy_result import StrategyResult
+from src.platform.domain.user_authorization import UserAuthorization
 from src.platform.services.autonomous_authorization import AutonomousAuthorizationService
+from src.platform.services.order_intent import OrderIntentService
 from src.platform.services.provider_selection import ProviderSelectionService
 from src.platform.services.signal_engine import SignalEngineService
 from src.platform.services.trade_readiness import TradeReadinessService
@@ -43,17 +45,24 @@ class TradingWorkflowService:
         readiness_service: Optional[TradeReadinessService] = None,
         trade_signal_service: Optional[TradeSignalService] = None,
         signal_engine_service: Optional[SignalEngineService] = None,
+        order_intent_service: Optional[OrderIntentService] = None,
     ) -> None:
         if authorization_service is None or not isinstance(
             authorization_service, AutonomousAuthorizationService
         ):
             raise ValueError("authorization_service must be an AutonomousAuthorizationService instance")
 
+        if order_intent_service is not None and not isinstance(
+            order_intent_service, OrderIntentService
+        ):
+            raise ValueError("order_intent_service must be an OrderIntentService instance if provided")
+
         self._auth_svc = authorization_service
         self._selection_svc = selection_service
         self._readiness_svc = readiness_service
         self._trade_signal_svc = trade_signal_service or TradeSignalService()
         self._signal_engine_svc = signal_engine_service
+        self._order_intent_svc = order_intent_service
 
     def run_workflow(
         self,
@@ -66,6 +75,8 @@ class TradingWorkflowService:
         timestamp: Optional[Union[int, float]] = None,
         min_risk_reward_to_tp1: Optional[float] = None,
         require_selected_provider: bool = False,
+        user: Optional[UserAuthorization] = None,
+        idempotency_key: Optional[str] = None,
     ) -> TradingWorkflowResult:
         """Execute cross-domain trading workflow deterministically."""
 
@@ -162,6 +173,24 @@ class TradingWorkflowService:
             else f"{REASON_WORKFLOW_DENIED}: {auth.reason}"
         )
 
+        # Stage OrderIntent if workflow is authorized and order_intent_service is present
+        order_intent = None
+        if auth.is_authorized and self._order_intent_svc is not None and user is not None:
+            clean_key = (
+                idempotency_key.strip()
+                if idempotency_key and idempotency_key.strip()
+                else f"wf_{symbol.lower()}_{int(eval_ts)}"
+            )
+            success, _, intent = self._order_intent_svc.create_order_intent(
+                user=user,
+                authorization=auth,
+                idempotency_key=clean_key,
+                symbol=symbol,
+                timestamp=eval_ts,
+            )
+            if success:
+                order_intent = intent
+
         return TradingWorkflowResult(
             symbol=symbol,
             timeframe=timeframe,
@@ -172,4 +201,5 @@ class TradingWorkflowService:
             trade_signal=trade_sig,
             provider_selection=provider_sel,
             trade_readiness=trade_readiness,
+            order_intent=order_intent,
         )

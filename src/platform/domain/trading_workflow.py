@@ -10,6 +10,7 @@ import numbers
 from typing import Any, Dict, Optional
 
 from src.platform.domain.autonomous_authorization import AutonomousAuthorization
+from src.platform.domain.order_intent import OrderIntent
 from src.platform.domain.provider_selection import ProviderSelection
 from src.platform.domain.trade_readiness import TradeReadiness
 from src.platform.domain.trade_signal import TradeSignal
@@ -38,6 +39,7 @@ class TradingWorkflowResult:
     trade_signal: TradeSignal
     provider_selection: Optional[ProviderSelection] = None
     trade_readiness: Optional[TradeReadiness] = None
+    order_intent: Optional[OrderIntent] = None
     detail: Optional[str] = None
 
     def __post_init__(self) -> None:
@@ -83,6 +85,11 @@ class TradingWorkflowResult:
         ):
             raise ValueError("trade_readiness must be a TradeReadiness instance if provided")
 
+        if self.order_intent is not None and not isinstance(
+            self.order_intent, OrderIntent
+        ):
+            raise ValueError("order_intent must be an OrderIntent instance if provided")
+
         if self.detail is not None:
             if not isinstance(self.detail, str) or not self.detail.strip():
                 raise ValueError("detail must be a non-empty string if provided")
@@ -112,6 +119,11 @@ class TradingWorkflowResult:
             "trade_readiness": (
                 self.trade_readiness.to_dict()
                 if self.trade_readiness is not None
+                else None
+            ),
+            "order_intent": (
+                self.order_intent.to_dict()
+                if self.order_intent is not None
                 else None
             ),
             "detail": self.detail,

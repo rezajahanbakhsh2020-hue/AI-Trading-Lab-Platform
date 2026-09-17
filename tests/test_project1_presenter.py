@@ -167,3 +167,95 @@ def test_presenter_preserves_real_data_without_fabrication():
     assert snapshot["risk"]["stopLoss"] == 1.0910
     assert snapshot["risk"]["takeProfits"] == [1.0790, 1.0720, 1.0650]
     assert snapshot["strategy"]["name"] == "MeanReversion_Custom"
+
+
+def test_presenter_order_intents_payload_and_isolation():
+    from src.platform.domain.autonomous_authorization import AutonomousAuthorization
+    from src.platform.domain.security import Permission
+    from src.platform.domain.user_authorization import UserAuthorization
+    from src.platform.services.order_intent import OrderIntentService
+
+    adapter = DisconnectedProject1Adapter()
+    order_intent_service = OrderIntentService()
+    presenter = Project1SignalPresenter(adapter, order_intent_service=order_intent_service)
+
+    user_a = UserAuthorization(
+        user_id="user_a",
+        auth_code="code_a",
+        role="user",
+        permissions=[Permission.READ_SIGNALS, Permission.READ_TRADE_SETUPS],
+    )
+    user_b = UserAuthorization(
+        user_id="user_b",
+        auth_code="code_b",
+        role="user",
+        permissions=[Permission.READ_SIGNALS, Permission.READ_TRADE_SETUPS],
+    )
+
+    # Initially empty state
+    payload_a = presenter.get_order_intents_payload(user=user_a)
+    assert payload_a == []
+
+    # Create OrderIntent for user_a
+    auth_a = AutonomousAuthorization(
+        status="AUTHORIZED",
+        reason="Approved",
+        timestamp=1700000000.0,
+        trade_signal=pytest.importorskip("src.platform.domain.trade_signal").TradeSignal(
+            signal=pytest.importorskip("src.platform.domain.signal").Signal(
+                action="buy", confidence=0.8, timestamp=1700000000.0, strategy_name="StratA"
+            ),
+            readiness=pytest.importorskip("src.platform.domain.readiness").Readiness(approved=True, reason="OK", timestamp=1700000000.0),
+            stability=pytest.importorskip("src.platform.domain.stability").Stability(score=0.8, risk_level="low"),
+            reason="Validated",
+            tradable=True,
+            trade_setup=pytest.importorskip("src.platform.domain.trade_setup").TradeSetup(
+                symbol="XAUUSD",
+                entry_price=2650.0,
+                stop_loss=2630.0,
+                take_profit_1=2680.0,
+                take_profit_2=2700.0,
+                take_profit_3=2720.0,
+                timestamp=1700000000.0,
+                direction="buy",
+            ),
+        ),
+    )
+
+    ok, msg, intent_a = order_intent_service.create_order_intent(
+        user=user_a,
+        authorization=auth_a,
+        idempotency_key="key_a_123",
+        requested_quantity=1.5,
+    )
+    assert ok is True
+    assert intent_a is not None
+
+    # Verify user_a sees their intent with exact level preservation and no price recalculations
+    intents_a = presenter.get_order_intents_payload(user=user_a)
+    assert len(intents_a) == 1
+    item = intents_a[0]
+    assert item["order_intent_id"] == intent_a.order_intent_id
+    assert item["user_id"] == "user_a"
+    assert item["symbol"] == "XAUUSD"
+    assert item["direction"] == "buy"
+    assert item["requested_price"] == 2650.0
+    assert item["stop_loss"] == 2630.0
+    assert item["take_profit_1"] == 2680.0
+    assert item["lifecycle_state"] == "STAGED"
+    assert item["is_staged"] is True
+    assert item["is_terminal"] is False
+
+    # Verify user_b (isolated user) receives empty payload
+    intents_b = presenter.get_order_intents_payload(user=user_b)
+    assert intents_b == []
+
+    # Verify host snapshot carries user_a's orderIntents
+    snapshot_a = presenter.build_host_snapshot(user=user_a)
+    assert "orderIntents" in snapshot_a
+    assert len(snapshot_a["orderIntents"]) == 1
+    assert snapshot_a["orderIntents"][0]["order_intent_id"] == intent_a.order_intent_id
+
+    # Verify host snapshot for user_b carries empty orderIntents
+    snapshot_b = presenter.build_host_snapshot(user=user_b)
+    assert snapshot_b["orderIntents"] == []

@@ -14,7 +14,7 @@ export function DesktopSidebar() {
   );
 
   const systemNav = NAV_ITEMS.filter((item) =>
-    ["risk", "monitoring", "providers", "notifications"].includes(item.id)
+    ["risk", "intents", "monitoring", "providers", "notifications"].includes(item.id)
   );
 
   const configNav = NAV_ITEMS.filter((item) =>

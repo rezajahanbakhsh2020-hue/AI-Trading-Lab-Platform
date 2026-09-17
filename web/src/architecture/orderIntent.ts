@@ -27,3 +27,55 @@ export interface OrderIntentPayload {
   is_terminal: boolean;
   rejection_reason?: string | null;
 }
+
+/**
+ * Helper function to filter order intents by lifecycle state.
+ */
+export function filterOrderIntentsByState(
+  intents: readonly OrderIntentPayload[],
+  stateFilter: OrderLifecycleState | "ALL"
+): OrderIntentPayload[] {
+  if (stateFilter === "ALL") {
+    return [...intents];
+  }
+  return intents.filter((intent) => intent.lifecycle_state === stateFilter);
+}
+
+/**
+ * Helper function to search order intents by symbol query.
+ */
+export function searchOrderIntentsBySymbol(
+  intents: readonly OrderIntentPayload[],
+  searchQuery: string
+): OrderIntentPayload[] {
+  const cleanQuery = searchQuery.trim().toUpperCase();
+  if (!cleanQuery) {
+    return [...intents];
+  }
+  return intents.filter((intent) => intent.symbol.toUpperCase().includes(cleanQuery));
+}
+
+/**
+ * Helper function to transition an in-memory OrderIntent (frontend preview adapter).
+ * Enforces legal state transitions: STAGED -> CANCELLED, REJECTED, or EXPIRED.
+ */
+export function transitionOrderIntentState(
+  intent: OrderIntentPayload,
+  targetState: OrderLifecycleState,
+  reason?: string
+): OrderIntentPayload {
+  if (intent.is_terminal || intent.lifecycle_state !== "STAGED") {
+    throw new Error(`Cannot transition order intent from terminal or non-staged state '${intent.lifecycle_state}'`);
+  }
+  if (targetState === "STAGED") {
+    throw new Error("Cannot transition order intent back to STAGED state");
+  }
+
+  return {
+    ...intent,
+    lifecycle_state: targetState,
+    is_staged: false,
+    is_terminal: true,
+    rejection_reason: reason ?? intent.rejection_reason ?? null,
+  };
+}

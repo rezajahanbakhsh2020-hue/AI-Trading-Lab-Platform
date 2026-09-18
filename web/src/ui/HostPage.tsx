@@ -21,6 +21,7 @@ import { IntelligenceWorkspace } from "./components/IntelligenceWorkspace";
 import { SignalDeliveryCenter } from "./components/SignalDeliveryCenter";
 import { OperationalControlCenter } from "./components/OperationalControlCenter";
 import { OrderIntentViewer } from "./components/OrderIntentViewer";
+import { UserManagementCenter } from "./components/UserManagementCenter";
 import {
   loadUserNotifications,
   saveUserNotifications,
@@ -160,6 +161,7 @@ export function HostPage({
       {normalizedPageId === "risk" && <RiskPage snapshot={snapshot} />}
       {normalizedPageId === "audit" && <OperationalControlCenter snapshot={snapshot} />}
       {normalizedPageId === "intents" && <OrderIntentViewer snapshot={snapshot} />}
+      {normalizedPageId === "users" && <UserManagementCenter snapshot={snapshot} />}
       {normalizedPageId === "health" && <HealthCenter snapshot={snapshot} onRefresh={onSync} />}
       {normalizedPageId === "monitoring" && <MonitoringPage snapshot={snapshot} />}
       {normalizedPageId === "providers" && <ProvidersPage snapshot={snapshot} />}

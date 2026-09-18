@@ -39,7 +39,7 @@ class SecretSanitizer:
     }
 
     SECRET_PATTERN = re.compile(
-        r"(bearer\s+[a-zA-Z0-9_\-\.]{8,}|api_key=[a-zA-Z0-9_\-]+|password=[^\s&]+|token=[a-zA-Z0-9_\-]+)",
+        r"(bearer\s+[a-zA-Z0-9_\-\.]{8,}|api_key=[a-zA-Z0-9_\-]+|password=[^\s&]+|token=[a-zA-Z0-9_\-]+|secret=[a-zA-Z0-9_\-]+)",
         re.IGNORECASE,
     )
 
@@ -171,6 +171,20 @@ class SecurityBoundaryService:
 
         if not isinstance(user, UserAuthorization):
             raise ValueError("user must be a UserAuthorization instance")
+
+        # Verify server-side account validity if method exists (fails closed if expired or inactive)
+        if hasattr(user, "is_account_valid") and callable(getattr(user, "is_account_valid")):
+            if not user.is_account_valid():
+                reason = "Access denied: account expired or inactive"
+                self.audit_logger.log(
+                    user_id=user.user_id,
+                    event_type="ACCESS_DENIED",
+                    resource=clean_res,
+                    action=action,
+                    outcome="DENY",
+                    details=reason,
+                )
+                return False, reason
 
         # Determine required permission
         perm = required_permission

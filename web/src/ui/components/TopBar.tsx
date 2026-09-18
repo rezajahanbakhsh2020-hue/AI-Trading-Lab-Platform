@@ -1,17 +1,24 @@
 import { NavLink } from "react-router-dom";
 import { PRIMARY_MARKET } from "../../architecture/hostView";
 import { useI18n, type SupportedLanguage } from "../../i18n";
+import { type UserAccount } from "../../architecture/userAuth";
 
 type TopBarProps = {
   unreadNotificationsCount?: number;
   onOpenMobileMenu?: () => void;
   onOpenSearch?: () => void;
+  onOpenLogin?: () => void;
+  onLogout?: () => void;
+  currentAccount?: UserAccount | null;
 };
 
 export function TopBar({
   unreadNotificationsCount = 2,
   onOpenMobileMenu,
   onOpenSearch,
+  onOpenLogin,
+  onLogout,
+  currentAccount,
 }: TopBarProps) {
   const { t, language, setLanguage, supportedLanguages } = useI18n();
 
@@ -82,6 +89,32 @@ export function TopBar({
           {t("topbar.hostReady")}
         </span>
         <span className="chip market-chip">{PRIMARY_MARKET}</span>
+
+        {currentAccount ? (
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <span style={{ fontSize: "0.8125rem", color: "#f8fafc", fontWeight: 600 }}>
+              👤 {currentAccount.userId} {currentAccount.isPermanentAdmin && "👑"}
+            </span>
+            <button
+              onClick={onLogout}
+              className="btn btn-secondary"
+              style={{ minHeight: "36px", padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
+              aria-label={t("auth.logoutButton")}
+            >
+              {t("auth.logoutButton")}
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={onOpenLogin}
+            className="btn btn-secondary"
+            style={{ minHeight: "36px", padding: "0.25rem 0.75rem", fontSize: "0.8125rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.375rem" }}
+            aria-label={t("auth.loginButton")}
+          >
+            <span>👤</span>
+            <span>Guest</span>
+          </button>
+        )}
 
         <NavLink
           to="/notifications"

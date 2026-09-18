@@ -1,4 +1,4 @@
-export type UserRole = "admin" | "user" | "guest";
+export type UserRole = "owner" | "admin" | "customer" | "user" | "guest";
 
 export interface UserAccount {
   userId: string;
@@ -34,8 +34,8 @@ export interface AccountStatusEvaluation {
 }
 
 export const PERMANENT_ADMIN_ACCOUNT: UserAccount = {
-  userId: "admin",
-  role: "admin",
+  userId: "admin_owner",
+  role: "owner",
   isActive: true,
   isPermanentAdmin: true,
   activationTimestamp: null,
@@ -43,7 +43,7 @@ export const PERMANENT_ADMIN_ACCOUNT: UserAccount = {
   allowedSymbols: ["XAUUSD", "EURUSD", "BTCUSD", "AAPL", "ETHUSD"],
   allowedStrategies: [],
   detail: "Protected Permanent Platform Owner/Admin",
-  permissions: ["admin:all", "read:signals", "read:secrets", "read:lab_research"],
+  permissions: ["admin:all", "manage:users", "manage:system", "read:signals", "read:secrets", "read:lab_research"],
 };
 
 export function evaluateAccountStatus(
@@ -51,7 +51,7 @@ export function evaluateAccountStatus(
   nowSeconds: number = Math.floor(Date.now() / 1000)
 ): AccountStatusEvaluation {
   // Owner/Admin is permanently protected from expiration rules
-  if (account.isPermanentAdmin || account.role === "admin") {
+  if (account.isPermanentAdmin || account.role === "admin" || account.role === "owner") {
     return {
       isValid: true,
       status: "PERMANENT_ADMIN",
@@ -100,7 +100,7 @@ export const INITIAL_MANAGED_ACCOUNTS: UserAccount[] = [
   PERMANENT_ADMIN_ACCOUNT,
   {
     userId: "trader_active",
-    role: "user",
+    role: "customer",
     isActive: true,
     isPermanentAdmin: false,
     activationTimestamp: now - dayInSeconds * 5,
@@ -112,7 +112,7 @@ export const INITIAL_MANAGED_ACCOUNTS: UserAccount[] = [
   },
   {
     userId: "trader_expired",
-    role: "user",
+    role: "customer",
     isActive: true,
     isPermanentAdmin: false,
     activationTimestamp: now - dayInSeconds * 40,
@@ -124,7 +124,7 @@ export const INITIAL_MANAGED_ACCOUNTS: UserAccount[] = [
   },
   {
     userId: "trader_inactive",
-    role: "user",
+    role: "customer",
     isActive: false,
     isPermanentAdmin: false,
     activationTimestamp: now - dayInSeconds * 10,
@@ -136,7 +136,7 @@ export const INITIAL_MANAGED_ACCOUNTS: UserAccount[] = [
   },
   {
     userId: "trader_future",
-    role: "user",
+    role: "customer",
     isActive: true,
     isPermanentAdmin: false,
     activationTimestamp: now + dayInSeconds * 7,
@@ -170,7 +170,7 @@ export function loadManagedAccounts(): UserAccount[] {
     if (!raw) return INITIAL_MANAGED_ACCOUNTS;
     const parsed = JSON.parse(raw) as UserAccount[];
     if (Array.isArray(parsed) && parsed.length > 0) {
-      const hasAdmin = parsed.some((u) => u.userId === "admin");
+      const hasAdmin = parsed.some((u) => u.userId === "admin" || u.userId === "admin_owner");
       return hasAdmin ? parsed : [PERMANENT_ADMIN_ACCOUNT, ...parsed];
     }
   } catch {
@@ -230,7 +230,7 @@ export function createCustomerAccount(
   allowedSymbols: string[] = ["XAUUSD", "EURUSD"],
   existingAccounts: UserAccount[] = loadManagedAccounts()
 ): { success: boolean; accounts: UserAccount[]; message: string; newAccount?: UserAccount } {
-  if (!adminRequester || (adminRequester.role !== "admin" && !adminRequester.isPermanentAdmin)) {
+  if (!adminRequester || (adminRequester.role !== "admin" && adminRequester.role !== "owner" && !adminRequester.isPermanentAdmin)) {
     return { success: false, accounts: existingAccounts, message: "Access denied: Admin privileges required." };
   }
 
@@ -249,7 +249,7 @@ export function createCustomerAccount(
 
   const newAccount: UserAccount = {
     userId: cleanUser,
-    role: "user",
+    role: "customer",
     isActive: true,
     isPermanentAdmin: false,
     activationTimestamp: activationTs,
@@ -276,18 +276,22 @@ export function renewCustomerAccount(
   extendDays: number = 30,
   existingAccounts: UserAccount[] = loadManagedAccounts()
 ): { success: boolean; accounts: UserAccount[]; message: string } {
-  if (!adminRequester || (adminRequester.role !== "admin" && !adminRequester.isPermanentAdmin)) {
+  if (!adminRequester || (adminRequester.role !== "admin" && adminRequester.role !== "owner" && !adminRequester.isPermanentAdmin)) {
     return { success: false, accounts: existingAccounts, message: "Access denied: Admin privileges required." };
   }
 
   const cleanTarget = targetUserId.trim().toLowerCase();
-  const targetIndex = existingAccounts.findIndex((u) => u.userId.toLowerCase() === cleanTarget);
+  let targetIndex = existingAccounts.findIndex((u) => u.userId.toLowerCase() === cleanTarget);
+  if (targetIndex === -1 && (cleanTarget === "admin" || cleanTarget === "admin_owner")) {
+    targetIndex = existingAccounts.findIndex((u) => u.userId.toLowerCase() === "admin" || u.userId.toLowerCase() === "admin_owner");
+  }
+
   if (targetIndex === -1) {
     return { success: false, accounts: existingAccounts, message: `User '${cleanTarget}' not found.` };
   }
 
   const target = existingAccounts[targetIndex];
-  if (target.isPermanentAdmin || target.role === "admin") {
+  if (target.isPermanentAdmin || target.role === "admin" || target.role === "owner") {
     return { success: true, accounts: existingAccounts, message: "Owner/Admin account is permanent and does not need renewal." };
   }
 
@@ -320,18 +324,22 @@ export function toggleAccountActiveStatus(
   targetUserId: string,
   existingAccounts: UserAccount[] = loadManagedAccounts()
 ): { success: boolean; accounts: UserAccount[]; message: string } {
-  if (!adminRequester || (adminRequester.role !== "admin" && !adminRequester.isPermanentAdmin)) {
+  if (!adminRequester || (adminRequester.role !== "admin" && adminRequester.role !== "owner" && !adminRequester.isPermanentAdmin)) {
     return { success: false, accounts: existingAccounts, message: "Access denied: Admin privileges required." };
   }
 
   const cleanTarget = targetUserId.trim().toLowerCase();
-  const targetIndex = existingAccounts.findIndex((u) => u.userId.toLowerCase() === cleanTarget);
+  let targetIndex = existingAccounts.findIndex((u) => u.userId.toLowerCase() === cleanTarget);
+  if (targetIndex === -1 && (cleanTarget === "admin" || cleanTarget === "admin_owner")) {
+    targetIndex = existingAccounts.findIndex((u) => u.userId.toLowerCase() === "admin" || u.userId.toLowerCase() === "admin_owner");
+  }
+
   if (targetIndex === -1) {
     return { success: false, accounts: existingAccounts, message: `User '${cleanTarget}' not found.` };
   }
 
   const target = existingAccounts[targetIndex];
-  if (target.isPermanentAdmin || target.role === "admin") {
+  if (target.isPermanentAdmin || target.role === "admin" || target.role === "owner") {
     return { success: false, accounts: existingAccounts, message: "Permanent Owner/Admin account cannot be deactivated." };
   }
 

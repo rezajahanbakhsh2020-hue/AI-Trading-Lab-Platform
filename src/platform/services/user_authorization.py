@@ -20,9 +20,8 @@ def hash_token(token: str) -> str:
 from src.platform.domain.security import Permission, UserRole
 from src.platform.domain.user_authorization import UserAuthorization, hash_password
 from src.platform.services.security import AuditLogger
-
-
 from src.platform.adapters.user_repository import UserRepositoryPort
+
 
 class UserAuthorizationService:
     """Service managing user authorization records, authentication, sessions, and customer lifecycle."""
@@ -35,7 +34,7 @@ class UserAuthorizationService:
     ) -> None:
         self._users_by_id: Dict[str, UserAuthorization] = {}
         self._users_by_code: Dict[str, UserAuthorization] = {}
-        self._sessions: Dict[str, Tuple[str, float]] = {}  # session_token -> (user_id, creation_ts)
+        self._sessions: Dict[str, Tuple[str, float]] = {}  # token_hash -> (user_id, creation_ts)
         self._audit_logger = audit_logger or AuditLogger()
         self._repository = repository
         self._config = config
@@ -74,11 +73,11 @@ class UserAuthorizationService:
             admin_user = UserAuthorization(
                 user_id="admin_owner",
                 auth_code="AUTH_ADMIN_PROVISIONED",
-                role=UserRole.ADMIN,
+                role=UserRole.OWNER,
                 password_hash=admin_hash,
                 salt=admin_salt,
                 is_permanent_admin=True,
-                detail="Permanent protected Owner/Admin account",
+                detail="Permanent protected Owner account",
             )
             self.register_user(admin_user)
 
@@ -88,7 +87,7 @@ class UserAuthorizationService:
             default_customer = UserAuthorization(
                 user_id="demo_user",
                 auth_code="AUTH_USER_DEV",
-                role=UserRole.USER,
+                role=UserRole.CUSTOMER,
                 allowed_symbols=("XAUUSD", "EURUSD"),
                 password_hash=user_hash,
                 salt=user_salt,
@@ -134,6 +133,14 @@ class UserAuthorizationService:
         """
         user = self.get_user_authorization(user_id)
         if not user:
+            self._audit_logger.log(
+                user_id=user_id or "unknown",
+                event_type="AUTH_FAILED",
+                resource="auth.login",
+                action="login",
+                outcome="DENY",
+                details="User account not found",
+            )
             return False, None, "Invalid credentials"
 
         if not user.verify_password(plaintext_password):
@@ -148,7 +155,7 @@ class UserAuthorizationService:
             return False, None, "Invalid credentials"
 
         now_ts = time.time()
-        if not user.is_permanent_admin and not user.role == UserRole.ADMIN:
+        if not user.is_permanent_admin and user.role not in (UserRole.OWNER, UserRole.ADMIN):
             if not user.is_active:
                 self._audit_logger.log(
                     user_id=user.user_id,
@@ -228,8 +235,6 @@ class UserAuthorizationService:
             return False, None
         return True, user
 
-    # Password Recovery Foundation Interface (Clean Contract Without Hardcoded Credentials or Email Sending)
-
     def request_password_recovery(self, user_id: str, recovery_email: str) -> Tuple[bool, str, Optional[str]]:
         """Initiate password recovery flow. Generates a token contract without emailing external third parties.
 
@@ -240,7 +245,6 @@ class UserAuthorizationService:
         if not user:
             return False, "User not found", None
 
-        # Check configured recovery email if present
         if user.recovery_email and user.recovery_email.lower() != recovery_email.strip().lower():
             return False, "Recovery email does not match account records", None
 
@@ -292,7 +296,6 @@ class UserAuthorizationService:
         if now_ts >= user.recovery_token_expiration:
             return False, "Recovery token has expired"
 
-        # Verify token hash using SHA-256 token hash
         candidate_hash = hash_token(recovery_token)
         if not secrets.compare_digest(user.recovery_token_hash, candidate_hash):
             self._audit_logger.log(
@@ -339,14 +342,23 @@ class UserAuthorizationService:
         return True, "Password reset successful"
 
     def revoke_session_token(self, token: str) -> bool:
-        """Revoke active session token."""
+        """Revoke active session token (explicit logout)."""
         if not token:
             return False
         token_h = hash_token(token)
         if token_h in self._sessions:
+            uid, _ = self._sessions[token_h]
             del self._sessions[token_h]
             if self._repository:
                 self._repository.delete_session(token_h)
+            self._audit_logger.log(
+                user_id=uid,
+                event_type="LOGOUT",
+                resource="auth.session",
+                action="logout",
+                outcome="ALLOW",
+                details="Session token revoked and invalidated",
+            )
             return True
         return False
 
@@ -379,9 +391,10 @@ class UserAuthorizationService:
         activation_timestamp: float,
         expiration_timestamp: float,
         allowed_symbols: Tuple[str, ...] = ("XAUUSD", "EURUSD"),
+        role: UserRole = UserRole.CUSTOMER,
         detail: Optional[str] = None,
     ) -> UserAuthorization:
-        """Create new customer account with activation and expiration timestamps."""
+        """Create new account with activation and expiration timestamps."""
         if not actor_user.is_admin:
             raise PermissionError("Only Admin can create customer accounts")
 
@@ -395,18 +408,22 @@ class UserAuthorizationService:
         p_hash, salt = hash_password(plaintext_password)
         auth_code = f"AUTH_{secrets.token_hex(8).upper()}"
 
+        clean_role = role
+        if isinstance(role, str):
+            clean_role = UserRole(role.lower().strip())
+
         new_user = UserAuthorization(
             user_id=target_user_id,
             auth_code=auth_code,
-            role=UserRole.USER,
+            role=clean_role,
             allowed_symbols=allowed_symbols,
             password_hash=p_hash,
             salt=salt,
             is_active=True,
             activation_timestamp=activation_timestamp,
             expiration_timestamp=expiration_timestamp,
-            is_permanent_admin=False,
-            detail=detail or "Customer account created by admin",
+            is_permanent_admin=clean_role in (UserRole.OWNER, UserRole.ADMIN),
+            detail=detail or f"Account created by {actor_user.user_id}",
         )
         self.register_user(new_user)
 
@@ -416,7 +433,7 @@ class UserAuthorizationService:
             resource=f"admin.create_user.{target_user_id}",
             action="create_user",
             outcome="ALLOW",
-            details=f"Created customer account active from {activation_timestamp} to {expiration_timestamp}",
+            details=f"Created account role={clean_role.value} active from {activation_timestamp} to {expiration_timestamp}",
         )
         return new_user
 
@@ -426,7 +443,7 @@ class UserAuthorizationService:
         target_user_id: str,
         new_expiration_timestamp: float,
     ) -> UserAuthorization:
-        """Renew/extend expiration timestamp for a customer account."""
+        """Renew/extend expiration timestamp for an account."""
         if not actor_user.is_admin:
             raise PermissionError("Only Admin can renew customer accounts")
 
@@ -434,7 +451,7 @@ class UserAuthorizationService:
         if not target:
             raise ValueError(f"User '{target_user_id}' not found")
 
-        if target.is_permanent_admin or target.role == UserRole.ADMIN:
+        if target.is_permanent_admin or target.role in (UserRole.OWNER, UserRole.ADMIN):
             raise ValueError("Cannot modify expiration for protected Admin/Owner account")
 
         updated_user = UserAuthorization(
@@ -472,7 +489,7 @@ class UserAuthorizationService:
         target_user_id: str,
         is_active: bool,
     ) -> UserAuthorization:
-        """Toggle active status for a customer account."""
+        """Toggle active status for an account."""
         if not actor_user.is_admin:
             raise PermissionError("Only Admin can modify user active status")
 
@@ -480,7 +497,7 @@ class UserAuthorizationService:
         if not target:
             raise ValueError(f"User '{target_user_id}' not found")
 
-        if target.is_permanent_admin or target.role == UserRole.ADMIN:
+        if target.is_permanent_admin or target.role in (UserRole.OWNER, UserRole.ADMIN):
             raise ValueError("Cannot modify active status for protected Admin/Owner account")
 
         updated_user = UserAuthorization(
@@ -513,7 +530,7 @@ class UserAuthorizationService:
         return updated_user
 
     def list_user_accounts(self, actor_user: UserAuthorization) -> List[UserAuthorization]:
-        """List all managed user accounts (Admin only)."""
+        """List all managed user accounts (Owner/Admin only)."""
         if not actor_user.is_admin:
             raise PermissionError("Only Admin can list user accounts")
         return list(self._users_by_id.values())

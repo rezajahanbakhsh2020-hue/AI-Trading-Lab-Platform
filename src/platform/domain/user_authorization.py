@@ -98,8 +98,8 @@ class UserAuthorization:
         elif not isinstance(self.role, UserRole):
             raise ValueError("role must be a UserRole or string equivalent")
 
-        # Guarantee permanent admin if role is ADMIN
-        if self.role == UserRole.ADMIN:
+        # Guarantee permanent admin if role is OWNER or ADMIN
+        if self.role in (UserRole.OWNER, UserRole.ADMIN):
             object.__setattr__(self, "is_permanent_admin", True)
 
         # Set default permissions if not explicitly supplied
@@ -128,9 +128,14 @@ class UserAuthorization:
             object.__setattr__(self, "detail", self.detail.strip())
 
     @property
+    def is_owner(self) -> bool:
+        """Return True if user is platform Owner."""
+        return self.role == UserRole.OWNER or (self.is_permanent_admin and Permission.MANAGE_SYSTEM in self.permissions)
+
+    @property
     def is_admin(self) -> bool:
-        """Return True if user is an admin."""
-        return self.role == UserRole.ADMIN or self.is_permanent_admin
+        """Return True if user is an admin or owner."""
+        return self.role in (UserRole.OWNER, UserRole.ADMIN) or self.is_permanent_admin
 
     def verify_password(self, plaintext: str) -> bool:
         """Verify candidate plaintext password against stored hash and salt."""
@@ -143,7 +148,7 @@ class UserAuthorization:
 
     def is_expired(self, now_ts: Optional[float] = None) -> bool:
         """Determine if account has expired. Owner/Admin accounts are immune."""
-        if self.is_permanent_admin or self.role == UserRole.ADMIN:
+        if self.is_permanent_admin or self.role in (UserRole.OWNER, UserRole.ADMIN):
             return False
         if self.expiration_timestamp is None:
             return False
@@ -153,7 +158,7 @@ class UserAuthorization:
 
     def is_account_valid(self, now_ts: Optional[float] = None) -> bool:
         """Evaluate server-side validity of account for authentication and authorization."""
-        if self.is_permanent_admin or self.role == UserRole.ADMIN:
+        if self.is_permanent_admin or self.role in (UserRole.OWNER, UserRole.ADMIN):
             return True
         if not self.is_active:
             return False

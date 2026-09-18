@@ -2,15 +2,23 @@
 
 Provides Hexagonal Architecture port (UserRepositoryPort) and JSON file implementation (FileBackedUserRepository)
 for persisting user accounts, authentication hashes, active session tokens, and security audit logs across process restarts.
+Includes schema versioning, backward-compatible migration, safe corrupted-file handling (backup + alert), and atomic disk writes.
 """
 
 from abc import ABC, abstractmethod
 import json
+import logging
 import os
+import shutil
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.platform.domain.security import Permission, UserRole
 from src.platform.domain.user_authorization import UserAuthorization
+
+logger = logging.getLogger(__name__)
+
+CURRENT_SCHEMA_VERSION = 2
 
 
 class UserRepositoryError(Exception):
@@ -68,7 +76,7 @@ class UserRepositoryPort(ABC):
 
 
 class FileBackedUserRepository(UserRepositoryPort):
-    """File-backed JSON implementation of UserRepositoryPort."""
+    """File-backed JSON implementation of UserRepositoryPort with schema migration and corruption handling."""
 
     def __init__(self, storage_dir: str = ".data") -> None:
         self.storage_dir = storage_dir
@@ -99,48 +107,92 @@ class FileBackedUserRepository(UserRepositoryPort):
             "recovery_email": user.recovery_email,
             "recovery_token_hash": user.recovery_token_hash,
             "recovery_token_expiration": user.recovery_token_expiration,
+            "_schema_version": CURRENT_SCHEMA_VERSION,
         }
 
     def _deserialize_user(self, data: Dict[str, Any]) -> UserAuthorization:
+        # Schema Migration Logic: Handle V1 (or unversioned) payload to V2
+        migrated_data = dict(data)
+        schema_ver = migrated_data.get("_schema_version", 1)
+
+        if schema_ver < 2:
+            # V1 to V2 migration: handle role defaults and permissions
+            raw_role = str(migrated_data.get("role", "user")).lower()
+            if raw_role == "owner":
+                migrated_data["role"] = "owner"
+                migrated_data["is_permanent_admin"] = True
+            elif raw_role in ("admin", "user", "customer", "guest"):
+                migrated_data["role"] = raw_role
+            else:
+                migrated_data["role"] = "user"
+
+            if "is_active" not in migrated_data:
+                migrated_data["is_active"] = True
+            if "is_permanent_admin" not in migrated_data:
+                migrated_data["is_permanent_admin"] = (migrated_data["role"] in ("admin", "owner"))
+
+            migrated_data["_schema_version"] = CURRENT_SCHEMA_VERSION
+
         return UserAuthorization(
-            user_id=data["user_id"],
-            auth_code=data["auth_code"],
-            telegram_chat_id=data.get("telegram_chat_id"),
-            delivery_enabled=data.get("delivery_enabled", True),
-            allowed_symbols=tuple(data.get("allowed_symbols", [])),
-            allowed_strategies=tuple(data.get("allowed_strategies", [])),
-            role=UserRole(data.get("role", "user")),
-            permissions=tuple(Permission(p) for p in data.get("permissions", [])),
-            detail=data.get("detail"),
-            password_hash=data.get("password_hash"),
-            salt=data.get("salt"),
-            is_active=data.get("is_active", True),
-            activation_timestamp=data.get("activation_timestamp"),
-            expiration_timestamp=data.get("expiration_timestamp"),
-            is_permanent_admin=data.get("is_permanent_admin", False),
-            recovery_email=data.get("recovery_email"),
-            recovery_token_hash=data.get("recovery_token_hash"),
-            recovery_token_expiration=data.get("recovery_token_expiration"),
+            user_id=migrated_data["user_id"],
+            auth_code=migrated_data["auth_code"],
+            telegram_chat_id=migrated_data.get("telegram_chat_id"),
+            delivery_enabled=migrated_data.get("delivery_enabled", True),
+            allowed_symbols=tuple(migrated_data.get("allowed_symbols", [])),
+            allowed_strategies=tuple(migrated_data.get("allowed_strategies", [])),
+            role=UserRole(migrated_data.get("role", "user")),
+            permissions=tuple(Permission(p) for p in migrated_data.get("permissions", [])),
+            detail=migrated_data.get("detail"),
+            password_hash=migrated_data.get("password_hash"),
+            salt=migrated_data.get("salt"),
+            is_active=migrated_data.get("is_active", True),
+            activation_timestamp=migrated_data.get("activation_timestamp"),
+            expiration_timestamp=migrated_data.get("expiration_timestamp"),
+            is_permanent_admin=migrated_data.get("is_permanent_admin", False),
+            recovery_email=migrated_data.get("recovery_email"),
+            recovery_token_hash=migrated_data.get("recovery_token_hash"),
+            recovery_token_expiration=migrated_data.get("recovery_token_expiration"),
         )
+
+    def _backup_corrupt_file(self, filepath: str) -> str:
+        """Create a timestamped copy of a corrupt file so operator data is never silently destroyed."""
+        timestamp = int(time.time())
+        corrupt_backup = f"{filepath}.corrupt.{timestamp}"
+        try:
+            if os.path.exists(filepath):
+                shutil.copy2(filepath, corrupt_backup)
+                logger.warning("Corrupt storage file backed up to '%s'", corrupt_backup)
+        except Exception as exc:
+            logger.error("Failed to backup corrupt storage file '%s': %s", filepath, exc)
+        return corrupt_backup
 
     def _load(self) -> None:
         if os.path.exists(self.users_file):
             try:
                 with open(self.users_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
+                    if not isinstance(data, list):
+                        raise ValueError("User repository data root must be a list")
                     for item in data:
+                        if not isinstance(item, dict):
+                            raise ValueError("User repository item must be a JSON object")
                         u = self._deserialize_user(item)
                         self._users[u.user_id] = u
             except Exception as e:
+                self._backup_corrupt_file(self.users_file)
                 raise CorruptStorageError(f"Failed to load user repository file '{self.users_file}': {e}") from e
 
         if os.path.exists(self.sessions_file):
             try:
                 with open(self.sessions_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
+                    if not isinstance(data, dict):
+                        raise ValueError("Session repository data root must be a dictionary")
                     for token_h, sess in data.items():
-                        self._sessions[token_h] = (sess["user_id"], sess["created_ts"])
+                        if isinstance(sess, dict) and "user_id" in sess and "created_ts" in sess:
+                            self._sessions[token_h] = (sess["user_id"], float(sess["created_ts"]))
             except Exception as e:
+                self._backup_corrupt_file(self.sessions_file)
                 raise CorruptStorageError(f"Failed to load session repository file '{self.sessions_file}': {e}") from e
 
     def _save_users(self) -> None:
@@ -156,7 +208,7 @@ class FileBackedUserRepository(UserRepositoryPort):
     def _save_sessions(self) -> None:
         try:
             serialized = {
-                token: {"user_id": uid, "created_ts": ts}
+                token: {"user_id": uid, "created_ts": ts, "_schema_version": CURRENT_SCHEMA_VERSION}
                 for token, (uid, ts) in self._sessions.items()
             }
             temp_file = f"{self.sessions_file}.tmp"

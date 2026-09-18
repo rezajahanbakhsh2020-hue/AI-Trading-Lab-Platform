@@ -21,6 +21,7 @@ class NotificationDeliveryAttempt:
     user_id: str
     reason: str
     channel: str = "in_process"
+    status_code: str = "DELIVERED"  # e.g. IN_APP_AVAILABLE, EXTERNAL_NOT_CONFIGURED, EXTERNAL_CONFIGURED, DELIVERY_FAILED, DELIVERY_UNAVAILABLE
     externally_delivered: bool = False
     detail: Optional[str] = None
     timestamp: float = 0.0
@@ -41,6 +42,10 @@ class NotificationDeliveryAttempt:
             raise ValueError("channel must be a non-empty string")
         object.__setattr__(self, "channel", self.channel.strip().lower())
 
+        if not isinstance(self.status_code, str) or not self.status_code.strip():
+            raise ValueError("status_code must be a non-empty string")
+        object.__setattr__(self, "status_code", self.status_code.strip().upper())
+
         if not isinstance(self.externally_delivered, bool):
             raise ValueError("externally_delivered must be a boolean")
 
@@ -60,6 +65,7 @@ class NotificationDeliveryAttempt:
             "user_id": self.user_id,
             "reason": self.reason,
             "channel": self.channel,
+            "status_code": self.status_code,
             "externally_delivered": self.externally_delivered,
             "detail": self.detail,
             "timestamp": self.timestamp,

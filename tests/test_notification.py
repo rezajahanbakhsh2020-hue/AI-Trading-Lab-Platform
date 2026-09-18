@@ -339,3 +339,59 @@ def test_notification_service_real_host_events_mapping():
     assert notifs_disconnected[0].category == NotificationCategory.SYSTEM
     assert "Disconnected" in notifs_disconnected[0].title
     assert notifs_disconnected[1].severity == NotificationSeverity.WARNING
+
+
+def test_notification_event_preferences_filtering():
+    from src.platform.domain.notification import NotificationPreferences
+    from src.platform.services.workspace import WorkspaceService
+
+    ws_svc = WorkspaceService()
+    svc = NotificationService(workspace_service=ws_svc)
+
+    user = UserAuthorization(
+        user_id="user_pref",
+        auth_code="auth_pref",
+        role=UserRole.USER,
+        permissions=[Permission.READ_SIGNALS],
+    )
+
+    # 1. Update preferences to disable SECURITY category
+    prefs = NotificationPreferences(
+        enabled_categories=(NotificationCategory.SIGNAL, NotificationCategory.SYSTEM),
+        in_app_enabled=True,
+        min_severity=NotificationSeverity.INFO,
+    )
+    ws_svc.update_preferences(user, "user_pref", notification_preferences=prefs)
+
+    # 2. Ingest SIGNAL event -> Allowed
+    evt_signal = NotificationEvent(
+        event_id="evt_sig_1",
+        event_type="SIGNAL_EMITTED",
+        category=NotificationCategory.SIGNAL,
+        severity=NotificationSeverity.INFO,
+        title="Signal Alert",
+        message="BUY EURUSD",
+        timestamp=time.time(),
+        target_user_id="user_pref",
+    )
+    n_sig = svc.create_notification_from_event(evt_signal)
+    assert n_sig is not None
+
+    # 3. Ingest SECURITY event -> Suppressed by preferences
+    evt_sec = NotificationEvent(
+        event_id="evt_sec_1",
+        event_type="SECURITY_LOGIN_FAILED",
+        category=NotificationCategory.SECURITY,
+        severity=NotificationSeverity.WARNING,
+        title="Security Alert",
+        message="Failed login attempt",
+        timestamp=time.time(),
+        target_user_id="user_pref",
+    )
+    n_sec = svc.create_notification_from_event(evt_sec)
+    assert n_sec is None  # Suppressed!
+
+    # 4. Verify only 1 notification persisted for user_pref
+    notifs = svc.get_notifications(user, "user_pref")
+    assert len(notifs) == 1
+    assert notifs[0].category == NotificationCategory.SIGNAL

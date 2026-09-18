@@ -102,9 +102,11 @@ class NotificationService:
         self,
         repository: Optional[NotificationRepositoryPort] = None,
         security_service: Optional[SecurityBoundaryService] = None,
+        workspace_service: Optional[Any] = None,
     ) -> None:
         self._repo = repository or InMemoryNotificationRepository()
         self._security = security_service or SecurityBoundaryService()
+        self._workspace_service = workspace_service
 
     def _authorize_user_access(
         self, requester: Optional[UserAuthorization], target_user_id: str, action: str = "read"
@@ -295,14 +297,33 @@ class NotificationService:
         self,
         event: NotificationEvent,
         fallback_target_user_id: Optional[str] = None,
+        workspace_service: Optional[Any] = None,
     ) -> Optional[Notification]:
-        """Ingest a real system event and persist as user notification if target user specified."""
+        """Ingest a real system event and persist as user notification if target user specified and user preferences allow."""
         if not isinstance(event, NotificationEvent):
             raise ValueError("event must be a NotificationEvent instance")
 
         target_uid = event.target_user_id or fallback_target_user_id
         if not target_uid:
             return None
+
+        clean_uid = target_uid.strip()
+
+        ws_svc = workspace_service or self._workspace_service
+        # Check Workspace Notification Preferences if workspace_service is available
+        if ws_svc is not None:
+            try:
+                ws = ws_svc._repo.get_workspace(clean_uid) if hasattr(ws_svc, "_repo") else None
+                if ws and hasattr(ws, "notification_preferences"):
+                    prefs = ws.notification_preferences
+                    if not prefs.in_app_enabled:
+                        return None
+                    if not prefs.is_category_enabled(event.category):
+                        return None
+                    if not prefs.is_severity_allowed(event.severity):
+                        return None
+            except Exception:
+                pass  # Fallback to saving if preference check fails
 
         # Sanitize event title, message, and payload
         sanitized_payload = SecretSanitizer.sanitize_data(event.payload)
@@ -311,7 +332,7 @@ class NotificationService:
 
         notif = Notification(
             notification_id=f"notif_evt_{event.event_id}",
-            user_id=target_uid.strip(),
+            user_id=clean_uid,
             category=event.category,
             severity=event.severity,
             title=SecretSanitizer.sanitize_string(event.title),
@@ -323,6 +344,10 @@ class NotificationService:
                 "event_id": event.event_id,
                 "event_type": event.event_type,
                 "payload": sanitized_payload,
+                "version": event.version,
+                "source": event.source,
+                "correlation_id": event.correlation_id,
+                "status": event.status,
             },
         )
         return self._repo.save(notif)

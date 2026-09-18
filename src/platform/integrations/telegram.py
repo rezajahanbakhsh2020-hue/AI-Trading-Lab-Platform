@@ -20,6 +20,9 @@ class TelegramDeliveryResult:
     chat_id: str
     message_id: Optional[str] = None
     reason: Optional[str] = None
+    failure_code: Optional[str] = None  # e.g., UNCONFIGURED_CREDENTIALS, INVALID_CHAT_ID, RATE_LIMITED, UNAUTHORIZED_USER, NETWORK_ERROR
+    is_retryable: bool = False
+    correlation_id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -27,6 +30,9 @@ class TelegramDeliveryResult:
             "chat_id": self.chat_id,
             "message_id": self.message_id,
             "reason": self.reason,
+            "failure_code": self.failure_code,
+            "is_retryable": self.is_retryable,
+            "correlation_id": self.correlation_id,
         }
 
 

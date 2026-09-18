@@ -227,9 +227,17 @@ export const enTranslations = {
     tabs: {
       all: "All",
       signal: "Signals",
+      project1: "Project 1 Integration",
       market_health: "Market Health",
+      security: "Security & Auth",
       workspace: "Workspace",
       system: "System",
+    },
+    deliveryChannels: {
+      inApp: "In-App Inbox",
+      telegram: "Telegram Bot",
+      available: "Available",
+      notConfigured: "Not Configured",
     },
     actions: {
       markRead: "Mark Read",
@@ -797,9 +805,17 @@ export const faTranslations: TranslationKeys = {
     tabs: {
       all: "همه",
       signal: "سیگنال‌ها",
+      project1: "ادغام پروژه ۱",
       market_health: "سلامت بازار",
+      security: "امنیت و دسترسی",
       workspace: "فضای کاری",
       system: "سیستم",
+    },
+    deliveryChannels: {
+      inApp: "صندوق ورودی برنامه",
+      telegram: "ربات تلگرام",
+      available: "در دسترس",
+      notConfigured: "پیکربندی نشده",
     },
     actions: {
       markRead: "علامت خوانده‌شده",
@@ -1365,9 +1381,17 @@ export const arTranslations: TranslationKeys = {
     tabs: {
       all: "الكل",
       signal: "الإشارات",
+      project1: "تكامل المشروع 1",
       market_health: "صحة السوق",
+      security: "الأمان والمصادقة",
       workspace: "مساحة العمل",
       system: "النظام",
+    },
+    deliveryChannels: {
+      inApp: "صندوق البريد للتطبيق",
+      telegram: "بوت تليجرام",
+      available: "متاح",
+      notConfigured: "غير مهيأ",
     },
     actions: {
       markRead: "تحديد كقراءة",
@@ -1933,9 +1957,17 @@ export const trTranslations: TranslationKeys = {
     tabs: {
       all: "Tümü",
       signal: "Sinyaller",
+      project1: "Proje 1 Entegrasyonu",
       market_health: "Piyasa Sağlığı",
+      security: "Güvenlik & İzinler",
       workspace: "Çalışma Alanı",
       system: "Sistem",
+    },
+    deliveryChannels: {
+      inApp: "Uygulama İçi Gelen Kutusu",
+      telegram: "Telegram Botu",
+      available: "Mevcut",
+      notConfigured: "Yapılandırılmadı",
     },
     actions: {
       markRead: "Okundu İşaretle",

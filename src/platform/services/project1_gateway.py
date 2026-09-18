@@ -25,7 +25,9 @@ from src.platform.domain.project1_contract import (
 )
 
 from src.platform.domain.user_authorization import UserAuthorization
+from src.platform.domain.notification import NotificationCategory, NotificationEvent, NotificationSeverity
 from src.platform.services.audit_control import PlatformAuditControlService
+from src.platform.services.notification import NotificationService
 from src.platform.services.security import SecretSanitizer, SecurityBoundaryService
 
 
@@ -37,10 +39,12 @@ class Project1IntegrationGatewayService:
         repository: Optional[Project1IntegrationRepositoryPort] = None,
         security_boundary: Optional[SecurityBoundaryService] = None,
         audit_control: Optional[PlatformAuditControlService] = None,
+        notification_service: Optional[NotificationService] = None,
     ) -> None:
         self._repo = repository or FileBackedProject1IntegrationRepository()
         self._security = security_boundary or SecurityBoundaryService()
         self._audit = audit_control or PlatformAuditControlService(security_boundary=self._security)
+        self._notif_svc = notification_service
 
     def get_capabilities(self, user: Optional[UserAuthorization] = None) -> Dict[str, Any]:
         """Return contract capabilities discovery payload."""
@@ -206,6 +210,30 @@ class Project1IntegrationGatewayService:
             },
         )
 
+        # 9. User-scoped Notification Creation
+        if self._notif_svc is not None:
+            evt = NotificationEvent(
+                event_id=f"p1_ingest_{sanitized['signal_id']}",
+                event_type="PROJECT1_SIGNAL_INGESTED",
+                category=NotificationCategory.PROJECT1_INTEGRATION,
+                severity=NotificationSeverity.INFO,
+                title=f"Project 1 Signal Ingested: {sanitized.get('symbol')} ({sanitized.get('signal_type', '').upper()})",
+                message=f"Signal {sanitized['signal_id']} for {sanitized.get('symbol')} received from Project 1 (contract v{sanitized.get('contract_version', '1.0')}).",
+                timestamp=time.time(),
+                target_user_id=user.user_id,
+                payload={
+                    "signal_id": sanitized["signal_id"],
+                    "symbol": sanitized.get("symbol"),
+                    "signal_type": sanitized.get("signal_type"),
+                    "strategy_name": sanitized.get("strategy_name"),
+                },
+                version=str(sanitized.get("contract_version", "1.0")),
+                source="project1_gateway",
+                correlation_id=correlation_id,
+                status="INGESTED",
+            )
+            self._notif_svc.create_notification_from_event(evt)
+
         return {
             "success": True,
             "status": "INGESTED",
@@ -296,6 +324,23 @@ class Project1IntegrationGatewayService:
             correlation_id=corr_id,
             details=f"Signal {signal_id} lifecycle updated to {ls_upper}.",
         )
+
+        if self._notif_svc is not None:
+            evt = NotificationEvent(
+                event_id=f"p1_lifecycle_{signal_id}_{int(time.time())}",
+                event_type="SIGNAL_LIFECYCLE_UPDATED",
+                category=NotificationCategory.SIGNAL_LIFECYCLE,
+                severity=NotificationSeverity.INFO,
+                title=f"Signal Lifecycle Updated: {signal_id}",
+                message=f"Signal {signal_id} lifecycle state changed to {ls_upper}.",
+                timestamp=time.time(),
+                target_user_id=user.user_id,
+                payload={"signal_id": signal_id, "lifecycle_state": ls_upper, "reason": reason_str},
+                source="project1_gateway",
+                correlation_id=corr_id,
+                status=ls_upper,
+            )
+            self._notif_svc.create_notification_from_event(evt)
 
         return {
             "success": True,

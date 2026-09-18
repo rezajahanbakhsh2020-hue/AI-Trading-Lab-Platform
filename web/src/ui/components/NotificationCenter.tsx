@@ -36,7 +36,9 @@ export function NotificationCenter({
   const tabs: { key: NotificationCategory; label: string }[] = [
     { key: "all", label: t("notifications.tabs.all") },
     { key: "signal", label: t("notifications.tabs.signal") },
+    { key: "project1_integration", label: t("notifications.tabs.project1") },
     { key: "market_health", label: t("notifications.tabs.market_health") },
+    { key: "security", label: t("notifications.tabs.security") },
     { key: "workspace", label: t("notifications.tabs.workspace") },
     { key: "system", label: t("notifications.tabs.system") },
   ];
@@ -89,6 +91,37 @@ export function NotificationCenter({
         </div>
 
         <div className="card-body">
+          {/* Delivery Channels & Preferences Header */}
+          <div
+            className="notif-channels-bar"
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+              padding: "10px 14px",
+              marginBottom: 16,
+              borderRadius: 6,
+              background: "rgba(255, 255, 255, 0.02)",
+              border: "1px solid rgba(255, 255, 255, 0.05)",
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", fontSize: 12 }}>
+              <span>
+                <strong>{t("notifications.deliveryChannels.inApp")}:</strong>{" "}
+                <span className="chip ready-chip">{t("notifications.deliveryChannels.available")}</span>
+              </span>
+              <span>
+                <strong>{t("notifications.deliveryChannels.telegram")}:</strong>{" "}
+                <span className="chip warn-chip">{t("notifications.deliveryChannels.notConfigured")}</span>
+              </span>
+            </div>
+            <span style={{ fontSize: 12, opacity: 0.8 }}>
+              🛡️ {t("notifications.privacyNote")}
+            </span>
+          </div>
+
           {/* Category Filter Tabs */}
           <div className="notification-tabs" style={{ display: "flex", gap: 8, marginBottom: 16, overflowX: "auto" }}>
             {tabs.map((tab) => (
@@ -101,13 +134,6 @@ export function NotificationCenter({
                 {tab.label}
               </button>
             ))}
-          </div>
-
-          {/* Privacy Note */}
-          <div className="privacy-note-box" style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 6, background: "rgba(255, 255, 255, 0.03)", borderLeft: "3px solid #3b82f6" }}>
-            <span style={{ fontSize: 12, opacity: 0.85 }}>
-              🛡️ {t("notifications.privacyNote")}
-            </span>
           </div>
 
           {/* List or Empty State */}

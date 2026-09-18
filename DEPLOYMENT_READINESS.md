@@ -109,7 +109,31 @@ The platform provides a versioned, authenticated, auditable Hexagonal Integratio
 
 ---
 
-## 7. Public HTTPS Deployment Requirements
+## 7. Notification & Event Delivery Layer Architecture
+
+The notification layer provides canonical, user-scoped event processing and multi-channel delivery support.
+
+### Event Model & Notification Categories
+- **Canonical Notification Categories:** `signal`, `project1_integration`, `signal_lifecycle`, `market_health`, `workspace`, `system`, `security`, `account_session`, and `admin`.
+- **Event Integrity:** Every `NotificationEvent` includes `event_id`, `event_type`, `category`, `severity`, `title`, `message`, `timestamp`, `target_user_id`, `payload`, `version`, `source`, `correlation_id`, and `status`.
+
+### User Notification Preferences & Persistence
+- User-scoped preferences (`NotificationPreferences`) are integrated into `Workspace` entities and persisted across server restarts (`FileBackedWorkspaceRepository`).
+- Users can enable/disable categories, toggle in-app vs. external delivery, and set minimum severity thresholds.
+
+### Telegram-Ready Delivery Port & Status Classification
+- **Ports & Adapters Architecture:** Outbound notifications are routed via `NotificationDeliveryPort` and `TelegramDeliveryPort`.
+- **Honest Delivery Statuses:** Explicitly distinguishes `IN_APP_AVAILABLE`, `EXTERNAL_CONFIGURED`, `EXTERNAL_NOT_CONFIGURED`, `DELIVERY_FAILED`, and `DELIVERY_UNAVAILABLE`.
+- **Zero Fake Delivery Claims:** Telegram delivery reports `UNCONFIGURED_CREDENTIALS` and `externally_delivered=False` when bot tokens are not configured in the environment.
+
+### Security, Isolation, & Audit
+- **Strict Server-Side Isolation:** Users cannot access or trigger notifications for other users (raises IDOR / `PermissionError`).
+- **Secret Sanitization:** Protected strategy parameters and secrets are automatically redacted before inbox storage or delivery.
+- **Audit Logging:** Ingestion, delivery attempts, and preference updates generate `PlatformAuditControlService` records.
+
+---
+
+## 8. Public HTTPS Deployment Requirements
 
 To perform a live public HTTPS deployment to remote cloud infrastructure, the following external items are required:
 

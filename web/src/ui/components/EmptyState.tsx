@@ -4,6 +4,8 @@ type EmptyStateProps = {
   icon?: string;
   actionText?: string;
   onAction?: () => void;
+  helpRoute?: string;
+  helpText?: string;
 };
 
 export function EmptyState({
@@ -11,6 +13,8 @@ export function EmptyState({
   message,
   actionText,
   onAction,
+  helpRoute = "/help",
+  helpText = "Need Help? Visit Help Center →",
 }: EmptyStateProps) {
   return (
     <div className="empty-state">
@@ -32,11 +36,18 @@ export function EmptyState({
       </div>
       <h4>{title}</h4>
       <p className="hint">{message}</p>
-      {actionText && onAction && (
-        <button className="btn btn-secondary" onClick={onAction} style={{ marginTop: 12 }}>
-          {actionText}
-        </button>
-      )}
+      <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center", alignItems: "center", marginTop: 12 }}>
+        {actionText && onAction && (
+          <button className="btn btn-secondary" onClick={onAction}>
+            {actionText}
+          </button>
+        )}
+        {helpRoute && (
+          <a href={helpRoute} className="btn btn-ghost" style={{ fontSize: "0.8125rem", color: "#60a5fa" }}>
+            {helpText}
+          </a>
+        )}
+      </div>
     </div>
   );
 }

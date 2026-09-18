@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useI18n } from "../../i18n";
+import { OperationalErrorBanner } from "./OperationalErrorBanner";
 import {
   loadManagedAccounts,
   evaluateAccountStatus,
@@ -146,19 +147,16 @@ export function LoginModal({
         </p>
 
         {errorReason && (
-          <div
-            style={{
-              padding: "0.75rem 1rem",
-              borderRadius: "6px",
-              backgroundColor: "rgba(239, 68, 68, 0.15)",
-              border: "1px solid #ef4444",
-              color: "#fca5a5",
-              fontSize: "0.875rem",
-              marginBottom: "1rem",
+          <OperationalErrorBanner
+            error={{
+              whatHappenedKey: errorReason,
+              whyLikelyKey: "errors.authFailedWhy",
+              whatToCancelKey: "errors.authFailedAction",
+              whatIfContinuesKey: "errors.authFailedSupport",
+              correlationId: `auth_err_${Date.now().toString(16)}`,
             }}
-          >
-            ⚠️ {errorReason}
-          </div>
+            onDismiss={() => setErrorReason(null)}
+          />
         )}
 
         <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>

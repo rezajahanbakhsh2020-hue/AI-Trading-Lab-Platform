@@ -4,21 +4,17 @@ import { useI18n } from "../../i18n";
 export function HelpCenter() {
   const { t } = useI18n();
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedSection, setSelectedSection] = useState<string | null>("get_started");
+  const [selectedSection, setSelectedSection] = useState<string>("get_started");
 
   const helpTopics = [
     {
       id: "get_started",
-      title: "Getting Started & Platform Overview",
-      summary: "Understand how Project 2 acts as a presentation and integration host for Project 1 outputs.",
+      title: t("help.getStartedTitle") !== "help.getStartedTitle" ? t("help.getStartedTitle") : "Getting Started & Onboarding",
+      summary: t("help.getStartedSub") !== "help.getStartedSub" ? t("help.getStartedSub") : "Quick operational start for presenting Project 1 outputs inside Project 2.",
       content: (
         <div>
           <h4>Host Architecture & Strategy Boundaries</h4>
-          <p>
-            Project 2 is the presentation, application, and integration host for Project 1 (AI-Trading-Lab).
-            Strategy calculations, signal evaluations, and risk models run exclusively in Project 1.
-            Project 2 consumes verified signal payloads via <code>Project1IntegrationPort</code> contracts.
-          </p>
+          <p>Project 2 is the presentation, application, and integration host for Project 1 (AI-Trading-Lab). Strategy calculations, signal evaluations, and risk models run exclusively in Project 1.</p>
           <h4>Primary Navigation Workflow</h4>
           <ul>
             <li><strong>Dashboard:</strong> Central operational home summarizing signal status and system health.</li>
@@ -32,30 +28,25 @@ export function HelpCenter() {
     },
     {
       id: "auth_security",
-      title: "Authentication, Owner Protection & Time-Limited Access",
+      title: t("help.subsystemsTitle") !== "help.subsystemsTitle" ? t("help.subsystemsTitle") : "Authentication & Platform Subsystems",
       summary: "User access control, permanent owner immunity, and session lifetime bounds.",
       content: (
         <div>
           <h4>Account Roles & Expiration Rules</h4>
-          <p>
-            The platform enforces server-side identity validation on every protected route:
-          </p>
+          <p>The platform enforces server-side identity validation on every protected route:</p>
           <ul>
             <li><strong>Permanent Owner/Admin:</strong> Protected from expiry rules and account deactivation.</li>
             <li><strong>Active Customer:</strong> Time-limited access with strict activation/expiration bounds.</li>
             <li><strong>Expired / Inactive Account:</strong> Fails closed on authentication and API calls.</li>
           </ul>
           <h4>Password Recovery Flow</h4>
-          <p>
-            If you forget your password, click <em>"Forgot password / Recovery"</em> in the login modal.
-            A secure, non-reversible recovery token contract will be generated without exposing credentials to external third parties.
-          </p>
+          <p>If you forget your password, click 'Forgot password / Recovery' in the login modal. A secure, non-reversible recovery token contract will be generated.</p>
         </div>
       ),
     },
     {
       id: "status_indicators",
-      title: "Status Badges, Indicators & Security Disclosures",
+      title: t("help.statusesTitle") !== "help.statusesTitle" ? t("help.statusesTitle") : "Status Badges & Security Indicators",
       summary: "Guide to system status icons, execution boundaries, and freshness badges.",
       content: (
         <div>
@@ -67,29 +58,26 @@ export function HelpCenter() {
             <li><span style={{ color: "#c084fc", fontWeight: 700 }}>PERMANENT ADMIN:</span> Immune owner account.</li>
           </ul>
           <h4>Non-Execution Disclosure</h4>
-          <p>
-            Order intents in Project 2 represent pre-authorized staged intentions.
-            They are NOT live market fills, broker orders, or exchange submissions (`externally_executed=False`).
-          </p>
+          <p>Order intents in Project 2 represent pre-authorized staged intentions. They are NOT live market fills, broker orders, or exchange submissions.</p>
         </div>
       ),
     },
     {
       id: "troubleshooting",
-      title: "Troubleshooting & Operational Health",
+      title: t("help.troubleshootingTitle") !== "help.troubleshootingTitle" ? t("help.troubleshootingTitle") : "Troubleshooting & Health Diagnostics",
       summary: "What to do if market data or Project 1 integration is unavailable.",
       content: (
         <div>
           <h4>Common Issues & Action Steps</h4>
           <ol>
             <li>
-              <strong>Market Data Disconnected:</strong> Visit the <em>Health Center (`/health`)</em> to view provider freshness age or switch to the disconnected fallback adapter.
+              <strong>Market Data Disconnected:</strong> Visit the Health Center (/health) to view provider freshness age or switch to the disconnected fallback adapter.
             </li>
             <li>
               <strong>Permission Restricted:</strong> If strategy secrets or calibration parameters appear masked, confirm your account role with the system administrator.
             </li>
             <li>
-              <strong>Session Expired:</strong> Sessions expire automatically after 24 hours. Simply click <em>Sign In</em> in the top bar to refresh your token.
+              <strong>Session Expired:</strong> Sessions expire automatically after 24 hours. Simply click Sign In in the top bar to refresh your token.
             </li>
           </ol>
         </div>
@@ -98,12 +86,12 @@ export function HelpCenter() {
   ];
 
   const filteredTopics = helpTopics.filter(
-    (t) =>
-      t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.summary.toLowerCase().includes(searchQuery.toLowerCase())
+    (tItem) =>
+      tItem.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      tItem.summary.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const activeTopic = helpTopics.find((t) => t.id === selectedSection) || helpTopics[0];
+  const activeTopic = helpTopics.find((tItem) => tItem.id === selectedSection) || helpTopics[0];
 
   return (
     <div style={{ padding: "1.5rem", color: "#f8fafc" }}>

@@ -156,6 +156,14 @@ export function App() {
 
       <main className="workspace">
         <Routes>
+          <Route
+            path="/users"
+            element={<UserManagementCenter currentAccount={authState.userAccount} />}
+          />
+          <Route
+            path="/help"
+            element={<HelpCenter />}
+          />
           {NAV_ITEMS.map((item) => (
             <Route
               key={item.id}
@@ -172,14 +180,6 @@ export function App() {
               }
             />
           ))}
-          <Route
-            path="/users"
-            element={<UserManagementCenter currentAccount={authState.userAccount} />}
-          />
-          <Route
-            path="/help"
-            element={<HelpCenter />}
-          />
           {/* Aliases for singular/plural path compatibility */}
           <Route
             path="/dashboard"

@@ -14,45 +14,65 @@ from src.platform.domain.user_authorization import UserAuthorization, hash_passw
 from src.platform.services.security import AuditLogger
 
 
+from src.platform.adapters.user_repository import UserRepositoryPort
+
 class UserAuthorizationService:
     """Service managing user authorization records, authentication, sessions, and customer lifecycle."""
 
-    def __init__(self, audit_logger: Optional[AuditLogger] = None) -> None:
+    def __init__(
+        self,
+        audit_logger: Optional[AuditLogger] = None,
+        repository: Optional[UserRepositoryPort] = None,
+    ) -> None:
         self._users_by_id: Dict[str, UserAuthorization] = {}
         self._users_by_code: Dict[str, UserAuthorization] = {}
         self._sessions: Dict[str, Tuple[str, float]] = {}  # session_token -> (user_id, creation_ts)
         self._audit_logger = audit_logger or AuditLogger()
+        self._repository = repository
+        self._load_from_repository()
         self._initialize_default_users()
 
-    def _initialize_default_users(self) -> None:
-        """Initialize permanent owner/admin and default demo accounts with hashed passwords."""
-        admin_hash, admin_salt = hash_password("AdminSecureKey2026!")
-        admin_user = UserAuthorization(
-            user_id="admin_owner",
-            auth_code="AUTH_ADMIN_2026",
-            role=UserRole.ADMIN,
-            password_hash=admin_hash,
-            salt=admin_salt,
-            is_permanent_admin=True,
-            detail="Permanent protected Owner/Admin account",
-        )
-        self.register_user(admin_user)
+    def _load_from_repository(self) -> None:
+        """Load persisted users and active sessions from repository if present."""
+        if not self._repository:
+            return
+        persisted_users = self._repository.list_users()
+        for user in persisted_users:
+            self._users_by_id[user.user_id] = user
+            self._users_by_code[user.auth_code] = user
+        self._sessions = self._repository.list_sessions()
 
-        user_hash, user_salt = hash_password("CustomerPass2026!")
-        now_ts = time.time()
-        default_customer = UserAuthorization(
-            user_id="demo_user",
-            auth_code="AUTH_USER_2026",
-            role=UserRole.USER,
-            allowed_symbols=("XAUUSD", "EURUSD"),
-            password_hash=user_hash,
-            salt=user_salt,
-            is_active=True,
-            activation_timestamp=now_ts - 3600,
-            expiration_timestamp=now_ts + (30 * 86400),
-            detail="Default active customer account",
-        )
-        self.register_user(default_customer)
+    def _initialize_default_users(self) -> None:
+        """Initialize permanent owner/admin and default demo accounts with hashed passwords if not already in repository."""
+        if "admin_owner" not in self._users_by_id:
+            admin_hash, admin_salt = hash_password("AdminSecureKey2026!")
+            admin_user = UserAuthorization(
+                user_id="admin_owner",
+                auth_code="AUTH_ADMIN_2026",
+                role=UserRole.ADMIN,
+                password_hash=admin_hash,
+                salt=admin_salt,
+                is_permanent_admin=True,
+                detail="Permanent protected Owner/Admin account",
+            )
+            self.register_user(admin_user)
+
+        if "demo_user" not in self._users_by_id:
+            user_hash, user_salt = hash_password("CustomerPass2026!")
+            now_ts = time.time()
+            default_customer = UserAuthorization(
+                user_id="demo_user",
+                auth_code="AUTH_USER_2026",
+                role=UserRole.USER,
+                allowed_symbols=("XAUUSD", "EURUSD"),
+                password_hash=user_hash,
+                salt=user_salt,
+                is_active=True,
+                activation_timestamp=now_ts - 3600,
+                expiration_timestamp=now_ts + (30 * 86400),
+                detail="Default active customer account",
+            )
+            self.register_user(default_customer)
 
     def register_user(self, user: UserAuthorization) -> None:
         """Register or update a user authorization entry."""
@@ -60,6 +80,8 @@ class UserAuthorizationService:
             raise ValueError("user must be a UserAuthorization instance")
         self._users_by_id[user.user_id] = user
         self._users_by_code[user.auth_code] = user
+        if self._repository:
+            self._repository.save_user(user)
 
     def authenticate_by_code(self, auth_code: str) -> Optional[UserAuthorization]:
         """Look up user authorization by authorization code."""
@@ -145,20 +167,27 @@ class UserAuthorizationService:
         )
         return True, user, "Authentication successful"
 
-    def create_session_token(self, user_id: str) -> Optional[str]:
+    def create_session_token(self, user_id: str, max_age_seconds: float = 86400) -> Optional[str]:
         """Generate a secure session token for an authenticated valid account."""
         user = self.get_user_authorization(user_id)
         if not user or not user.is_account_valid():
             return None
         token = f"sess_{secrets.token_urlsafe(32)}"
-        self._sessions[token] = (user.user_id, time.time())
+        created_ts = time.time()
+        self._sessions[token] = (user.user_id, created_ts)
+        if self._repository:
+            self._repository.save_session(token, user.user_id, created_ts)
         return token
 
-    def validate_session_token(self, token: str) -> Tuple[bool, Optional[UserAuthorization]]:
+    def validate_session_token(self, token: str, max_age_seconds: float = 86400) -> Tuple[bool, Optional[UserAuthorization]]:
         """Validate session token and re-verify server-side account status in real-time."""
         if not token or token not in self._sessions:
             return False, None
         user_id, created_ts = self._sessions[token]
+        now_ts = time.time()
+        if now_ts - created_ts > max_age_seconds:
+            del self._sessions[token]
+            return False, None
         user = self.get_user_authorization(user_id)
         if not user or not user.is_account_valid():
             if token in self._sessions:
@@ -166,10 +195,123 @@ class UserAuthorizationService:
             return False, None
         return True, user
 
+    # Password Recovery Foundation Interface (Clean Contract Without Hardcoded Credentials or Email Sending)
+
+    def request_password_recovery(self, user_id: str, recovery_email: str) -> Tuple[bool, str, Optional[str]]:
+        """Initiate password recovery flow. Generates a token contract without emailing external third parties.
+
+        Returns:
+            Tuple[success, message, recovery_token]
+        """
+        user = self.get_user_authorization(user_id)
+        if not user:
+            return False, "User not found", None
+
+        # Check configured recovery email if present
+        if user.recovery_email and user.recovery_email.lower() != recovery_email.strip().lower():
+            return False, "Recovery email does not match account records", None
+
+        recovery_token = secrets.token_hex(20)
+        token_hash, salt = hash_password(recovery_token)
+        expiration = time.time() + 3600  # 1 hour validity
+
+        updated_user = UserAuthorization(
+            user_id=user.user_id,
+            auth_code=user.auth_code,
+            telegram_chat_id=user.telegram_chat_id,
+            delivery_enabled=user.delivery_enabled,
+            allowed_symbols=user.allowed_symbols,
+            allowed_strategies=user.allowed_strategies,
+            role=user.role,
+            permissions=user.permissions,
+            detail=user.detail,
+            password_hash=user.password_hash,
+            salt=user.salt,
+            is_active=user.is_active,
+            activation_timestamp=user.activation_timestamp,
+            expiration_timestamp=user.expiration_timestamp,
+            is_permanent_admin=user.is_permanent_admin,
+            recovery_email=recovery_email.strip().lower(),
+            recovery_token_hash=token_hash,
+            recovery_token_expiration=expiration,
+        )
+        self.register_user(updated_user)
+
+        self._audit_logger.log(
+            user_id=user.user_id,
+            event_type="AUTH_RECOVERY_REQUESTED",
+            resource="auth.recovery",
+            action="request_recovery",
+            outcome="ALLOW",
+            details="Password recovery token generated for user",
+        )
+        return True, "Recovery token generated successfully", recovery_token
+
+    def reset_password_with_recovery_token(
+        self, user_id: str, recovery_token: str, new_password: str
+    ) -> Tuple[bool, str]:
+        """Reset user password using a valid, non-expired recovery token."""
+        user = self.get_user_authorization(user_id)
+        if not user or not user.recovery_token_hash or not user.recovery_token_expiration:
+            return False, "No active recovery request found"
+
+        now_ts = time.time()
+        if now_ts >= user.recovery_token_expiration:
+            return False, "Recovery token has expired"
+
+        # Verify token hash
+        # To verify token hash stored as password_hash format
+        candidate_hash, _ = hash_password(recovery_token, user.salt)
+        if not secrets.compare_digest(user.recovery_token_hash, candidate_hash):
+            self._audit_logger.log(
+                user_id=user.user_id,
+                event_type="AUTH_RECOVERY_FAILED",
+                resource="auth.recovery",
+                action="reset_password",
+                outcome="DENY",
+                details="Invalid recovery token",
+            )
+            return False, "Invalid recovery token"
+
+        new_hash, new_salt = hash_password(new_password)
+        updated_user = UserAuthorization(
+            user_id=user.user_id,
+            auth_code=user.auth_code,
+            telegram_chat_id=user.telegram_chat_id,
+            delivery_enabled=user.delivery_enabled,
+            allowed_symbols=user.allowed_symbols,
+            allowed_strategies=user.allowed_strategies,
+            role=user.role,
+            permissions=user.permissions,
+            detail="Password reset via recovery token",
+            password_hash=new_hash,
+            salt=new_salt,
+            is_active=user.is_active,
+            activation_timestamp=user.activation_timestamp,
+            expiration_timestamp=user.expiration_timestamp,
+            is_permanent_admin=user.is_permanent_admin,
+            recovery_email=user.recovery_email,
+            recovery_token_hash=None,
+            recovery_token_expiration=None,
+        )
+        self.register_user(updated_user)
+
+        self._audit_logger.log(
+            user_id=user.user_id,
+            event_type="AUTH_RECOVERY_SUCCESS",
+            resource="auth.recovery",
+            action="reset_password",
+            outcome="ALLOW",
+            details="Password reset completed via recovery token",
+        )
+        return True, "Password reset successful"
+
     def revoke_session_token(self, token: str) -> bool:
         """Revoke active session token."""
         if token in self._sessions:
             del self._sessions[token]
+            if self._repository:
+                self._repository.delete_session(token)
             return True
         return False
 

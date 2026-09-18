@@ -26,11 +26,30 @@ export function LoginModal({
   const [password, setPassword] = useState("");
   const [errorReason, setErrorReason] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [recoveryEmail, setRecoveryEmail] = useState("");
+  const [recoverySuccessMsg, setRecoverySuccessMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
+  const handleRecoveryRequest = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorReason(null);
+    setRecoverySuccessMsg(null);
+    if (!recoveryEmail.trim() || !recoveryEmail.includes("@")) {
+      setErrorReason(t("auth.invalidCredentials"));
+      return;
+    }
+    setRecoverySuccessMsg(t("auth.recoverySentMsg"));
+  };
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    if (showRecovery) {
+      handleRecoveryRequest(e);
+      return;
+    }
+
     setErrorReason(null);
     setIsSubmitting(true);
 
@@ -143,44 +162,90 @@ export function LoginModal({
         )}
 
         <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <div>
-            <label style={{ display: "block", color: "#cbd5e1", fontSize: "0.875rem", marginBottom: "0.25rem" }}>
-              {t("auth.usernameLabel")}
-            </label>
-            <input
-              type="text"
-              className="search-input"
-              style={{ width: "100%", minHeight: "44px", padding: "0.5rem 0.75rem" }}
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="e.g. admin or trader_active"
-              required
-            />
-          </div>
+          {!showRecovery ? (
+            <>
+              <div>
+                <label style={{ display: "block", color: "#cbd5e1", fontSize: "0.875rem", marginBottom: "0.25rem" }}>
+                  {t("auth.usernameLabel")}
+                </label>
+                <input
+                  type="text"
+                  className="search-input"
+                  style={{ width: "100%", minHeight: "44px", padding: "0.5rem 0.75rem" }}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="e.g. admin or trader_active"
+                  required
+                />
+              </div>
 
-          <div>
-            <label style={{ display: "block", color: "#cbd5e1", fontSize: "0.875rem", marginBottom: "0.25rem" }}>
-              {t("auth.passwordLabel")}
-            </label>
-            <input
-              type="password"
-              className="search-input"
-              style={{ width: "100%", minHeight: "44px", padding: "0.5rem 0.75rem" }}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-            />
-          </div>
+              <div>
+                <label style={{ display: "block", color: "#cbd5e1", fontSize: "0.875rem", marginBottom: "0.25rem" }}>
+                  {t("auth.passwordLabel")}
+                </label>
+                <input
+                  type="password"
+                  className="search-input"
+                  style={{ width: "100%", minHeight: "44px", padding: "0.5rem 0.75rem" }}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
 
-          <button
-            type="submit"
-            className="btn btn-primary"
-            style={{ width: "100%", minHeight: "44px", marginTop: "0.5rem", fontWeight: 600 }}
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? t("auth.loggingIn") : t("auth.loginButton")}
-          </button>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                style={{ width: "100%", minHeight: "44px", marginTop: "0.5rem", fontWeight: 600 }}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? t("auth.loggingIn") : t("auth.loginButton")}
+              </button>
+            </>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              <label style={{ display: "block", color: "#cbd5e1", fontSize: "0.875rem" }}>
+                {t("auth.recoveryEmailLabel")}
+              </label>
+              <input
+                type="email"
+                className="search-input"
+                style={{ width: "100%", minHeight: "44px", padding: "0.5rem 0.75rem" }}
+                value={recoveryEmail}
+                onChange={(e) => setRecoveryEmail(e.target.value)}
+                placeholder="owner@domain.com"
+                required
+              />
+              <button
+                type="submit"
+                className="btn btn-primary"
+                style={{ width: "100%", minHeight: "44px", fontWeight: 600 }}
+              >
+                {t("auth.requestRecoveryToken")}
+              </button>
+              {recoverySuccessMsg && (
+                <div style={{ color: "#4ade80", fontSize: "0.875rem", marginTop: "0.25rem" }}>
+                  ✓ {recoverySuccessMsg}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ padding: 0, minHeight: "36px", color: "#60a5fa", fontSize: "0.875rem" }}
+              onClick={() => {
+                setShowRecovery(!showRecovery);
+                setErrorReason(null);
+                setRecoverySuccessMsg(null);
+              }}
+            >
+              {showRecovery ? t("auth.backToLogin") : t("auth.forgotPassword")}
+            </button>
+          </div>
         </form>
 
         <div style={{ marginTop: "1.5rem", paddingTop: "1rem", borderTop: "1px solid #334155" }}>

@@ -86,7 +86,30 @@ Distinct liveness and readiness probes are exposed via `src/platform/server.py`:
 
 ---
 
-## 6. Public HTTPS Deployment Requirements
+## 6. Project 1 ↔ Project 2 Integration Gateway Contract & Security Architecture
+
+The platform provides a versioned, authenticated, auditable Hexagonal Integration Gateway (`src/platform/services/project1_gateway.py` and `src/platform/domain/project1_contract.py`) for Project 1 signal output ingestion and lifecycle management.
+
+### Boundary Principles & Non-Calculation Guarantee
+- **Project 1 Source of Truth:** Project 1 is the sole source of truth for all strategy decisions, signals, Entry prices, Stop Loss (SL), Take Profit levels (TP1/TP2/TP3), and Trailing Stop configurations.
+- **Non-Calculation & Non-Modification:** Project 2 NEVER calculates, modifies, optimizes, or decides strategy rules, prices, or trade parameters. Project 2 strictly validates, authorizes, scopes, persists, and presents them.
+- **Contract Versioning:** All integration payloads specify a contract version. Supported versions include `1.0`, `1.0.0`, and `v1.0`. Payloads with unsupported versions (e.g. `2.0`) are explicitly rejected with status `422` (`UNSUPPORTED_CONTRACT_VERSION`).
+
+### Integration Gateway API Endpoints
+- **Contract Capabilities Discovery (`GET /api/v1/integration/project1/capabilities`):** Exposes supported contract versions, command types, signal types, lifecycle states, and non-calculation guarantees.
+- **Authorized Signal Ingestion (`POST /api/v1/integration/project1/ingest`):** Authenticates the caller, verifies `signals:write` RBAC authorization, validates the contract schema, enforces user/tenant isolation, checks replay protection, generates correlation IDs, persists the record, and logs an audit event.
+- **Lifecycle Transition Command (`POST /api/v1/integration/project1/lifecycle`):** Updates signal lifecycle states (`STAGED`, `ACTIVE`, `UPDATED`, `CANCELLED`, `EXPIRED`, `REJECTED`, `EXECUTED`) with audit control logging.
+- **User-Isolated Integration Records (`GET /api/v1/integration/project1/records`):** Retrieves user-scoped integration records. Non-admin users are strictly isolated to their own records.
+
+### Security, Customer Isolation, & Idempotency
+- **IDOR Protection:** Cross-tenant or cross-user payload injections are rejected (`FORBIDDEN_USER_MISMATCH`) and recorded as security audit events.
+- **Replay Protection / Idempotency:** Duplicate signal submissions with the same `(user_id, signal_id)` return an idempotent acceptance response (`DUPLICATE_ACCEPTED`) without duplicating records or audit events.
+- **File-Backed Persistence:** Integration records persist across restarts in `data/project1_integration_records.json` using atomic temporary file replacements (`FileBackedProject1IntegrationRepository`).
+- **Audit Logging:** Every capability discovery, signal ingestion, schema rejection, IDOR attempt, and lifecycle update is logged to `PlatformAuditControlService` with secret sanitization.
+
+---
+
+## 7. Public HTTPS Deployment Requirements
 
 To perform a live public HTTPS deployment to remote cloud infrastructure, the following external items are required:
 

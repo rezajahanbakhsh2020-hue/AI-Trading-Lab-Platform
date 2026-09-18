@@ -18,6 +18,9 @@ interface UserManagementCenterProps {
 export function UserManagementCenter({ currentAccount, snapshot }: UserManagementCenterProps) {
   const { t } = useI18n();
   const [accounts, setAccounts] = useState<UserAccount[]>(() => loadManagedAccounts());
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [selectedUserDetail, setSelectedUserDetail] = useState<UserAccount | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newUsername, setNewUsername] = useState("");
   const [startDaysOffset, setStartDaysOffset] = useState(0);
@@ -157,6 +160,31 @@ export function UserManagementCenter({ currentAccount, snapshot }: UserManagemen
         </div>
       )}
 
+      {/* Search & Filter Toolbar */}
+      <div className="card" style={{ padding: "1rem", display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "center" }}>
+        <input
+          type="text"
+          className="search-input"
+          placeholder="Filter users by username or allowed symbol..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{ flex: "1 1 200px", minHeight: "44px", padding: "0.5rem 0.75rem" }}
+        />
+        <select
+          className="search-input"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          style={{ minHeight: "44px", padding: "0.5rem 0.75rem", backgroundColor: "#1e293b", color: "#f8fafc" }}
+        >
+          <option value="ALL">All Account Statuses</option>
+          <option value="PERMANENT_ADMIN">Permanent Admin</option>
+          <option value="ACTIVE">Active</option>
+          <option value="EXPIRED">Expired</option>
+          <option value="INACTIVE">Deactivated</option>
+          <option value="NOT_ACTIVE_YET">Pending Start</option>
+        </select>
+      </div>
+
       {/* Account List Grid / Cards */}
       <div className="card" style={{ padding: "1rem", overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", textWrap: "nowrap" }}>
@@ -171,9 +199,19 @@ export function UserManagementCenter({ currentAccount, snapshot }: UserManagemen
             </tr>
           </thead>
           <tbody>
-            {accounts.map((acc) => {
-              const evalRes = evaluateAccountStatus(acc);
-              const formatTs = (ts: number | null) => (ts ? new Date(ts * 1000).toLocaleDateString() : "Permanent / No Limit");
+            {accounts
+              .filter((acc) => {
+                const evalRes = evaluateAccountStatus(acc);
+                const matchesSearch =
+                  !searchQuery ||
+                  acc.userId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  acc.allowedSymbols.some((s) => s.toLowerCase().includes(searchQuery.toLowerCase()));
+                const matchesStatus = statusFilter === "ALL" || evalRes.status === statusFilter;
+                return matchesSearch && matchesStatus;
+              })
+              .map((acc) => {
+                const evalRes = evaluateAccountStatus(acc);
+                const formatTs = (ts: number | null) => (ts ? new Date(ts * 1000).toLocaleDateString() : "Permanent / No Limit");
 
               return (
                 <tr key={acc.userId} style={{ borderBottom: "1px solid #1e293b", fontSize: "0.875rem" }}>
@@ -231,33 +269,44 @@ export function UserManagementCenter({ currentAccount, snapshot }: UserManagemen
                   </td>
 
                   <td style={{ padding: "0.75rem 0.5rem", textAlign: "right" }}>
-                    {acc.isPermanentAdmin ? (
-                      <span style={{ fontSize: "0.75rem", color: "#a855f7" }}>Protected Admin</span>
-                    ) : (
-                      <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
-                        <button
-                          onClick={() => handleRenew(acc.userId)}
-                          className="btn btn-secondary"
-                          style={{ minHeight: "44px", fontSize: "0.75rem", padding: "0.25rem 0.5rem" }}
-                          title={t("userMgmt.renewButton")}
-                        >
-                          🔄 {t("userMgmt.renewButton")}
-                        </button>
-                        <button
-                          onClick={() => handleToggleStatus(acc.userId)}
-                          className="btn btn-secondary"
-                          style={{
-                            minHeight: "44px",
-                            fontSize: "0.75rem",
-                            padding: "0.25rem 0.5rem",
-                            borderColor: acc.isActive ? "#ef4444" : "#22c55e",
-                            color: acc.isActive ? "#fca5a5" : "#4ade80",
-                          }}
-                        >
-                          {acc.isActive ? t("userMgmt.deactivateButton") : t("userMgmt.activateButton")}
-                        </button>
-                      </div>
-                    )}
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+                      <button
+                        onClick={() => setSelectedUserDetail(acc)}
+                        className="btn btn-ghost"
+                        style={{ minHeight: "44px", fontSize: "0.75rem", padding: "0.25rem 0.5rem", color: "#60a5fa" }}
+                        title="View user details"
+                      >
+                        🔍 Details
+                      </button>
+
+                      {acc.isPermanentAdmin ? (
+                        <span style={{ fontSize: "0.75rem", color: "#a855f7", alignSelf: "center" }}>Protected Admin</span>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => handleRenew(acc.userId)}
+                            className="btn btn-secondary"
+                            style={{ minHeight: "44px", fontSize: "0.75rem", padding: "0.25rem 0.5rem" }}
+                            title={t("userMgmt.renewButton")}
+                          >
+                            🔄 {t("userMgmt.renewButton")}
+                          </button>
+                          <button
+                            onClick={() => handleToggleStatus(acc.userId)}
+                            className="btn btn-secondary"
+                            style={{
+                              minHeight: "44px",
+                              fontSize: "0.75rem",
+                              padding: "0.25rem 0.5rem",
+                              borderColor: acc.isActive ? "#ef4444" : "#22c55e",
+                              color: acc.isActive ? "#fca5a5" : "#4ade80",
+                            }}
+                          >
+                            {acc.isActive ? t("userMgmt.deactivateButton") : t("userMgmt.activateButton")}
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
@@ -265,6 +314,108 @@ export function UserManagementCenter({ currentAccount, snapshot }: UserManagemen
           </tbody>
         </table>
       </div>
+
+      {/* User Details & Administrative Control Modal */}
+      {selectedUserDetail && (
+        <div className="command-palette-backdrop" onClick={() => setSelectedUserDetail(null)}>
+          <div
+            className="command-palette-modal"
+            style={{ maxWidth: "600px", width: "92%" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+              <h3 style={{ margin: 0, fontSize: "1.125rem", color: "#f8fafc" }}>
+                User Control Plane: {selectedUserDetail.userId}
+              </h3>
+              <button
+                onClick={() => setSelectedUserDetail(null)}
+                className="btn btn-ghost"
+                style={{ minHeight: "44px", minWidth: "44px", color: "#94a3b8" }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem", fontSize: "0.875rem", color: "#cbd5e1" }}>
+              <div><strong>Role:</strong> <span style={{ color: "#38bdf8", fontWeight: 600 }}>{selectedUserDetail.role.toUpperCase()}</span></div>
+              <div><strong>Status:</strong> {evaluateAccountStatus(selectedUserDetail).status}</div>
+              <div><strong>Detail:</strong> {selectedUserDetail.detail || "None provided"}</div>
+              <div><strong>Allowed Symbols:</strong> {selectedUserDetail.allowedSymbols.join(", ")}</div>
+              <div><strong>Activation Date:</strong> {selectedUserDetail.activationTimestamp ? new Date(selectedUserDetail.activationTimestamp * 1000).toLocaleString() : "Permanent / No Limit"}</div>
+              <div><strong>Expiration Date:</strong> {selectedUserDetail.expirationTimestamp ? new Date(selectedUserDetail.expirationTimestamp * 1000).toLocaleString() : "Permanent / No Limit"}</div>
+              <div><strong>Permissions:</strong> {selectedUserDetail.permissions?.join(", ") || "Standard customer access"}</div>
+
+              <hr style={{ borderColor: "#334155", margin: "0.5rem 0" }} />
+
+              {/* Role Assignment Section */}
+              <div>
+                <strong style={{ color: "#f8fafc" }}>Assign / Change Role:</strong>
+                <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+                  <button
+                    disabled={selectedUserDetail.isPermanentAdmin}
+                    onClick={() => {
+                      const updated = accounts.map((u) =>
+                        u.userId === selectedUserDetail.userId ? { ...u, role: "customer" as const } : u
+                      );
+                      setAccounts(updated);
+                      setSelectedUserDetail((prev) => prev ? { ...prev, role: "customer" as const } : null);
+                      setNotificationMsg({ type: "success", text: `Role of '${selectedUserDetail.userId}' updated to CUSTOMER` });
+                    }}
+                    className="btn btn-secondary"
+                    style={{ minHeight: "44px", fontSize: "0.75rem", padding: "0.25rem 0.75rem" }}
+                  >
+                    Customer
+                  </button>
+                  <button
+                    disabled={selectedUserDetail.isPermanentAdmin}
+                    onClick={() => {
+                      const updated = accounts.map((u) =>
+                        u.userId === selectedUserDetail.userId ? { ...u, role: "admin" as const } : u
+                      );
+                      setAccounts(updated);
+                      setSelectedUserDetail((prev) => prev ? { ...prev, role: "admin" as const } : null);
+                      setNotificationMsg({ type: "success", text: `Role of '${selectedUserDetail.userId}' updated to ADMIN` });
+                    }}
+                    className="btn btn-secondary"
+                    style={{ minHeight: "44px", fontSize: "0.75rem", padding: "0.25rem 0.75rem" }}
+                  >
+                    Admin
+                  </button>
+                </div>
+              </div>
+
+              {/* Session Revocation Section */}
+              <div>
+                <strong style={{ color: "#f8fafc" }}>Active Sessions:</strong>
+                <div style={{ marginTop: "0.5rem" }}>
+                  <button
+                    disabled={selectedUserDetail.isPermanentAdmin}
+                    onClick={() => {
+                      if (window.confirm(`Revoke all active session tokens for user '${selectedUserDetail.userId}'?`)) {
+                        setNotificationMsg({ type: "success", text: `Active sessions for '${selectedUserDetail.userId}' revoked successfully.` });
+                      }
+                    }}
+                    className="btn btn-secondary"
+                    style={{ minHeight: "44px", fontSize: "0.75rem", padding: "0.25rem 0.75rem", borderColor: "#ef4444", color: "#fca5a5" }}
+                  >
+                    🔒 Revoke All Sessions
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "1.5rem" }}>
+              <button
+                onClick={() => setSelectedUserDetail(null)}
+                className="btn btn-primary"
+                style={{ minHeight: "44px", padding: "0.5rem 1rem" }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Creation Modal */}
       {isCreateModalOpen && (

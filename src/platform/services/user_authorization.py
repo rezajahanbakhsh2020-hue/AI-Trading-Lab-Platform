@@ -9,7 +9,7 @@ import hashlib
 import os
 import secrets
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 def hash_token(token: str) -> str:
     """Hash a session token using SHA-256 for secure non-reversible storage."""
@@ -534,3 +534,162 @@ class UserAuthorizationService:
         if not actor_user.is_admin:
             raise PermissionError("Only Admin can list user accounts")
         return list(self._users_by_id.values())
+
+    def update_user_role(
+        self,
+        actor_user: UserAuthorization,
+        target_user_id: str,
+        new_role: Union[UserRole, str],
+    ) -> UserAuthorization:
+        """Update role of a target user enforcing strict RBAC rules.
+
+        Rules:
+        - Owner can assign/revoke any role.
+        - Admin cannot promote anyone to Owner or Admin, nor demote/modify Owner or other Admin accounts.
+        - Non-admins cannot alter roles.
+        """
+        if not actor_user.is_admin and not actor_user.is_owner:
+            raise PermissionError("Only Admin or Owner can update user roles")
+
+        target = self.get_user_authorization(target_user_id)
+        if not target:
+            raise ValueError(f"User '{target_user_id}' not found")
+
+        clean_new_role = new_role if isinstance(new_role, UserRole) else UserRole(str(new_role).lower().strip())
+
+        # Admin privilege restrictions
+        if not actor_user.is_owner:
+            if target.is_owner or target.role == UserRole.OWNER:
+                raise PermissionError("Admin cannot modify Owner accounts")
+            if target.is_admin or target.role == UserRole.ADMIN:
+                raise PermissionError("Admin cannot modify other Admin accounts")
+            if clean_new_role in (UserRole.OWNER, UserRole.ADMIN):
+                raise PermissionError("Admin cannot promote accounts to Admin or Owner")
+
+        if target.is_permanent_admin and clean_new_role not in (UserRole.OWNER, UserRole.ADMIN):
+            if not actor_user.is_owner:
+                raise PermissionError("Cannot revoke permanent admin status")
+
+        updated_user = UserAuthorization(
+            user_id=target.user_id,
+            auth_code=target.auth_code,
+            telegram_chat_id=target.telegram_chat_id,
+            delivery_enabled=target.delivery_enabled,
+            allowed_symbols=target.allowed_symbols,
+            allowed_strategies=target.allowed_strategies,
+            role=clean_new_role,
+            detail=f"Role changed to '{clean_new_role.value}' by {actor_user.user_id}",
+            password_hash=target.password_hash,
+            salt=target.salt,
+            is_active=target.is_active,
+            activation_timestamp=target.activation_timestamp,
+            expiration_timestamp=target.expiration_timestamp,
+            is_permanent_admin=clean_new_role in (UserRole.OWNER, UserRole.ADMIN),
+            recovery_email=target.recovery_email,
+        )
+        self.register_user(updated_user)
+
+        self._audit_logger.log(
+            user_id=actor_user.user_id,
+            event_type="ADMIN_ACTION",
+            resource=f"admin.update_role.{target_user_id}",
+            action="update_role",
+            outcome="ALLOW",
+            details=f"Updated role of {target_user_id} from {target.role.value} to {clean_new_role.value}",
+        )
+        return updated_user
+
+    def update_user_profile(
+        self,
+        actor_user: UserAuthorization,
+        target_user_id: str,
+        allowed_symbols: Optional[Tuple[str, ...]] = None,
+        telegram_chat_id: Optional[str] = None,
+        delivery_enabled: Optional[bool] = None,
+        detail: Optional[str] = None,
+    ) -> UserAuthorization:
+        """Update permitted profile/settings fields for self or target user (Admin only for cross-user)."""
+        clean_target = target_user_id.strip()
+        if not actor_user.is_admin and actor_user.user_id != clean_target:
+            raise PermissionError("Access denied: cannot modify profile of another user")
+
+        target = self.get_user_authorization(clean_target)
+        if not target:
+            raise ValueError(f"User '{clean_target}' not found")
+
+        # Non-admin users cannot change their own allowed_symbols if updated
+        new_symbols = target.allowed_symbols
+        if allowed_symbols is not None:
+            if not actor_user.is_admin and actor_user.user_id == clean_target:
+                pass  # Keep existing allowed_symbols for customer self-update
+            else:
+                new_symbols = allowed_symbols
+
+        new_chat_id = telegram_chat_id if telegram_chat_id is not None else target.telegram_chat_id
+        new_delivery = delivery_enabled if delivery_enabled is not None else target.delivery_enabled
+        new_detail = detail if detail is not None else target.detail
+
+        updated_user = UserAuthorization(
+            user_id=target.user_id,
+            auth_code=target.auth_code,
+            telegram_chat_id=new_chat_id,
+            delivery_enabled=new_delivery,
+            allowed_symbols=new_symbols,
+            allowed_strategies=target.allowed_strategies,
+            role=target.role,
+            permissions=target.permissions,
+            detail=new_detail,
+            password_hash=target.password_hash,
+            salt=target.salt,
+            is_active=target.is_active,
+            activation_timestamp=target.activation_timestamp,
+            expiration_timestamp=target.expiration_timestamp,
+            is_permanent_admin=target.is_permanent_admin,
+            recovery_email=target.recovery_email,
+        )
+        self.register_user(updated_user)
+
+        self._audit_logger.log(
+            user_id=actor_user.user_id,
+            event_type="PROFILE_UPDATE",
+            resource=f"user.profile.{clean_target}",
+            action="update_profile",
+            outcome="ALLOW",
+            details=f"Updated profile fields for user '{clean_target}'",
+        )
+        return updated_user
+
+    def revoke_user_sessions(
+        self,
+        actor_user: UserAuthorization,
+        target_user_id: str,
+    ) -> int:
+        """Revoke all active session tokens for target user (Admin or Self)."""
+        clean_target = target_user_id.strip()
+        if not actor_user.is_admin and actor_user.user_id != clean_target:
+            raise PermissionError("Access denied: cannot revoke sessions of another user")
+
+        target = self.get_user_authorization(clean_target)
+        if not target:
+            raise ValueError(f"User '{clean_target}' not found")
+
+        revoked_count = 0
+        tokens_to_delete = [
+            token_h for token_h, (uid, _) in self._sessions.items() if uid == clean_target
+        ]
+
+        for token_h in tokens_to_delete:
+            del self._sessions[token_h]
+            if self._repository:
+                self._repository.delete_session(token_h)
+            revoked_count += 1
+
+        self._audit_logger.log(
+            user_id=actor_user.user_id,
+            event_type="SESSION_REVOKED",
+            resource=f"auth.sessions.{clean_target}",
+            action="revoke_sessions",
+            outcome="ALLOW",
+            details=f"Revoked {revoked_count} active session(s) for user '{clean_target}'",
+        )
+        return revoked_count

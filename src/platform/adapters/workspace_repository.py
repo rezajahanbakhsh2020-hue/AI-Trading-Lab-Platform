@@ -11,6 +11,7 @@ import shutil
 import time
 from typing import Dict, Optional
 
+from src.platform.domain.notification import NotificationPreferences
 from src.platform.domain.workspace import Watchlist, Workspace
 from src.platform.services.workspace import WorkspaceRepositoryPort
 
@@ -65,6 +66,13 @@ class FileBackedWorkspaceRepository(WorkspaceRepositoryPort):
             watchlists["default"] = default_wl
             active_wl_id = "default"
 
+        notif_prefs_raw = data.get("notification_preferences")
+        notif_prefs = (
+            NotificationPreferences.from_dict(notif_prefs_raw)
+            if isinstance(notif_prefs_raw, dict)
+            else NotificationPreferences()
+        )
+
         return Workspace(
             user_id=user_id,
             active_watchlist_id=active_wl_id if active_wl_id in watchlists else list(watchlists.keys())[0],
@@ -72,6 +80,7 @@ class FileBackedWorkspaceRepository(WorkspaceRepositoryPort):
             watchlists=watchlists,
             chart_preferences=data.get("chart_preferences", {}),
             layout_preferences=data.get("layout_preferences", {}),
+            notification_preferences=notif_prefs,
             updated_at=float(data.get("updated_at", time.time())),
         )
 

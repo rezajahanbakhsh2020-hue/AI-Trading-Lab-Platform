@@ -4,7 +4,7 @@ In-memory provider adapter implementing TelegramDeliveryPort for testing and
 development environments where real Telegram bot credentials are not configured.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from src.platform.domain.presented_signal import PresentedSignal
 from src.platform.integrations.telegram import TelegramDeliveryPort, TelegramDeliveryResult
@@ -17,12 +17,21 @@ class MockTelegramAdapter(TelegramDeliveryPort):
         self.is_configured = is_configured
         self.delivered_messages: List[Dict[str, Any]] = []
 
-    def send_signal(self, chat_id: str, signal: PresentedSignal) -> TelegramDeliveryResult:
+    def send_signal(
+        self,
+        chat_id: str,
+        signal: PresentedSignal,
+        correlation_id: Optional[str] = None,
+    ) -> TelegramDeliveryResult:
+        corr_id = correlation_id or f"tg_corr_{signal.signal_id}"
         if not self.is_configured:
             return TelegramDeliveryResult(
                 success=False,
                 chat_id=chat_id,
                 reason="Telegram bot credentials not configured in environment",
+                failure_code="UNCONFIGURED_CREDENTIALS",
+                is_retryable=False,
+                correlation_id=corr_id,
             )
 
         if not chat_id or not isinstance(chat_id, str) or not chat_id.strip():
@@ -30,6 +39,9 @@ class MockTelegramAdapter(TelegramDeliveryPort):
                 success=False,
                 chat_id=chat_id or "",
                 reason="Invalid or empty chat_id",
+                failure_code="INVALID_CHAT_ID",
+                is_retryable=False,
+                correlation_id=corr_id,
             )
 
         if not isinstance(signal, PresentedSignal):
@@ -42,6 +54,7 @@ class MockTelegramAdapter(TelegramDeliveryPort):
             "chat_id": chat_id,
             "signal_id": signal.signal_id,
             "text": formatted_text,
+            "correlation_id": corr_id,
         }
         self.delivered_messages.append(record)
 
@@ -50,6 +63,7 @@ class MockTelegramAdapter(TelegramDeliveryPort):
             chat_id=chat_id,
             message_id=msg_id,
             reason="delivered via MockTelegramAdapter",
+            correlation_id=corr_id,
         )
 
     def describe(self) -> Dict[str, Any]:

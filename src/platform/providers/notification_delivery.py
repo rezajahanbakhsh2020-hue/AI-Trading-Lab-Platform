@@ -83,6 +83,7 @@ class RecordingNotificationDeliveryAdapter(NotificationDeliveryPort):
                 user_id=user_id.strip(),
                 reason=f"delivery channel '{ch}' is unavailable",
                 channel=ch,
+                status_code="DELIVERY_UNAVAILABLE",
                 externally_delivered=False,
                 detail=f"in-process delivery attempt failed on channel '{ch}'",
                 timestamp=ts,
@@ -94,12 +95,13 @@ class RecordingNotificationDeliveryAdapter(NotificationDeliveryPort):
             })
             return attempt
 
-        # Honest in-process recorded attempt (externally_delivered is explicitly False)
+        status_code = "IN_APP_AVAILABLE" if ch in ("in_process", "in_app") else "EXTERNAL_NOT_CONFIGURED"
         attempt = NotificationDeliveryAttempt(
             success=True,
             user_id=user_id.strip(),
             reason=f"event '{event.event_id}' recorded in-process via channel '{ch}'",
             channel=ch,
+            status_code=status_code,
             externally_delivered=False,
             detail=f"recorded in-process attempt {len(self.attempts) + 1}",
             timestamp=ts,
@@ -138,6 +140,7 @@ class RecordingNotificationDeliveryAdapter(NotificationDeliveryPort):
                 user_id=user_id.strip(),
                 reason=f"delivery channel '{ch}' is unavailable",
                 channel=ch,
+                status_code="DELIVERY_UNAVAILABLE",
                 externally_delivered=False,
                 detail=f"in-process alert delivery attempt failed on channel '{ch}'",
                 timestamp=ts,
@@ -149,11 +152,13 @@ class RecordingNotificationDeliveryAdapter(NotificationDeliveryPort):
             })
             return attempt
 
+        status_code = "IN_APP_AVAILABLE" if ch in ("in_process", "in_app") else "EXTERNAL_NOT_CONFIGURED"
         attempt = NotificationDeliveryAttempt(
             success=True,
             user_id=user_id.strip(),
             reason=f"alert '{alert.id}' recorded in-process via channel '{ch}'",
             channel=ch,
+            status_code=status_code,
             externally_delivered=False,
             detail=f"recorded in-process attempt {len(self.attempts) + 1}",
             timestamp=ts,

@@ -24,6 +24,9 @@ from src.platform.services.health_operations import SystemHealthService
 from src.platform.services.security import SecurityBoundaryService, SecretSanitizer
 from src.platform.services.project1_presenter import Project1SignalPresenter
 from src.platform.services.project1_gateway import Project1IntegrationGatewayService
+from src.platform.services.notification import NotificationService
+from src.platform.services.notification_delivery import NotificationDeliveryService
+from src.platform.providers.notification_delivery import RecordingNotificationDeliveryAdapter
 
 logger = logging.getLogger("platform.server")
 
@@ -38,6 +41,8 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
     security_service: SecurityBoundaryService
     presenter: Project1SignalPresenter
     gateway_service: Project1IntegrationGatewayService
+    notification_service: NotificationService
+    notification_delivery_service: NotificationDeliveryService
     static_dir: str
 
     def log_message(self, format: str, *args: Any) -> None:
@@ -290,6 +295,116 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                     _, user = self.server_user_auth_service.validate_session_token(token)
                 snapshot = self.presenter.build_host_snapshot(user=user)
                 self._send_json_response(200, snapshot, origin=origin)
+                return
+
+            if path == "/api/v1/notifications":
+                valid, user = self._authenticate_request_user()
+                if not valid or not user:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to view notifications.", origin=origin)
+                    return
+
+                query_params = urllib.parse.parse_qs(parsed_url.query)
+                category = query_params.get("category", [None])[0]
+                unread_only = query_params.get("unread_only", ["false"])[0].lower() == "true"
+                include_archived = query_params.get("include_archived", ["false"])[0].lower() == "true"
+
+                notifs = self.notification_service.get_notifications(
+                    requester=user,
+                    target_user_id=user.user_id,
+                    category=category,
+                    unread_only=unread_only,
+                    include_archived=include_archived,
+                )
+                self._send_json_response(
+                    200,
+                    {
+                        "success": True,
+                        "notifications": [n.to_dict() for n in notifs],
+                        "count": len(notifs),
+                    },
+                    origin=origin,
+                )
+                return
+
+            if path == "/api/v1/notifications/unread-count":
+                valid, user = self._authenticate_request_user()
+                if not valid or not user:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to view unread count.", origin=origin)
+                    return
+
+                count = self.notification_service.get_unread_count(
+                    requester=user,
+                    target_user_id=user.user_id,
+                )
+                self._send_json_response(
+                    200,
+                    {
+                        "success": True,
+                        "unread_count": count,
+                    },
+                    origin=origin,
+                )
+                return
+
+            if path == "/api/v1/notifications/preferences":
+                valid, user = self._authenticate_request_user()
+                if not valid or not user:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to view notification preferences.", origin=origin)
+                    return
+
+                ws = self.workspace_service.get_or_create_workspace(user, user.user_id)
+                self._send_json_response(
+                    200,
+                    {
+                        "success": True,
+                        "preferences": ws.notification_preferences.to_dict(),
+                    },
+                    origin=origin,
+                )
+                return
+
+            if path == "/api/v1/notifications/delivery-status":
+                valid, user = self._authenticate_request_user()
+                if not valid or not user:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to check delivery status.", origin=origin)
+                    return
+
+                has_tg = bool(user.telegram_chat_id and user.telegram_chat_id.strip())
+                self._send_json_response(
+                    200,
+                    {
+                        "success": True,
+                        "channels": {
+                            "in_app": {"status": "IN_APP_AVAILABLE", "configured": True},
+                            "telegram": {
+                                "status": "EXTERNAL_CONFIGURED" if has_tg else "EXTERNAL_NOT_CONFIGURED",
+                                "configured": has_tg,
+                                "chat_id": user.telegram_chat_id if has_tg else None,
+                            },
+                        },
+                    },
+                    origin=origin,
+                )
+                return
+
+            if path == "/api/v1/notifications/admin/delivery-log":
+                valid, actor = self._authenticate_request_user()
+                if not valid or not actor:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login as Admin.", origin=origin)
+                    return
+                if not actor.is_admin:
+                    self._send_error_response(403, "Access Denied", "Admin privileges required.", "Contact platform administrator.", origin=origin)
+                    return
+
+                desc = self.notification_delivery_service.describe()
+                self._send_json_response(
+                    200,
+                    {
+                        "success": True,
+                        "delivery_service": desc,
+                    },
+                    origin=origin,
+                )
                 return
 
             # Static asset or SPA routing
@@ -546,6 +661,7 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                     target_id = str(req_data.get("user_id", user.user_id)).strip()
                     chart_p = req_data.get("chart_preferences")
                     layout_p = req_data.get("layout_preferences")
+                    notif_p = req_data.get("notification_preferences")
                     act_sym = req_data.get("active_symbol")
                     act_wl = req_data.get("active_watchlist_id")
 
@@ -555,12 +671,109 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                             ws = self.workspace_service.set_active_symbol(user, target_id, act_sym)
                         if act_wl:
                             ws = self.workspace_service.set_active_watchlist(user, target_id, act_wl)
-                        if chart_p or layout_p:
-                            ws = self.workspace_service.update_preferences(user, target_id, chart_preferences=chart_p, layout_preferences=layout_p)
+                        if chart_p or layout_p or notif_p:
+                            ws = self.workspace_service.update_preferences(
+                                user,
+                                target_id,
+                                chart_preferences=chart_p,
+                                layout_preferences=layout_p,
+                                notification_preferences=notif_p,
+                            )
                         self._send_json_response(200, {"success": True, "workspace": ws.to_dict()}, origin=origin)
                         return
                     except Exception as err:
                         self._send_error_response(400, "Workspace Update Failed", str(err), "Check workspace inputs.", origin=origin)
+                        return
+
+            if path == "/api/v1/notifications/mark-read":
+                valid, user = self._authenticate_request_user()
+                if not valid or not user:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to update notifications.", origin=origin)
+                    return
+
+                try:
+                    req_data = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                except Exception:
+                    self._send_error_response(400, "Invalid JSON Request", "Request body was not valid JSON.", "Provide valid JSON payload.", origin=origin)
+                    return
+
+                mark_all = bool(req_data.get("mark_all", False))
+                notif_id = str(req_data.get("notification_id", "")).strip()
+
+                try:
+                    if mark_all:
+                        count = self.notification_service.mark_all_as_read(user, user.user_id)
+                        self._send_json_response(200, {"success": True, "marked_count": count}, origin=origin)
+                    elif notif_id:
+                        updated = self.notification_service.mark_as_read(user, user.user_id, notif_id)
+                        self._send_json_response(200, {"success": True, "notification": updated.to_dict()}, origin=origin)
+                    else:
+                        self._send_error_response(400, "Missing Parameters", "Either 'notification_id' or 'mark_all: true' must be provided.", "Provide notification_id or mark_all flag.", origin=origin)
+                    return
+                except KeyError as err:
+                    self._send_error_response(404, "Notification Not Found", str(err), "Check notification ID.", origin=origin)
+                    return
+                except Exception as err:
+                    self._send_error_response(400, "Update Failed", str(err), "Check request parameters.", origin=origin)
+                    return
+
+            if path == "/api/v1/notifications/archive":
+                valid, user = self._authenticate_request_user()
+                if not valid or not user:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to archive notifications.", origin=origin)
+                    return
+
+                try:
+                    req_data = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                except Exception:
+                    self._send_error_response(400, "Invalid JSON Request", "Request body was not valid JSON.", "Provide valid JSON payload.", origin=origin)
+                    return
+
+                notif_id = str(req_data.get("notification_id", "")).strip()
+                if not notif_id:
+                    self._send_error_response(400, "Missing Parameters", "'notification_id' parameter is required.", "Provide notification_id.", origin=origin)
+                    return
+
+                try:
+                    updated = self.notification_service.archive_notification(user, user.user_id, notif_id)
+                    self._send_json_response(200, {"success": True, "notification": updated.to_dict()}, origin=origin)
+                    return
+                except KeyError as err:
+                    self._send_error_response(404, "Notification Not Found", str(err), "Check notification ID.", origin=origin)
+                    return
+
+            if path in ("/api/v1/notifications/delete", "/api/v1/notifications/preferences/update"):
+                valid, user = self._authenticate_request_user()
+                if not valid or not user:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to manage notifications.", origin=origin)
+                    return
+
+                try:
+                    req_data = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                except Exception:
+                    self._send_error_response(400, "Invalid JSON Request", "Request body was not valid JSON.", "Provide valid JSON payload.", origin=origin)
+                    return
+
+                if path == "/api/v1/notifications/delete":
+                    notif_id = str(req_data.get("notification_id", "")).strip()
+                    if not notif_id:
+                        self._send_error_response(400, "Missing Parameters", "'notification_id' is required.", "Provide notification_id.", origin=origin)
+                        return
+                    deleted = self.notification_service.delete_notification(user, user.user_id, notif_id)
+                    self._send_json_response(200, {"success": deleted}, origin=origin)
+                    return
+
+                if path == "/api/v1/notifications/preferences/update":
+                    try:
+                        ws = self.workspace_service.update_preferences(
+                            user,
+                            user.user_id,
+                            notification_preferences=req_data,
+                        )
+                        self._send_json_response(200, {"success": True, "preferences": ws.notification_preferences.to_dict()}, origin=origin)
+                        return
+                    except Exception as err:
+                        self._send_error_response(400, "Preference Update Failed", str(err), "Check notification preferences input.", origin=origin)
                         return
 
             self._send_error_response(
@@ -652,11 +865,20 @@ def create_server(
     user_auth_service = UserAuthorizationService(repository=user_repo, config=cfg)
     security_service = SecurityBoundaryService()
     workspace_service = WorkspaceService(repository=ws_repo, security_service=security_service)
+    notification_service = NotificationService(security_service=security_service, workspace_service=workspace_service)
+    delivery_adapter = RecordingNotificationDeliveryAdapter(available=True, notification_service=notification_service)
+    notification_delivery_service = NotificationDeliveryService(
+        delivery_port=delivery_adapter,
+        user_auth_service=user_auth_service,
+        security_service=security_service,
+    )
+
     health_service = SystemHealthService(config=cfg)
     port_adapter = DisconnectedProject1Adapter()
     presenter = Project1SignalPresenter(port=port_adapter, security_service=security_service)
     gateway_service = Project1IntegrationGatewayService(
         security_boundary=security_service,
+        notification_service=notification_service,
     )
 
     resolved_static_dir = static_dir or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "web", "dist"))
@@ -666,6 +888,8 @@ def create_server(
 
     CustomHandler.server_user_auth_service = user_auth_service
     CustomHandler.workspace_service = workspace_service
+    CustomHandler.notification_service = notification_service
+    CustomHandler.notification_delivery_service = notification_delivery_service
     CustomHandler.config = cfg
     CustomHandler.health_service = health_service
     CustomHandler.security_service = security_service

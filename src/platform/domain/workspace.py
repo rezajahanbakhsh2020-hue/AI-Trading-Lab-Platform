@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+from src.platform.domain.notification import NotificationPreferences
+
 
 def _validate_non_empty_string(val: str, field_name: str) -> str:
     if not isinstance(val, str) or not val.strip():
@@ -129,6 +131,7 @@ class Workspace:
     watchlists: Dict[str, Watchlist] = field(default_factory=dict)
     chart_preferences: Dict[str, Any] = field(default_factory=dict)
     layout_preferences: Dict[str, Any] = field(default_factory=dict)
+    notification_preferences: NotificationPreferences = field(default_factory=NotificationPreferences)
     updated_at: float = field(default_factory=time.time)
 
     def __post_init__(self) -> None:
@@ -236,6 +239,22 @@ class Workspace:
             watchlists=self.watchlists,
             chart_preferences=self.chart_preferences,
             layout_preferences=merged,
+            notification_preferences=self.notification_preferences,
+            updated_at=time.time(),
+        )
+
+    def with_notification_preferences(self, notif_prefs: NotificationPreferences) -> "Workspace":
+        """Update notification preferences."""
+        if not isinstance(notif_prefs, NotificationPreferences):
+            raise ValueError("notif_prefs must be a NotificationPreferences instance")
+        return Workspace(
+            user_id=self.user_id,
+            active_watchlist_id=self.active_watchlist_id,
+            active_symbol=self.active_symbol,
+            watchlists=self.watchlists,
+            chart_preferences=self.chart_preferences,
+            layout_preferences=self.layout_preferences,
+            notification_preferences=notif_prefs,
             updated_at=time.time(),
         )
 
@@ -248,6 +267,7 @@ class Workspace:
             "watchlists": {k: v.to_dict() for k, v in self.watchlists.items()},
             "chart_preferences": self.chart_preferences,
             "layout_preferences": self.layout_preferences,
+            "notification_preferences": self.notification_preferences.to_dict(),
             "updated_at": self.updated_at,
         }
 

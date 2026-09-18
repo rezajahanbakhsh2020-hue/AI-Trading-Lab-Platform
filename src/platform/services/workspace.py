@@ -8,8 +8,9 @@ security boundary authorization and user isolation.
 from abc import ABC, abstractmethod
 import time
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
+from src.platform.domain.notification import NotificationPreferences
 from src.platform.domain.security import Permission, UserRole
 from src.platform.domain.user_authorization import UserAuthorization
 from src.platform.domain.workspace import Watchlist, Workspace
@@ -224,12 +225,21 @@ class WorkspaceService:
         target_user_id: str,
         chart_preferences: Optional[Dict[str, Any]] = None,
         layout_preferences: Optional[Dict[str, Any]] = None,
+        notification_preferences: Optional[Union[NotificationPreferences, Dict[str, Any]]] = None,
     ) -> Workspace:
-        """Update chart or layout preferences."""
+        """Update chart, layout, or notification preferences."""
         ws = self.get_or_create_workspace(requester, target_user_id)
         res = ws
         if chart_preferences:
             res = res.with_chart_preferences(chart_preferences)
         if layout_preferences:
             res = res.with_layout_preferences(layout_preferences)
+        if notification_preferences:
+            if isinstance(notification_preferences, dict):
+                notif_prefs = NotificationPreferences.from_dict(notification_preferences)
+            elif isinstance(notification_preferences, NotificationPreferences):
+                notif_prefs = notification_preferences
+            else:
+                raise ValueError("notification_preferences must be a NotificationPreferences or dict")
+            res = res.with_notification_preferences(notif_prefs)
         return self._repo.save_workspace(res)

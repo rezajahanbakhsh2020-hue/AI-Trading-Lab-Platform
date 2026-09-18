@@ -1,7 +1,31 @@
 import type { HostSnapshot } from "./hostView";
 
-export type NotificationCategory = "all" | "signal" | "market_health" | "workspace" | "system";
+export type NotificationCategory =
+  | "all"
+  | "signal"
+  | "project1_integration"
+  | "signal_lifecycle"
+  | "market_health"
+  | "workspace"
+  | "system"
+  | "security"
+  | "account_session"
+  | "admin";
+
 export type NotificationSeverity = "info" | "success" | "warning" | "error";
+
+export interface NotificationPreferencesClient {
+  enabled_categories: string[];
+  in_app_enabled: boolean;
+  external_delivery_enabled: boolean;
+  min_severity: string;
+}
+
+export interface DeliveryChannelStatus {
+  status: "IN_APP_AVAILABLE" | "EXTERNAL_CONFIGURED" | "EXTERNAL_NOT_CONFIGURED" | "DELIVERY_FAILED" | "DELIVERY_UNAVAILABLE";
+  configured: boolean;
+  chat_id?: string | null;
+}
 
 export interface NotificationItem {
   id: string;

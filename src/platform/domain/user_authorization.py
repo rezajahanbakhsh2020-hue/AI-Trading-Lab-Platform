@@ -55,6 +55,9 @@ class UserAuthorization:
     activation_timestamp: Optional[float] = None
     expiration_timestamp: Optional[float] = None
     is_permanent_admin: bool = False
+    recovery_email: Optional[str] = None
+    recovery_token_hash: Optional[str] = None
+    recovery_token_expiration: Optional[float] = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.user_id, str) or not self.user_id.strip():

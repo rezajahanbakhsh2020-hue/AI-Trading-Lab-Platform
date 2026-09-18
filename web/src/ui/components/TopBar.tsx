@@ -117,6 +117,16 @@ export function TopBar({
         )}
 
         <NavLink
+          to="/help"
+          className="notification-icon-btn"
+          aria-label={t("nav.help")}
+          title={t("nav.help")}
+          style={{ textDecoration: "none", fontSize: "1rem" }}
+        >
+          📖
+        </NavLink>
+
+        <NavLink
           to="/notifications"
           className="notification-icon-btn"
           aria-label={t("nav.notifications")}

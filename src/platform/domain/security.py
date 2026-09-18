@@ -12,8 +12,10 @@ from typing import Any, Dict, Optional, Set, Tuple
 class UserRole(str, Enum):
     """User roles within the platform security boundary."""
 
+    OWNER = "owner"
     ADMIN = "admin"
-    USER = "user"
+    CUSTOMER = "customer"
+    USER = "user"  # Backward compatibility alias for customer
     GUEST = "guest"
 
 
@@ -28,12 +30,16 @@ class Permission(str, Enum):
     READ_LAB_RESEARCH = "read:lab_research"
     READ_SECRETS = "read:secrets"
     ADMIN_ALL = "admin:all"
+    MANAGE_USERS = "manage:users"
+    MANAGE_SYSTEM = "manage:system"
 
 
 # Default permissions by role
 DEFAULT_ROLE_PERMISSIONS: Dict[UserRole, Tuple[Permission, ...]] = {
-    UserRole.ADMIN: (
+    UserRole.OWNER: (
         Permission.ADMIN_ALL,
+        Permission.MANAGE_USERS,
+        Permission.MANAGE_SYSTEM,
         Permission.READ_SIGNALS,
         Permission.READ_TRADE_SETUPS,
         Permission.READ_BEST_STRATEGIES,
@@ -41,6 +47,21 @@ DEFAULT_ROLE_PERMISSIONS: Dict[UserRole, Tuple[Permission, ...]] = {
         Permission.READ_STRATEGY_PARAMETERS,
         Permission.READ_LAB_RESEARCH,
         Permission.READ_SECRETS,
+    ),
+    UserRole.ADMIN: (
+        Permission.ADMIN_ALL,
+        Permission.MANAGE_USERS,
+        Permission.READ_SIGNALS,
+        Permission.READ_TRADE_SETUPS,
+        Permission.READ_BEST_STRATEGIES,
+        Permission.READ_PROPRIETARY_INDICATORS,
+        Permission.READ_STRATEGY_PARAMETERS,
+        Permission.READ_LAB_RESEARCH,
+        Permission.READ_SECRETS,
+    ),
+    UserRole.CUSTOMER: (
+        Permission.READ_SIGNALS,
+        Permission.READ_TRADE_SETUPS,
     ),
     UserRole.USER: (
         Permission.READ_SIGNALS,
@@ -56,6 +77,8 @@ ADMIN_ONLY_PERMISSIONS: Set[Permission] = {
     Permission.READ_LAB_RESEARCH,
     Permission.READ_SECRETS,
     Permission.ADMIN_ALL,
+    Permission.MANAGE_USERS,
+    Permission.MANAGE_SYSTEM,
 }
 
 

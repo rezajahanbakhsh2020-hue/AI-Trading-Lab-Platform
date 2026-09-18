@@ -32,7 +32,7 @@ class TestUserSecurityGate:
         assert success is True
         assert user is not None
         assert user.user_id == "admin_owner"
-        assert user.role == UserRole.ADMIN
+        assert user.is_admin is True
         assert "successful" in msg.lower()
 
     def test_b_admin_remains_valid_regardless_of_customer_expiration(self, auth_service):
@@ -175,7 +175,7 @@ class TestUserSecurityGate:
             user_id="client_01",
             auth_code="CODE1",
             telegram_chat_id="12345",
-            role=UserRole.USER,
+            role=UserRole.CUSTOMER,
             allowed_symbols=("XAUUSD",),
             permissions=(Permission.READ_SIGNALS,),
         )

@@ -141,6 +141,8 @@ class SecurityBoundaryService:
         "strategy_parameters": Permission.READ_STRATEGY_PARAMETERS,
         "lab_research": Permission.READ_LAB_RESEARCH,
         "secrets": Permission.READ_SECRETS,
+        "users": Permission.MANAGE_USERS,
+        "system": Permission.MANAGE_SYSTEM,
     }
 
     def __init__(self, audit_logger: Optional[AuditLogger] = None) -> None:
@@ -153,7 +155,7 @@ class SecurityBoundaryService:
         action: str = "read",
         required_permission: Optional[Permission] = None,
     ) -> Tuple[bool, str]:
-        """Authorize user access to a protected resource."""
+        """Authorize user access to a protected resource server-side."""
         if not isinstance(resource, str) or not resource.strip():
             raise ValueError("resource must be a non-empty string")
         clean_res = resource.strip().lower()
@@ -172,7 +174,7 @@ class SecurityBoundaryService:
         if not isinstance(user, UserAuthorization):
             raise ValueError("user must be a UserAuthorization instance")
 
-        # Verify server-side account validity if method exists (fails closed if expired or inactive)
+        # Verify server-side account validity (fails closed if expired or inactive)
         if hasattr(user, "is_account_valid") and callable(getattr(user, "is_account_valid")):
             if not user.is_account_valid():
                 reason = "Access denied: account expired or inactive"
@@ -191,7 +193,31 @@ class SecurityBoundaryService:
         if perm is None:
             perm = self.RESOURCE_PERMISSIONS.get(clean_res)
 
-        # Admin override or explicit admin:all permission
+        # Owner / Admin checks
+        if user.is_owner or user.has_permission(Permission.MANAGE_SYSTEM):
+            self.audit_logger.log(
+                user_id=user.user_id,
+                event_type="ACCESS_ALLOWED",
+                resource=clean_res,
+                action=action,
+                outcome="ALLOW",
+                details="Owner privilege granted",
+            )
+            return True, "Access granted"
+
+        if clean_res in ("system", "platform_admin"):
+            if not user.is_owner:
+                reason = f"Access denied: resource '{clean_res}' requires Owner authority"
+                self.audit_logger.log(
+                    user_id=user.user_id,
+                    event_type="ACCESS_DENIED",
+                    resource=clean_res,
+                    action=action,
+                    outcome="DENY",
+                    details=reason,
+                )
+                return False, reason
+
         if user.is_admin or user.has_permission(Permission.ADMIN_ALL):
             self.audit_logger.log(
                 user_id=user.user_id,
@@ -218,7 +244,7 @@ class SecurityBoundaryService:
                 return False, reason
 
         # Check for admin-only resources if resource is protected
-        if clean_res in ("best_strategies", "proprietary_indicators", "strategy_parameters", "lab_research", "secrets"):
+        if clean_res in ("best_strategies", "proprietary_indicators", "strategy_parameters", "lab_research", "secrets", "users"):
             if not user.is_admin:
                 reason = f"Access denied: resource '{clean_res}' is restricted to admin users"
                 self.audit_logger.log(

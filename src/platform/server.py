@@ -2,7 +2,7 @@
 
 Provides production-grade HTTP serving using standard library ThreadingHTTPServer,
 handling API endpoints, operational health/readiness probes, authentication gates,
-CORS origin validation, production security headers, and SPA static asset routing.
+user management lifecycle, CORS origin validation, production security headers, and SPA static asset routing.
 """
 
 from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -26,7 +26,7 @@ logger = logging.getLogger("platform.server")
 
 
 class PlatformRequestHandler(BaseHTTPRequestHandler):
-    """HTTP request handler for API, health, authentication, and SPA static assets."""
+    """HTTP request handler for API, health, authentication, user management, and SPA static assets."""
 
     config: PlatformConfig
     server_user_auth_service: UserAuthorizationService
@@ -96,6 +96,13 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
             return auth_hdr[7:].strip()
         return None
 
+    def _authenticate_request_user(self) -> Tuple[bool, Optional[Any]]:
+        """Validate bearer token from request headers and return (is_authenticated, user)."""
+        token = self._extract_bearer_token()
+        if not token:
+            return False, None
+        return self.server_user_auth_service.validate_session_token(token)
+
     def do_OPTIONS(self) -> None:
         """Handle CORS preflight OPTIONS requests."""
         origin = self.headers.get("Origin")
@@ -139,11 +146,7 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                 return
 
             if path == "/api/v1/auth/validate":
-                token = self._extract_bearer_token()
-                if not token:
-                    self._send_json_response(401, {"valid": False, "reason": "Missing Authorization Bearer token"}, origin=origin)
-                    return
-                valid, user = self.server_user_auth_service.validate_session_token(token)
+                valid, user = self._authenticate_request_user()
                 if not valid or not user:
                     self._send_json_response(401, {"valid": False, "reason": "Invalid or expired session token"}, origin=origin)
                     return
@@ -157,7 +160,29 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                             "permissions": [p.value for p in user.permissions],
                             "is_permanent_admin": user.is_permanent_admin,
                             "is_account_valid": user.is_account_valid(),
+                            "activation_timestamp": user.activation_timestamp,
+                            "expiration_timestamp": user.expiration_timestamp,
                         },
+                    },
+                    origin=origin,
+                )
+                return
+
+            if path == "/api/v1/users":
+                valid, actor = self._authenticate_request_user()
+                if not valid or not actor:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to access account management.", origin=origin)
+                    return
+                if not actor.is_admin:
+                    self._send_error_response(403, "Access Denied", "Admin privileges required.", "Contact platform administrator.", origin=origin)
+                    return
+
+                users = self.server_user_auth_service.list_user_accounts(actor)
+                self._send_json_response(
+                    200,
+                    {
+                        "success": True,
+                        "users": [u.to_dict() for u in users],
                     },
                     origin=origin,
                 )
@@ -233,19 +258,84 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                         "success": True,
                         "message": "Authentication successful",
                         "token": token,
-                        "user": {
-                            "user_id": user.user_id,
-                            "role": user.role.value,
-                            "permissions": [p.value for p in user.permissions],
-                            "is_permanent_admin": user.is_permanent_admin,
-                            "activation_timestamp": user.activation_timestamp,
-                            "expiration_timestamp": user.expiration_timestamp,
-                        },
+                        "user": user.to_dict(),
                     },
                     origin=origin,
                     sanitize=False,  # Return session token to caller upon successful login
                 )
                 return
+
+            if path == "/api/v1/auth/logout":
+                token = self._extract_bearer_token()
+                if token:
+                    self.server_user_auth_service.revoke_session_token(token)
+                self._send_json_response(200, {"success": True, "message": "Logged out successfully"}, origin=origin)
+                return
+
+            if path in ("/api/v1/users/create", "/api/v1/users/status", "/api/v1/users/renew"):
+                valid, actor = self._authenticate_request_user()
+                if not valid or not actor:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login as Admin.", origin=origin)
+                    return
+                if not actor.is_admin:
+                    self._send_error_response(403, "Access Denied", "Admin privileges required.", "Contact administrator.", origin=origin)
+                    return
+
+                try:
+                    req_data = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                except Exception:
+                    self._send_error_response(400, "Invalid JSON Request", "Request body was not valid JSON.", "Provide valid JSON body.", origin=origin)
+                    return
+
+                if path == "/api/v1/users/create":
+                    target_id = str(req_data.get("user_id", "")).strip()
+                    password = str(req_data.get("password", "")).strip()
+                    act_ts = float(req_data.get("activation_timestamp", time.time()))
+                    exp_ts = float(req_data.get("expiration_timestamp", time.time() + (30 * 86400)))
+                    role = req_data.get("role", "customer")
+                    symbols = tuple(req_data.get("allowed_symbols", ["XAUUSD", "EURUSD"]))
+
+                    if not target_id or not password:
+                        self._send_error_response(400, "Missing Parameters", "Both 'user_id' and 'password' are required.", "Provide required user fields.", origin=origin)
+                        return
+
+                    try:
+                        created = self.server_user_auth_service.create_customer_account(
+                            actor_user=actor,
+                            target_user_id=target_id,
+                            plaintext_password=password,
+                            activation_timestamp=act_ts,
+                            expiration_timestamp=exp_ts,
+                            allowed_symbols=symbols,
+                            role=role,
+                        )
+                        self._send_json_response(200, {"success": True, "user": created.to_dict()}, origin=origin)
+                        return
+                    except Exception as err:
+                        self._send_error_response(400, "Account Creation Failed", str(err), "Verify input parameters.", origin=origin)
+                        return
+
+                if path == "/api/v1/users/status":
+                    target_id = str(req_data.get("user_id", "")).strip()
+                    is_active = bool(req_data.get("is_active", True))
+                    try:
+                        updated = self.server_user_auth_service.set_account_active_status(actor, target_id, is_active)
+                        self._send_json_response(200, {"success": True, "user": updated.to_dict()}, origin=origin)
+                        return
+                    except Exception as err:
+                        self._send_error_response(400, "Status Update Failed", str(err), "Check target user ID.", origin=origin)
+                        return
+
+                if path == "/api/v1/users/renew":
+                    target_id = str(req_data.get("user_id", "")).strip()
+                    new_exp = float(req_data.get("expiration_timestamp", time.time() + (30 * 86400)))
+                    try:
+                        renewed = self.server_user_auth_service.renew_customer_account(actor, target_id, new_exp)
+                        self._send_json_response(200, {"success": True, "user": renewed.to_dict()}, origin=origin)
+                        return
+                    except Exception as err:
+                        self._send_error_response(400, "Account Renewal Failed", str(err), "Check target user ID and expiration timestamp.", origin=origin)
+                        return
 
             self._send_error_response(
                 404,

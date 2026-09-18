@@ -23,6 +23,7 @@ from src.platform.services.workspace import WorkspaceService
 from src.platform.services.health_operations import SystemHealthService
 from src.platform.services.security import SecurityBoundaryService, SecretSanitizer
 from src.platform.services.project1_presenter import Project1SignalPresenter
+from src.platform.services.project1_gateway import Project1IntegrationGatewayService
 
 logger = logging.getLogger("platform.server")
 
@@ -36,6 +37,7 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
     health_service: SystemHealthService
     security_service: SecurityBoundaryService
     presenter: Project1SignalPresenter
+    gateway_service: Project1IntegrationGatewayService
     static_dir: str
 
     def log_message(self, format: str, *args: Any) -> None:
@@ -248,6 +250,39 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                 )
                 return
 
+            if path in ("/api/v1/integration/project1/capabilities", "/api/v1/integration/project1/contract"):
+                token = self._extract_bearer_token()
+                user = None
+                if token:
+                    _, user = self.server_user_auth_service.validate_session_token(token)
+                res = self.gateway_service.get_capabilities(user=user)
+                self._send_json_response(200, res, origin=origin)
+                return
+
+            if path == "/api/v1/integration/project1/records":
+                valid, user = self._authenticate_request_user()
+                if not valid or not user:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to access integration records.", origin=origin)
+                    return
+
+                query_params = urllib.parse.parse_qs(parsed_url.query)
+                symbol = query_params.get("symbol", [None])[0]
+                lifecycle_state = query_params.get("lifecycle_state", [None])[0]
+                limit_str = query_params.get("limit", ["100"])[0]
+                try:
+                    limit = int(limit_str)
+                except ValueError:
+                    limit = 100
+
+                res = self.gateway_service.list_records(
+                    user=user,
+                    symbol=symbol,
+                    lifecycle_state=lifecycle_state,
+                    limit=limit,
+                )
+                self._send_json_response(200, res, origin=origin)
+                return
+
             if path == "/api/v1/snapshot":
                 token = self._extract_bearer_token()
                 user = None
@@ -424,6 +459,54 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                         self._send_error_response(400, "Session Revocation Failed", str(err), "Check target user ID.", origin=origin)
                         return
 
+            if path == "/api/v1/integration/project1/ingest":
+                valid, user = self._authenticate_request_user()
+                if not valid or not user:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to ingest Project 1 signals.", origin=origin)
+                    return
+
+                try:
+                    req_data = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                except Exception:
+                    self._send_error_response(400, "Invalid JSON Request", "Request body was not valid JSON.", "Provide valid JSON payload.", origin=origin)
+                    return
+
+                res = self.gateway_service.ingest_signal_payload(user=user, payload=req_data)
+                if res.get("success"):
+                    self._send_json_response(200, res, origin=origin)
+                else:
+                    err_code = res.get("error_code", "INGESTION_FAILED")
+                    status_code = 400
+                    if err_code == "UNAUTHORIZED":
+                        status_code = 403
+                    elif err_code == "FORBIDDEN_USER_MISMATCH":
+                        status_code = 403
+                    elif err_code == "UNSUPPORTED_CONTRACT_VERSION":
+                        status_code = 422
+                    self._send_json_response(status_code, res, origin=origin)
+                return
+
+            if path == "/api/v1/integration/project1/lifecycle":
+                valid, user = self._authenticate_request_user()
+                if not valid or not user:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to update lifecycle.", origin=origin)
+                    return
+
+                try:
+                    req_data = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                except Exception:
+                    self._send_error_response(400, "Invalid JSON Request", "Request body was not valid JSON.", "Provide valid JSON payload.", origin=origin)
+                    return
+
+                res = self.gateway_service.update_lifecycle(user=user, payload=req_data)
+                status_code = 200 if res.get("success") else 400
+                if res.get("error_code") == "UNAUTHORIZED":
+                    status_code = 403
+                elif res.get("error_code") == "RECORD_NOT_FOUND":
+                    status_code = 404
+                self._send_json_response(status_code, res, origin=origin)
+                return
+
             if path in ("/api/v1/profile/update", "/api/v1/workspace/update"):
                 valid, user = self._authenticate_request_user()
                 if not valid or not user:
@@ -572,6 +655,9 @@ def create_server(
     health_service = SystemHealthService(config=cfg)
     port_adapter = DisconnectedProject1Adapter()
     presenter = Project1SignalPresenter(port=port_adapter, security_service=security_service)
+    gateway_service = Project1IntegrationGatewayService(
+        security_boundary=security_service,
+    )
 
     resolved_static_dir = static_dir or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "web", "dist"))
 
@@ -584,6 +670,7 @@ def create_server(
     CustomHandler.health_service = health_service
     CustomHandler.security_service = security_service
     CustomHandler.presenter = presenter
+    CustomHandler.gateway_service = gateway_service
     CustomHandler.static_dir = resolved_static_dir
 
     server = ThreadingHTTPServer((host, port), CustomHandler)

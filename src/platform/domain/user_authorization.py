@@ -1,11 +1,14 @@
 """User authorization domain model (Part 19: Host Application & Access Control).
 
 Immutable domain object representing a user's authorization identity, destination configuration,
-role, and signal delivery permissions.
+role, signal delivery permissions, and time-limited account credentials.
 """
 
 from dataclasses import dataclass, field
-import numbers
+import hashlib
+import os
+import secrets
+import time
 from typing import Any, Dict, Optional, Set, Tuple, Union
 
 from src.platform.domain.security import (
@@ -15,9 +18,25 @@ from src.platform.domain.security import (
 )
 
 
+def hash_password(plaintext: str, salt: Optional[str] = None) -> Tuple[str, str]:
+    """Securely hash a password using PBKDF2-HMAC-SHA256 with a unique salt."""
+    if not isinstance(plaintext, str) or not plaintext:
+        raise ValueError("Password must be a non-empty string")
+    if salt is None:
+        salt = secrets.token_hex(16)
+
+    key = hashlib.pbkdf2_hmac(
+        "sha256",
+        plaintext.encode("utf-8"),
+        salt.encode("utf-8"),
+        iterations=100_000,
+    )
+    return key.hex(), salt
+
+
 @dataclass(frozen=True)
 class UserAuthorization:
-    """Immutable user authorization identity, role, and delivery configuration."""
+    """Immutable user authorization identity, role, delivery configuration, and account lifecycle."""
 
     user_id: str
     auth_code: str
@@ -28,6 +47,14 @@ class UserAuthorization:
     role: UserRole = UserRole.USER
     permissions: Tuple[Permission, ...] = field(default_factory=tuple)
     detail: Optional[str] = None
+
+    # Security Gate & Account Lifecycle extensions
+    password_hash: Optional[str] = None
+    salt: Optional[str] = None
+    is_active: bool = True
+    activation_timestamp: Optional[float] = None
+    expiration_timestamp: Optional[float] = None
+    is_permanent_admin: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.user_id, str) or not self.user_id.strip():
@@ -68,6 +95,10 @@ class UserAuthorization:
         elif not isinstance(self.role, UserRole):
             raise ValueError("role must be a UserRole or string equivalent")
 
+        # Guarantee permanent admin if role is ADMIN
+        if self.role == UserRole.ADMIN:
+            object.__setattr__(self, "is_permanent_admin", True)
+
         # Set default permissions if not explicitly supplied
         if not self.permissions:
             default_perms = DEFAULT_ROLE_PERMISSIONS.get(self.role, ())
@@ -96,10 +127,45 @@ class UserAuthorization:
     @property
     def is_admin(self) -> bool:
         """Return True if user is an admin."""
-        return self.role == UserRole.ADMIN
+        return self.role == UserRole.ADMIN or self.is_permanent_admin
+
+    def verify_password(self, plaintext: str) -> bool:
+        """Verify candidate plaintext password against stored hash and salt."""
+        if not self.password_hash or not self.salt:
+            return False
+        if not plaintext:
+            return False
+        candidate_hash, _ = hash_password(plaintext, self.salt)
+        return secrets.compare_digest(candidate_hash, self.password_hash)
+
+    def is_expired(self, now_ts: Optional[float] = None) -> bool:
+        """Determine if account has expired. Owner/Admin accounts are immune."""
+        if self.is_permanent_admin or self.role == UserRole.ADMIN:
+            return False
+        if self.expiration_timestamp is None:
+            return False
+        if now_ts is None:
+            now_ts = time.time()
+        return now_ts >= self.expiration_timestamp
+
+    def is_account_valid(self, now_ts: Optional[float] = None) -> bool:
+        """Evaluate server-side validity of account for authentication and authorization."""
+        if self.is_permanent_admin or self.role == UserRole.ADMIN:
+            return True
+        if not self.is_active:
+            return False
+        if now_ts is None:
+            now_ts = time.time()
+        if self.activation_timestamp is not None and now_ts < self.activation_timestamp:
+            return False
+        if self.is_expired(now_ts):
+            return False
+        return True
 
     def has_permission(self, permission: Union[Permission, str]) -> bool:
         """Evaluate if user possesses a specific permission."""
+        if not self.is_account_valid():
+            return False
         if Permission.ADMIN_ALL in self.permissions or self.is_admin:
             return True
         if isinstance(permission, str):
@@ -111,6 +177,8 @@ class UserAuthorization:
 
     def can_receive_signal(self, symbol: str, strategy_name: Optional[str] = None) -> bool:
         """Evaluate if user authorization policy allows receiving a signal."""
+        if not self.is_account_valid():
+            return False
         if not self.has_permission(Permission.READ_SIGNALS):
             return False
         if not self.delivery_enabled:
@@ -124,7 +192,7 @@ class UserAuthorization:
         return True
 
     def to_dict(self) -> Dict[str, Any]:
-        """Return dictionary representation without exposing sensitive auth_code in full."""
+        """Return dictionary representation without exposing sensitive auth_code or password hashes."""
         return {
             "user_id": self.user_id,
             "role": self.role.value,
@@ -134,4 +202,10 @@ class UserAuthorization:
             "allowed_symbols": list(self.allowed_symbols),
             "allowed_strategies": list(self.allowed_strategies),
             "detail": self.detail,
+            "is_active": self.is_active,
+            "activation_timestamp": self.activation_timestamp,
+            "expiration_timestamp": self.expiration_timestamp,
+            "is_permanent_admin": self.is_permanent_admin,
+            "is_expired": self.is_expired(),
+            "is_account_valid": self.is_account_valid(),
         }

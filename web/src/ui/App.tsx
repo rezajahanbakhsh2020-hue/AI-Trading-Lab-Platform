@@ -5,6 +5,8 @@ import { TopBar } from "./components/TopBar";
 import { DesktopSidebar } from "./components/DesktopSidebar";
 import { MobileBottomNav } from "./components/MobileBottomNav";
 import { CommandPalette } from "./components/CommandPalette";
+import { LoginModal } from "./components/LoginModal";
+import { UserManagementCenter } from "./components/UserManagementCenter";
 import {
   NAV_ITEMS,
   SAMPLE_CONNECTED_PORT,
@@ -22,10 +24,19 @@ import {
   syncNotificationsFromHostSnapshot,
   countUnreadNotifications,
 } from "../architecture/notification";
+import {
+  getStoredAuthState,
+  saveSession,
+  clearSession,
+  StoredAuthState,
+  AuthSession,
+} from "../architecture/userAuth";
 
 export function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [authState, setAuthState] = useState<StoredAuthState>(getStoredAuthState);
   const [isConnected, setIsConnected] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState("XAUUSD");
   const [selectedTimeframe, setSelectedTimeframe] = useState("1h");
@@ -73,6 +84,20 @@ export function App() {
       )
     : createDisconnectedHostSnapshot(selectedSymbol, selectedTimeframe);
 
+  // Apply authenticated security state override if user is logged in
+  if (authState.isLoggedIn && authState.userAccount) {
+    snapshot.security = {
+      userId: authState.userAccount.userId,
+      role: authState.userAccount.role,
+      isAdmin: authState.userAccount.role === "admin" || authState.userAccount.isPermanentAdmin,
+      permissions: authState.userAccount.permissions || ["read:signals"],
+      status: authState.userAccount.isPermanentAdmin ? "permanent_admin" : "active",
+      message: authState.userAccount.isPermanentAdmin
+        ? "Protected Owner/Admin authentication active."
+        : `Authenticated session active for ${authState.userAccount.userId}`,
+    };
+  }
+
   const userId = snapshot.security?.userId || "guest_user";
   const userNotifs = loadUserNotifications(userId);
   const syncedNotifs = syncNotificationsFromHostSnapshot(userId, snapshot, userNotifs);
@@ -83,7 +108,6 @@ export function App() {
   };
 
   const handleSync = () => {
-    // Re-fetch / re-render snapshot from Project1IntegrationPort
     if (isConnected) {
       setIsConnected(false);
       setTimeout(() => setIsConnected(true), 100);
@@ -98,12 +122,33 @@ export function App() {
     setSelectedTimeframe(tf);
   };
 
+  const handleLoginSuccess = (session: AuthSession) => {
+    saveSession(session);
+    setAuthState({
+      isLoggedIn: true,
+      sessionToken: session.token,
+      userAccount: session.user,
+    });
+  };
+
+  const handleLogout = () => {
+    clearSession();
+    setAuthState({
+      isLoggedIn: false,
+      sessionToken: null,
+      userAccount: null,
+    });
+  };
+
   return (
     <div className="app-shell">
       <TopBar
         unreadNotificationsCount={unreadCount}
         onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
         onOpenSearch={() => setIsCommandPaletteOpen(true)}
+        onOpenLogin={() => setIsLoginModalOpen(true)}
+        onLogout={handleLogout}
+        currentAccount={authState.userAccount}
       />
 
       <DesktopSidebar />
@@ -126,6 +171,10 @@ export function App() {
               }
             />
           ))}
+          <Route
+            path="/users"
+            element={<UserManagementCenter currentAccount={authState.userAccount} />}
+          />
           {/* Aliases for singular/plural path compatibility */}
           <Route
             path="/dashboard"
@@ -193,6 +242,13 @@ export function App() {
         onClose={() => setIsCommandPaletteOpen(false)}
         snapshot={snapshot}
         onSelectSymbol={handleSelectSymbol}
+      />
+
+      <LoginModal
+        isOpen={isLoginModalOpen}
+        onClose={() => setIsLoginModalOpen(false)}
+        onLoginSuccess={handleLoginSuccess}
+        currentAccount={authState.userAccount}
       />
     </div>
   );

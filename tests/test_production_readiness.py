@@ -39,7 +39,7 @@ def test_req_a_owner_remains_permanently_protected():
 def test_req_b_active_customer_can_authenticate():
     """B. Active customer can authenticate."""
     service = UserAuthorizationService()
-    ok, user, msg = service.authenticate_with_password("demo_user", "CustomerPass2026!")
+    ok, user, msg = service.authenticate_with_password("demo_user", "DevCustomerPass2026!")
     assert ok is True
     assert user is not None
     assert user.user_id == "demo_user"
@@ -174,7 +174,7 @@ def test_req_l_restart_persistence_behavior_safe(temp_persistence_dir):
     repo1 = FileBackedUserRepository(storage_dir=temp_persistence_dir)
     service1 = UserAuthorizationService(repository=repo1)
 
-    ok, user, _ = service1.authenticate_with_password("demo_user", "CustomerPass2026!")
+    ok, user, _ = service1.authenticate_with_password("demo_user", "DevCustomerPass2026!")
     assert ok is True
     token = service1.create_session_token("demo_user")
 

@@ -5,9 +5,17 @@ customer lifecycle management (create, renew, toggle active status, password res
 and administrative access management with audit logging.
 """
 
+import hashlib
+import os
 import secrets
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+def hash_token(token: str) -> str:
+    """Hash a session token using SHA-256 for secure non-reversible storage."""
+    if not isinstance(token, str) or not token:
+        raise ValueError("Token must be a non-empty string")
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 from src.platform.domain.security import Permission, UserRole
 from src.platform.domain.user_authorization import UserAuthorization, hash_password
@@ -23,14 +31,16 @@ class UserAuthorizationService:
         self,
         audit_logger: Optional[AuditLogger] = None,
         repository: Optional[UserRepositoryPort] = None,
+        config: Optional[Any] = None,
     ) -> None:
         self._users_by_id: Dict[str, UserAuthorization] = {}
         self._users_by_code: Dict[str, UserAuthorization] = {}
         self._sessions: Dict[str, Tuple[str, float]] = {}  # session_token -> (user_id, creation_ts)
         self._audit_logger = audit_logger or AuditLogger()
         self._repository = repository
+        self._config = config
         self._load_from_repository()
-        self._initialize_default_users()
+        self._initialize_default_users(config=config)
 
     def _load_from_repository(self) -> None:
         """Load persisted users and active sessions from repository if present."""
@@ -42,13 +52,28 @@ class UserAuthorizationService:
             self._users_by_code[user.auth_code] = user
         self._sessions = self._repository.list_sessions()
 
-    def _initialize_default_users(self) -> None:
-        """Initialize permanent owner/admin and default demo accounts with hashed passwords if not already in repository."""
+    def _initialize_default_users(self, config: Optional[Any] = None) -> None:
+        """Initialize permanent owner/admin without hardcoded production credentials.
+
+        In production mode (`APP_ENV=production`), the initial Owner account MUST be bootstrapped
+        via operator-supplied `INITIAL_ADMIN_PASSWORD` or existing persisted store.
+        If unprovisioned in production, fails closed to prevent unauthenticated/default access.
+        """
+        app_env = getattr(config, "app_env", "development") if config else os.getenv("APP_ENV", "development").lower()
+        init_pwd = getattr(config, "initial_admin_password", None) or os.getenv("INITIAL_ADMIN_PASSWORD")
+
         if "admin_owner" not in self._users_by_id:
-            admin_hash, admin_salt = hash_password("AdminSecureKey2026!")
+            if app_env == "production":
+                if not init_pwd:
+                    raise RuntimeError("Production startup failed: Owner/Admin account not provisioned and INITIAL_ADMIN_PASSWORD is not set.")
+                pwd_to_use = init_pwd
+            else:
+                pwd_to_use = init_pwd or "DevAdminSecureKey2026!"
+
+            admin_hash, admin_salt = hash_password(pwd_to_use)
             admin_user = UserAuthorization(
                 user_id="admin_owner",
-                auth_code="AUTH_ADMIN_2026",
+                auth_code="AUTH_ADMIN_PROVISIONED",
                 role=UserRole.ADMIN,
                 password_hash=admin_hash,
                 salt=admin_salt,
@@ -57,12 +82,12 @@ class UserAuthorizationService:
             )
             self.register_user(admin_user)
 
-        if "demo_user" not in self._users_by_id:
-            user_hash, user_salt = hash_password("CustomerPass2026!")
+        if "demo_user" not in self._users_by_id and app_env != "production":
+            user_hash, user_salt = hash_password("DevCustomerPass2026!")
             now_ts = time.time()
             default_customer = UserAuthorization(
                 user_id="demo_user",
-                auth_code="AUTH_USER_2026",
+                auth_code="AUTH_USER_DEV",
                 role=UserRole.USER,
                 allowed_symbols=("XAUUSD", "EURUSD"),
                 password_hash=user_hash,
@@ -70,7 +95,7 @@ class UserAuthorizationService:
                 is_active=True,
                 activation_timestamp=now_ts - 3600,
                 expiration_timestamp=now_ts + (30 * 86400),
-                detail="Default active customer account",
+                detail="Development demo customer account",
             )
             self.register_user(default_customer)
 
@@ -173,25 +198,33 @@ class UserAuthorizationService:
         if not user or not user.is_account_valid():
             return None
         token = f"sess_{secrets.token_urlsafe(32)}"
+        token_h = hash_token(token)
         created_ts = time.time()
-        self._sessions[token] = (user.user_id, created_ts)
+        self._sessions[token_h] = (user.user_id, created_ts)
         if self._repository:
-            self._repository.save_session(token, user.user_id, created_ts)
+            self._repository.save_session(token_h, user.user_id, created_ts)
         return token
 
     def validate_session_token(self, token: str, max_age_seconds: float = 86400) -> Tuple[bool, Optional[UserAuthorization]]:
-        """Validate session token and re-verify server-side account status in real-time."""
-        if not token or token not in self._sessions:
+        """Validate session token using SHA-256 token hash lookup and re-verify server-side account status in real-time."""
+        if not token:
             return False, None
-        user_id, created_ts = self._sessions[token]
+        token_h = hash_token(token)
+        if token_h not in self._sessions:
+            return False, None
+        user_id, created_ts = self._sessions[token_h]
         now_ts = time.time()
         if now_ts - created_ts > max_age_seconds:
-            del self._sessions[token]
+            del self._sessions[token_h]
+            if self._repository:
+                self._repository.delete_session(token_h)
             return False, None
         user = self.get_user_authorization(user_id)
         if not user or not user.is_account_valid():
-            if token in self._sessions:
-                del self._sessions[token]
+            if token_h in self._sessions:
+                del self._sessions[token_h]
+                if self._repository:
+                    self._repository.delete_session(token_h)
             return False, None
         return True, user
 
@@ -212,7 +245,7 @@ class UserAuthorizationService:
             return False, "Recovery email does not match account records", None
 
         recovery_token = secrets.token_hex(20)
-        token_hash, salt = hash_password(recovery_token)
+        token_hash = hash_token(recovery_token)
         expiration = time.time() + 3600  # 1 hour validity
 
         updated_user = UserAuthorization(
@@ -259,9 +292,8 @@ class UserAuthorizationService:
         if now_ts >= user.recovery_token_expiration:
             return False, "Recovery token has expired"
 
-        # Verify token hash
-        # To verify token hash stored as password_hash format
-        candidate_hash, _ = hash_password(recovery_token, user.salt)
+        # Verify token hash using SHA-256 token hash
+        candidate_hash = hash_token(recovery_token)
         if not secrets.compare_digest(user.recovery_token_hash, candidate_hash):
             self._audit_logger.log(
                 user_id=user.user_id,
@@ -308,10 +340,13 @@ class UserAuthorizationService:
 
     def revoke_session_token(self, token: str) -> bool:
         """Revoke active session token."""
-        if token in self._sessions:
-            del self._sessions[token]
+        if not token:
+            return False
+        token_h = hash_token(token)
+        if token_h in self._sessions:
+            del self._sessions[token_h]
             if self._repository:
-                self._repository.delete_session(token)
+                self._repository.delete_session(token_h)
             return True
         return False
 

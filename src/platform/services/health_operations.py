@@ -48,6 +48,7 @@ class SystemHealthService:
         self,
         active_sessions_count: int = 0,
         provider_checks: Optional[Dict[str, bool]] = None,
+        persistence_healthy: bool = True,
     ) -> Tuple[bool, Dict[str, Any]]:
         """Readiness check: evaluates configuration validity and dependency readiness.
 
@@ -60,7 +61,12 @@ class SystemHealthService:
             "is_production": self.config.is_production,
             "active_sessions": active_sessions_count,
             "providers": provider_checks or {},
+            "persistence_healthy": persistence_healthy,
         }
+
+        if not persistence_healthy:
+            details["reason"] = "Persistence store corrupted or unwritable"
+            return False, details
 
         # Validate production configuration if in production mode
         if self.config.is_production:
@@ -82,12 +88,14 @@ class SystemHealthService:
         self,
         active_sessions_count: int = 0,
         provider_checks: Optional[Dict[str, bool]] = None,
+        persistence_healthy: bool = True,
     ) -> OperationalDiagnostics:
         """Return comprehensive sanitized operational diagnostics report."""
         is_live, _ = self.check_liveness()
         is_ready, readiness_details = self.check_readiness(
             active_sessions_count=active_sessions_count,
             provider_checks=provider_checks,
+            persistence_healthy=persistence_healthy,
         )
 
         uptime_seconds = time.time() - self._startup_time

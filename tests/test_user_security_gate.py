@@ -28,7 +28,7 @@ class TestUserSecurityGate:
 
     def test_a_admin_login_succeeds(self, auth_service):
         """Requirement A: Admin login succeeds with valid credentials."""
-        success, user, msg = auth_service.authenticate_with_password("admin_owner", "AdminSecureKey2026!")
+        success, user, msg = auth_service.authenticate_with_password("admin_owner", "DevAdminSecureKey2026!")
         assert success is True
         assert user is not None
         assert user.user_id == "admin_owner"
@@ -47,7 +47,7 @@ class TestUserSecurityGate:
 
     def test_c_active_customer_login_succeeds(self, auth_service):
         """Requirement C: Active customer login succeeds."""
-        success, user, msg = auth_service.authenticate_with_password("demo_user", "CustomerPass2026!")
+        success, user, msg = auth_service.authenticate_with_password("demo_user", "DevCustomerPass2026!")
         assert success is True
         assert user is not None
         assert user.user_id == "demo_user"
@@ -240,12 +240,12 @@ class TestUserSecurityGate:
 
         # Deactivate demo_user
         auth_service.set_account_active_status(admin, "demo_user", is_active=False)
-        ok1, _, _ = auth_service.authenticate_with_password("demo_user", "CustomerPass2026!")
+        ok1, _, _ = auth_service.authenticate_with_password("demo_user", "DevCustomerPass2026!")
         assert ok1 is False
 
         # Reactivate demo_user
         auth_service.set_account_active_status(admin, "demo_user", is_active=True)
-        ok2, user, _ = auth_service.authenticate_with_password("demo_user", "CustomerPass2026!")
+        ok2, user, _ = auth_service.authenticate_with_password("demo_user", "DevCustomerPass2026!")
         assert ok2 is True
         assert user.user_id == "demo_user"
 

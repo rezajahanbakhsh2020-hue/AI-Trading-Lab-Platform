@@ -27,6 +27,7 @@ export const NAV_ITEMS = [
   { id: "notifications", path: "/notifications", label: "Notifications", icon: "bell" },
   { id: "intents", path: "/intents", label: "Order Intents", icon: "file-text" },
   { id: "settings", path: "/settings", label: "Settings", icon: "settings" },
+  { id: "help", path: "/help", label: "Help & Guidance", icon: "help-circle" },
 ] as const;
 
 export const INTEGRATION_FLOW = [
@@ -698,5 +699,10 @@ export const PAGE_COPY: Record<
     title: "Settings & Profile",
     kicker: "Host configuration & Security Boundary",
     summary: "Security boundary, authorization roles, and platform settings.",
+  },
+  help: {
+    title: "Help & Guidance",
+    kicker: "Operational Documentation & Onboarding",
+    summary: "Onboarding, subsystem guides, status indicators, and troubleshooting instructions.",
   },
 };

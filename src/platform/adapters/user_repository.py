@@ -13,6 +13,16 @@ from src.platform.domain.security import Permission, UserRole
 from src.platform.domain.user_authorization import UserAuthorization
 
 
+class UserRepositoryError(Exception):
+    """Base exception for user repository operational failures."""
+    pass
+
+
+class CorruptStorageError(UserRepositoryError):
+    """Raised when persisted storage files are corrupted or unparseable."""
+    pass
+
+
 class UserRepositoryPort(ABC):
     """Abstract Hexagonal port for user authorization and session persistence."""
 
@@ -121,17 +131,17 @@ class FileBackedUserRepository(UserRepositoryPort):
                     for item in data:
                         u = self._deserialize_user(item)
                         self._users[u.user_id] = u
-            except Exception:
-                pass
+            except Exception as e:
+                raise CorruptStorageError(f"Failed to load user repository file '{self.users_file}': {e}") from e
 
         if os.path.exists(self.sessions_file):
             try:
                 with open(self.sessions_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    for token, sess in data.items():
-                        self._sessions[token] = (sess["user_id"], sess["created_ts"])
-            except Exception:
-                pass
+                    for token_h, sess in data.items():
+                        self._sessions[token_h] = (sess["user_id"], sess["created_ts"])
+            except Exception as e:
+                raise CorruptStorageError(f"Failed to load session repository file '{self.sessions_file}': {e}") from e
 
     def _save_users(self) -> None:
         try:
@@ -140,8 +150,8 @@ class FileBackedUserRepository(UserRepositoryPort):
             with open(temp_file, "w", encoding="utf-8") as f:
                 json.dump(serialized, f, indent=2)
             os.replace(temp_file, self.users_file)
-        except Exception:
-            pass
+        except Exception as e:
+            raise UserRepositoryError(f"Failed to save user records to '{self.users_file}': {e}") from e
 
     def _save_sessions(self) -> None:
         try:
@@ -153,8 +163,8 @@ class FileBackedUserRepository(UserRepositoryPort):
             with open(temp_file, "w", encoding="utf-8") as f:
                 json.dump(serialized, f, indent=2)
             os.replace(temp_file, self.sessions_file)
-        except Exception:
-            pass
+        except Exception as e:
+            raise UserRepositoryError(f"Failed to save session records to '{self.sessions_file}': {e}") from e
 
     def save_user(self, user: UserAuthorization) -> UserAuthorization:
         self._users[user.user_id] = user

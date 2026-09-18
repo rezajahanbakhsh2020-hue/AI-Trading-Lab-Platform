@@ -26,6 +26,7 @@ class PlatformConfig:
     persistence_dir: str = ".data"
     session_max_age_seconds: int = 86400
     enable_https_redirect: bool = False
+    initial_admin_password: Optional[str] = None
 
     def __post_init__(self) -> None:
         clean_env = self.app_env.strip().lower()
@@ -138,6 +139,7 @@ class PlatformConfig:
             max_age = 86400
 
         https_redirect = os.getenv("ENABLE_HTTPS_REDIRECT", "false").lower() in ("true", "1", "yes")
+        admin_pwd = os.getenv("INITIAL_ADMIN_PASSWORD", None)
 
         return cls(
             app_env=env_name,
@@ -147,4 +149,5 @@ class PlatformConfig:
             persistence_dir=p_dir,
             session_max_age_seconds=max_age,
             enable_https_redirect=https_redirect,
+            initial_admin_password=admin_pwd,
         )

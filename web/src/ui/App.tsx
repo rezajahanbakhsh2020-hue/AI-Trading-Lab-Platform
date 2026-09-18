@@ -7,6 +7,7 @@ import { MobileBottomNav } from "./components/MobileBottomNav";
 import { CommandPalette } from "./components/CommandPalette";
 import { LoginModal } from "./components/LoginModal";
 import { UserManagementCenter } from "./components/UserManagementCenter";
+import { HelpCenter } from "./components/HelpCenter";
 import {
   NAV_ITEMS,
   SAMPLE_CONNECTED_PORT,
@@ -174,6 +175,10 @@ export function App() {
           <Route
             path="/users"
             element={<UserManagementCenter currentAccount={authState.userAccount} />}
+          />
+          <Route
+            path="/help"
+            element={<HelpCenter />}
           />
           {/* Aliases for singular/plural path compatibility */}
           <Route

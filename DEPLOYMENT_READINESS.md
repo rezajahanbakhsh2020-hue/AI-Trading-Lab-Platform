@@ -57,7 +57,10 @@ In production (`APP_ENV=production`), missing critical secrets or unprovisioned 
 - **Session Token Hashing:** Active session tokens are hashed using SHA-256 before storage or file persistence. Raw tokens are never written to disk or logs.
 - **Controlled Persistence Failures:** Corrupt user or session files raise explicit `CorruptStorageError` exceptions and degrade system readiness rather than silently swallowing errors or populating insecure defaults.
 - **Permanent Owner/Admin Immunity:** Owner accounts (`admin_owner` / `admin`) are protected from expiration or customer lifecycle deactivation.
-- **Server-Side Authorization:** Every protected path and API call re-evaluates `is_account_valid()` in real-time.
+- **Server-Side Authorization & RBAC:** Every protected path and API call re-evaluates `is_account_valid()` in real-time. Owner accounts hold supreme authority, Admins can manage Customer accounts, and Customers are restricted to personal workspace capabilities.
+- **Role Assignment & Session Revocation:** Owners can assign/revoke any role. Admins cannot promote users to Owner/Admin nor modify other Admins. Admins and users can revoke active session tokens, immediately invalidating access.
+- **User Workspace Isolation & IDOR Protection:** Customer workspaces and watchlists are strictly isolated by authenticated user identity. Cross-user data access attempts raise explicit permission errors and generate security audit records.
+- **File-Backed Workspace Persistence:** User workspaces, watchlists, active symbols, and chart/layout preferences persist across process restarts using atomic JSON writes (`FileBackedWorkspaceRepository`).
 - **Expired/Inactive Access Denial:** Expired, future-starting, or deactivated accounts fail closed with sanitized error messages.
 - **Secret Redaction:** Strategy code, proprietary indicators, exchange API keys, and session secrets are automatically sanitized by `SecretSanitizer` from logs, UI state, and audit records.
 - **Execution Boundary:** External broker order execution is permanently disabled (`externally_executed=False`).

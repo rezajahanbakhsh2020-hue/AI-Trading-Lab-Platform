@@ -16,8 +16,10 @@ import urllib.parse
 
 from src.platform.config import PlatformConfig
 from src.platform.adapters.user_repository import FileBackedUserRepository
+from src.platform.adapters.workspace_repository import FileBackedWorkspaceRepository
 from src.platform.adapters.project1_adapter import DisconnectedProject1Adapter
 from src.platform.services.user_authorization import UserAuthorizationService
+from src.platform.services.workspace import WorkspaceService
 from src.platform.services.health_operations import SystemHealthService
 from src.platform.services.security import SecurityBoundaryService, SecretSanitizer
 from src.platform.services.project1_presenter import Project1SignalPresenter
@@ -30,6 +32,7 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
 
     config: PlatformConfig
     server_user_auth_service: UserAuthorizationService
+    workspace_service: WorkspaceService
     health_service: SystemHealthService
     security_service: SecurityBoundaryService
     presenter: Project1SignalPresenter
@@ -140,6 +143,63 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                         "active_sessions_count": diag.active_sessions_count,
                         "system_status": diag.system_status,
                         "summary": diag.diagnostics_summary,
+                    },
+                    origin=origin,
+                )
+                return
+
+            if path == "/api/v1/users/audit":
+                valid, actor = self._authenticate_request_user()
+                if not valid or not actor:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to access audit logs.", origin=origin)
+                    return
+                if not actor.is_admin:
+                    self._send_error_response(403, "Access Denied", "Admin privileges required.", "Contact platform administrator.", origin=origin)
+                    return
+
+                query_params = urllib.parse.parse_qs(parsed_url.query)
+                target_uid = query_params.get("user_id", [None])[0]
+                outcome = query_params.get("outcome", [None])[0]
+
+                events = self.security_service.audit_logger.get_events(user_id=target_uid, outcome=outcome)
+                self._send_json_response(
+                    200,
+                    {
+                        "success": True,
+                        "events": [e.to_dict() for e in events],
+                    },
+                    origin=origin,
+                )
+                return
+
+            if path == "/api/v1/profile":
+                valid, user = self._authenticate_request_user()
+                if not valid or not user:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to view profile.", origin=origin)
+                    return
+
+                self._send_json_response(
+                    200,
+                    {
+                        "success": True,
+                        "profile": user.to_dict(),
+                    },
+                    origin=origin,
+                )
+                return
+
+            if path == "/api/v1/workspace":
+                valid, user = self._authenticate_request_user()
+                if not valid or not user:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to view workspace.", origin=origin)
+                    return
+
+                ws = self.workspace_service.get_or_create_workspace(user, user.user_id)
+                self._send_json_response(
+                    200,
+                    {
+                        "success": True,
+                        "workspace": ws.to_dict(),
                     },
                     origin=origin,
                 )
@@ -272,7 +332,13 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                 self._send_json_response(200, {"success": True, "message": "Logged out successfully"}, origin=origin)
                 return
 
-            if path in ("/api/v1/users/create", "/api/v1/users/status", "/api/v1/users/renew"):
+            if path in (
+                "/api/v1/users/create",
+                "/api/v1/users/status",
+                "/api/v1/users/renew",
+                "/api/v1/users/role",
+                "/api/v1/users/revoke-sessions",
+            ):
                 valid, actor = self._authenticate_request_user()
                 if not valid or not actor:
                     self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login as Admin.", origin=origin)
@@ -335,6 +401,83 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                         return
                     except Exception as err:
                         self._send_error_response(400, "Account Renewal Failed", str(err), "Check target user ID and expiration timestamp.", origin=origin)
+                        return
+
+                if path == "/api/v1/users/role":
+                    target_id = str(req_data.get("user_id", "")).strip()
+                    new_role = req_data.get("role", "customer")
+                    try:
+                        updated = self.server_user_auth_service.update_user_role(actor, target_id, new_role)
+                        self._send_json_response(200, {"success": True, "user": updated.to_dict()}, origin=origin)
+                        return
+                    except Exception as err:
+                        self._send_error_response(400, "Role Update Failed", str(err), "Check role assignment permissions.", origin=origin)
+                        return
+
+                if path == "/api/v1/users/revoke-sessions":
+                    target_id = str(req_data.get("user_id", "")).strip()
+                    try:
+                        count = self.server_user_auth_service.revoke_user_sessions(actor, target_id)
+                        self._send_json_response(200, {"success": True, "revoked_count": count}, origin=origin)
+                        return
+                    except Exception as err:
+                        self._send_error_response(400, "Session Revocation Failed", str(err), "Check target user ID.", origin=origin)
+                        return
+
+            if path in ("/api/v1/profile/update", "/api/v1/workspace/update"):
+                valid, user = self._authenticate_request_user()
+                if not valid or not user:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to update settings.", origin=origin)
+                    return
+
+                try:
+                    req_data = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                except Exception:
+                    self._send_error_response(400, "Invalid JSON Request", "Request body was not valid JSON.", "Provide valid JSON body.", origin=origin)
+                    return
+
+                if path == "/api/v1/profile/update":
+                    target_id = str(req_data.get("user_id", user.user_id)).strip()
+                    syms = req_data.get("allowed_symbols")
+                    syms_tuple = tuple(syms) if isinstance(syms, list) else None
+                    chat_id = req_data.get("telegram_chat_id")
+                    delivery = req_data.get("delivery_enabled")
+                    detail = req_data.get("detail")
+
+                    try:
+                        updated = self.server_user_auth_service.update_user_profile(
+                            actor_user=user,
+                            target_user_id=target_id,
+                            allowed_symbols=syms_tuple,
+                            telegram_chat_id=chat_id,
+                            delivery_enabled=delivery,
+                            detail=detail,
+                        )
+                        self._send_json_response(200, {"success": True, "user": updated.to_dict()}, origin=origin)
+                        return
+                    except Exception as err:
+                        self._send_error_response(400, "Profile Update Failed", str(err), "Check profile inputs.", origin=origin)
+                        return
+
+                if path == "/api/v1/workspace/update":
+                    target_id = str(req_data.get("user_id", user.user_id)).strip()
+                    chart_p = req_data.get("chart_preferences")
+                    layout_p = req_data.get("layout_preferences")
+                    act_sym = req_data.get("active_symbol")
+                    act_wl = req_data.get("active_watchlist_id")
+
+                    try:
+                        ws = self.workspace_service.get_or_create_workspace(user, target_id)
+                        if act_sym:
+                            ws = self.workspace_service.set_active_symbol(user, target_id, act_sym)
+                        if act_wl:
+                            ws = self.workspace_service.set_active_watchlist(user, target_id, act_wl)
+                        if chart_p or layout_p:
+                            ws = self.workspace_service.update_preferences(user, target_id, chart_preferences=chart_p, layout_preferences=layout_p)
+                        self._send_json_response(200, {"success": True, "workspace": ws.to_dict()}, origin=origin)
+                        return
+                    except Exception as err:
+                        self._send_error_response(400, "Workspace Update Failed", str(err), "Check workspace inputs.", origin=origin)
                         return
 
             self._send_error_response(
@@ -421,18 +564,22 @@ def create_server(
         if not cfg.session_secret or cfg.session_secret == "dev_session_secret_key_change_in_production_2026" or len(cfg.session_secret) < 32:
             raise RuntimeError("CRITICAL PRODUCTION SECURITY FAILURE: SESSION_SECRET is unset or too weak.")
 
-    repo = FileBackedUserRepository(storage_dir=cfg.persistence_dir)
-    user_auth_service = UserAuthorizationService(repository=repo, config=cfg)
-    health_service = SystemHealthService(config=cfg)
+    user_repo = FileBackedUserRepository(storage_dir=cfg.persistence_dir)
+    ws_repo = FileBackedWorkspaceRepository(storage_dir=cfg.persistence_dir)
+    user_auth_service = UserAuthorizationService(repository=user_repo, config=cfg)
     security_service = SecurityBoundaryService()
+    workspace_service = WorkspaceService(repository=ws_repo, security_service=security_service)
+    health_service = SystemHealthService(config=cfg)
     port_adapter = DisconnectedProject1Adapter()
     presenter = Project1SignalPresenter(port=port_adapter, security_service=security_service)
 
     resolved_static_dir = static_dir or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "web", "dist"))
 
     class CustomHandler(PlatformRequestHandler):
-        server_user_auth_service = user_auth_service
+        pass
 
+    CustomHandler.server_user_auth_service = user_auth_service
+    CustomHandler.workspace_service = workspace_service
     CustomHandler.config = cfg
     CustomHandler.health_service = health_service
     CustomHandler.security_service = security_service

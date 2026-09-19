@@ -151,6 +151,58 @@ export function OperationalControlCenter({ snapshot }: OperationalControlCenterP
         </div>
       )}
 
+      {/* Operational Incident Failures Card */}
+      {snapshot.operationalFailures && (
+        <div className="card operational-incidents-card">
+          <div className="card-head flex-header-row">
+            <h4 className="header-title" style={{ margin: 0, fontSize: 16 }}>
+              🚨 {t("health.sections.operationalIncidents")}
+            </h4>
+            <span className="chip muted-chip">
+              {snapshot.operationalFailures.length} Incidents Recorded
+            </span>
+          </div>
+          <div className="card-body">
+            {snapshot.operationalFailures.length === 0 ? (
+              <p className="hint text-center py-4">{t("health.labels.noFailuresMessage")}</p>
+            ) : (
+              <div className="space-v-3">
+                {snapshot.operationalFailures.map((fail) => (
+                  <div key={fail.failure_id} className="card event-item-card">
+                    <div className="card-head event-item-head">
+                      <div className="event-badge-row">
+                        <span className="status unavailable">{fail.severity}</span>
+                        <strong className="event-type-name">{fail.error_type}</strong>
+                        <span className="chip">{fail.component}</span>
+                        <span className={`chip ${fail.retryable ? "ready-chip" : "muted-chip"}`}>
+                          {fail.retryable ? t("health.labels.retryable") : t("health.labels.nonRetryable")}
+                        </span>
+                      </div>
+                      <span className="hint">
+                        {new Date(fail.timestamp * 1000).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="card-body event-item-body">
+                      <p className="event-action-line">
+                        <strong>Message:</strong> {fail.message}
+                      </p>
+                      <p className="hint">
+                        <strong>User:</strong> {fail.user_id} | <strong>Corr ID:</strong> <code>{fail.correlation_id}</code>
+                      </p>
+                      {fail.diagnostic_details && (
+                        <div className="metadata-code-box">
+                          <strong>Diagnostic Detail:</strong> {fail.diagnostic_details}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Operational Summary Grid */}
       {summary && (
         <div className="grid cols-4 summary-grid">

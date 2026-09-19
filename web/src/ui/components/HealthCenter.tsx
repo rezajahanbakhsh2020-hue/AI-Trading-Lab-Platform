@@ -186,6 +186,56 @@ export function HealthCenter({ snapshot, onRefresh, isLoading = false }: HealthC
         </div>
       </section>
 
+      {/* Persistence & Storage Recovery Integrity Section */}
+      {snapshot.persistenceRecovery && (
+        <section className="card" style={{ marginBottom: 16 }}>
+          <div className="card-head flex-header-row">
+            <h3>🗄️ {t("health.sections.persistenceRecovery")}</h3>
+            <span className={`status ${snapshot.persistenceRecovery.is_healthy ? "ready" : "warn"}`}>
+              {snapshot.persistenceRecovery.status}
+            </span>
+          </div>
+          <div className="card-body">
+            <p className="hint" style={{ marginBottom: 12 }}>
+              {snapshot.persistenceRecovery.message} | <strong>{t("health.labels.storageDir")}:</strong> <code>{snapshot.persistenceRecovery.storage_dir}</code>
+            </p>
+
+            <div className="table-responsive">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Store File</th>
+                    <th>Status</th>
+                    <th>Records</th>
+                    <th>Schema Version</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(snapshot.persistenceRecovery.stores_checked || {}).map(([file, info]: [string, any]) => (
+                    <tr key={file}>
+                      <td><strong>{file}</strong></td>
+                      <td>
+                        <span className={`chip ${info.status === "VALID" ? "ready-chip" : info.status === "CORRUPTED" ? "warn-chip" : "muted-chip"}`}>
+                          {info.status}
+                        </span>
+                      </td>
+                      <td>{info.record_count !== undefined ? info.record_count : "N/A"}</td>
+                      <td>{info.schema_version !== undefined ? `v${info.schema_version}` : "N/A"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {snapshot.persistenceRecovery.corrupt_backups_found?.length > 0 && (
+              <div className="notice-box warn-notice" style={{ marginTop: 12, padding: 8, fontSize: 12 }}>
+                <strong>{t("health.labels.corruptBackups")}:</strong> {snapshot.persistenceRecovery.corrupt_backups_found.join(", ")}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Project 1 Boundary & Secret Security View */}
       <div className="grid cols-2" style={{ marginBottom: 16 }}>
         <section className="card">

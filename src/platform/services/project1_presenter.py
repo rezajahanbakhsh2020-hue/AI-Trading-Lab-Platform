@@ -25,6 +25,7 @@ from src.platform.integrations.project1 import Project1IntegrationPort
 from src.platform.services.autonomous_authorization import AutonomousAuthorizationService
 from src.platform.services.audit_control import PlatformAuditControlService
 from src.platform.services.execution_gateway import ExecutionGatewayService
+from src.platform.services.health_operations import SystemHealthService
 from src.platform.services.order_intent import OrderIntentService
 from src.platform.services.security import SecretSanitizer, SecurityBoundaryService
 
@@ -40,6 +41,7 @@ class Project1SignalPresenter:
         authorization_service: Optional[AutonomousAuthorizationService] = None,
         audit_control_service: Optional[PlatformAuditControlService] = None,
         order_intent_service: Optional[OrderIntentService] = None,
+        health_service: Optional[SystemHealthService] = None,
     ) -> None:
         if port is None or not isinstance(port, Project1IntegrationPort):
             raise ValueError("port must be a valid Project1IntegrationPort")
@@ -51,11 +53,13 @@ class Project1SignalPresenter:
             authorization_service, AutonomousAuthorizationService
         ):
             raise ValueError("authorization_service must be an AutonomousAuthorizationService instance")
+
         self._port = port
         self._security_service = security_service or SecurityBoundaryService()
         self._backtest_service = backtest_service
         self._auth_service = authorization_service or AutonomousAuthorizationService()
         self._audit_control_service = audit_control_service or PlatformAuditControlService(security_boundary=self._security_service)
+        self._health_service = health_service or SystemHealthService()
         self._order_intent_service = order_intent_service or OrderIntentService(
             security_boundary=self._security_service,
             audit_control=self._audit_control_service,
@@ -543,6 +547,8 @@ class Project1SignalPresenter:
         # Retrieve operational audit summary for HostSnapshot
         _, _, audit_summary = self._audit_control_service.get_control_summary(user=user)
         _, _, audit_events = self._audit_control_service.query_events(user=user, filter_params=None)
+        _, _, operational_failures = self._audit_control_service.query_failures(user=user, limit=50)
+        persistence_rec = self._health_service.validate_persistence_integrity()
 
         return {
             "generatedAt": signal_dict.get("timestamp"),
@@ -551,6 +557,8 @@ class Project1SignalPresenter:
                 "role": "Host application for AI-Trading-Lab",
                 "status": "ready",
             },
+            "persistenceRecovery": persistence_rec.to_dict(),
+            "operationalFailures": [f.to_dict() for f in operational_failures],
             "auditControl": {
                 "status": "available" if audit_summary is not None else "unavailable",
                 "summary": audit_summary.to_dict() if audit_summary else None,

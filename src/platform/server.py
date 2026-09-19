@@ -20,12 +20,13 @@ from src.platform.adapters.workspace_repository import FileBackedWorkspaceReposi
 from src.platform.adapters.project1_adapter import DisconnectedProject1Adapter
 from src.platform.services.user_authorization import UserAuthorizationService
 from src.platform.services.workspace import WorkspaceService
-from src.platform.services.health_operations import SystemHealthService
+from src.platform.services.health_operations import SystemHealthService, log_operational_event
 from src.platform.services.security import SecurityBoundaryService, SecretSanitizer
 from src.platform.services.project1_presenter import Project1SignalPresenter
 from src.platform.services.project1_gateway import Project1IntegrationGatewayService
 from src.platform.services.notification import NotificationService
 from src.platform.services.notification_delivery import NotificationDeliveryService
+from src.platform.services.audit_control import PlatformAuditControlService
 from src.platform.providers.notification_delivery import RecordingNotificationDeliveryAdapter
 
 logger = logging.getLogger("platform.server")
@@ -43,6 +44,7 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
     gateway_service: Project1IntegrationGatewayService
     notification_service: NotificationService
     notification_delivery_service: NotificationDeliveryService
+    audit_control_service: PlatformAuditControlService
     static_dir: str
 
     def log_message(self, format: str, *args: Any) -> None:
@@ -149,7 +151,30 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                         "app_env": diag.app_env,
                         "active_sessions_count": diag.active_sessions_count,
                         "system_status": diag.system_status,
+                        "persistence_recovery": diag.persistence_recovery,
                         "summary": diag.diagnostics_summary,
+                    },
+                    origin=origin,
+                )
+                return
+
+            if path in ("/api/v1/operational/recovery", "/api/v1/operational/failures"):
+                valid, actor = self._authenticate_request_user()
+                if not valid or not actor:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login as Admin to view recovery diagnostics.", origin=origin)
+                    return
+                if not actor.is_admin:
+                    self._send_error_response(403, "Access Denied", "Admin privileges required.", "Contact platform administrator.", origin=origin)
+                    return
+
+                rec = self.health_service.validate_persistence_integrity()
+                ok, msg, fails = self.audit_control_service.query_failures(actor, limit=50)
+                self._send_json_response(
+                    200,
+                    {
+                        "success": True,
+                        "persistence_recovery": rec.to_dict(),
+                        "failures": [f.to_dict() for f in fails],
                     },
                     origin=origin,
                 )
@@ -874,11 +899,26 @@ def create_server(
     )
 
     health_service = SystemHealthService(config=cfg)
+    audit_control_service = PlatformAuditControlService(security_boundary=security_service)
     port_adapter = DisconnectedProject1Adapter()
-    presenter = Project1SignalPresenter(port=port_adapter, security_service=security_service)
+    presenter = Project1SignalPresenter(
+        port=port_adapter,
+        security_service=security_service,
+        audit_control_service=audit_control_service,
+        health_service=health_service,
+    )
     gateway_service = Project1IntegrationGatewayService(
         security_boundary=security_service,
         notification_service=notification_service,
+    )
+
+    # Perform startup recovery and persistence integrity validation
+    recovery_status = health_service.validate_persistence_integrity()
+    log_operational_event(
+        logging.INFO,
+        f"Platform startup persistence integrity validation: status={recovery_status.status}",
+        component="platform.startup",
+        extra_data=recovery_status.to_dict(),
     )
 
     resolved_static_dir = static_dir or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "web", "dist"))
@@ -895,6 +935,7 @@ def create_server(
     CustomHandler.security_service = security_service
     CustomHandler.presenter = presenter
     CustomHandler.gateway_service = gateway_service
+    CustomHandler.audit_control_service = audit_control_service
     CustomHandler.static_dir = resolved_static_dir
 
     server = ThreadingHTTPServer((host, port), CustomHandler)

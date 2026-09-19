@@ -19,6 +19,8 @@ import {
   SAMPLE_BIQUOTE_PROVIDER,
   SAMPLE_BIQUOTE_CANDLES_XAUUSD,
   SAMPLE_BIQUOTE_QUOTE_XAUUSD,
+  fetchMarketCandles,
+  fetchMarketQuote,
 } from "../architecture/marketData";
 import {
   loadUserNotifications,
@@ -53,15 +55,45 @@ export function App() {
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, []);
 
-  const marketState = isConnected && selectedSymbol === "XAUUSD"
+  const [liveCandles, setLiveCandles] = useState(SAMPLE_BIQUOTE_CANDLES_XAUUSD);
+  const [liveQuote, setLiveQuote] = useState(SAMPLE_BIQUOTE_QUOTE_XAUUSD);
+
+  useEffect(() => {
+    if (!isConnected) return;
+    let isMounted = true;
+
+    async function loadMarketData() {
+      const token = authState.sessionToken;
+      const [candlesRes, quoteRes] = await Promise.all([
+        fetchMarketCandles(token, selectedSymbol, selectedTimeframe, "biquote"),
+        fetchMarketQuote(token, selectedSymbol, "biquote"),
+      ]);
+
+      if (isMounted) {
+        if (candlesRes.success && candlesRes.candles && candlesRes.candles.length > 0) {
+          setLiveCandles(candlesRes.candles);
+        }
+        if (quoteRes.success && quoteRes.quote) {
+          setLiveQuote(quoteRes.quote);
+        }
+      }
+    }
+
+    loadMarketData();
+    return () => {
+      isMounted = false;
+    };
+  }, [isConnected, selectedSymbol, selectedTimeframe, authState.sessionToken]);
+
+  const marketState = isConnected
     ? {
-        symbol: "XAUUSD",
+        symbol: selectedSymbol,
         timeframe: selectedTimeframe,
         provider: SAMPLE_BIQUOTE_PROVIDER,
-        quote: SAMPLE_BIQUOTE_QUOTE_XAUUSD,
-        candles: SAMPLE_BIQUOTE_CANDLES_XAUUSD,
+        quote: liveQuote.symbol === selectedSymbol ? liveQuote : { ...SAMPLE_BIQUOTE_QUOTE_XAUUSD, symbol: selectedSymbol },
+        candles: liveCandles,
         status: "connected" as const,
-        message: "Streaming live market data via BiQuoteProvider.",
+        message: `Streaming live market data for ${selectedSymbol} via BiQuoteProvider.`,
         lastFetchedAt: new Date().toUTCString(),
       }
     : {

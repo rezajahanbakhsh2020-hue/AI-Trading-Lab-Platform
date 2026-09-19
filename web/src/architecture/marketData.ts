@@ -171,3 +171,70 @@ export const INITIAL_NOTIFICATIONS: NotificationItem[] = [
     read: true,
   },
 ];
+
+/* Authenticated Market Data API Helper Functions */
+
+export async function fetchMarketCandles(
+  token: string | null,
+  symbol: string = "XAUUSD",
+  timeframe: string = "1h",
+  providerId: string = "biquote",
+  limit: number = 100
+): Promise<{ success: boolean; candles?: Candle[]; error?: string }> {
+  try {
+    const headers: Record<string, string> = { "Accept": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const url = `/api/v1/market/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&provider_id=${encodeURIComponent(providerId)}&limit=${limit}`;
+    const res = await fetch(url, { method: "GET", headers });
+    const data = await res.json();
+
+    if (res.ok && data.success) {
+      return { success: true, candles: data.candles };
+    }
+    return { success: false, error: data.why || data.message || "Failed to fetch market candles" };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Network error fetching candles" };
+  }
+}
+
+export async function fetchMarketQuote(
+  token: string | null,
+  symbol: string = "XAUUSD",
+  providerId: string = "biquote"
+): Promise<{ success: boolean; quote?: Quote; error?: string }> {
+  try {
+    const headers: Record<string, string> = { "Accept": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const url = `/api/v1/market/quote?symbol=${encodeURIComponent(symbol)}&provider_id=${encodeURIComponent(providerId)}`;
+    const res = await fetch(url, { method: "GET", headers });
+    const data = await res.json();
+
+    if (res.ok && data.success) {
+      return { success: true, quote: data.quote };
+    }
+    return { success: false, error: data.why || data.message || "Failed to fetch market quote" };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Network error fetching quote" };
+  }
+}
+
+export async function fetchProviders(
+  token: string | null
+): Promise<{ success: boolean; providers?: ProviderMetadata[]; supportedCategories?: string[]; error?: string }> {
+  try {
+    const headers: Record<string, string> = { "Accept": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch("/api/v1/providers", { method: "GET", headers });
+    const data = await res.json();
+
+    if (res.ok && data.success) {
+      return { success: true, providers: data.providers, supportedCategories: data.supported_categories };
+    }
+    return { success: false, error: data.why || data.message || "Failed to fetch providers" };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Network error fetching providers" };
+  }
+}

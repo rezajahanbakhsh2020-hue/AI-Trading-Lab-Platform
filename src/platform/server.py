@@ -33,6 +33,12 @@ from src.platform.services.audit_control import PlatformAuditControlService
 from src.platform.services.ai_gateway import AIGatewayService
 from src.platform.domain.ai_gateway import AICapability, AIRequest
 from src.platform.providers.notification_delivery import RecordingNotificationDeliveryAdapter
+from src.platform.providers.biquote import BiQuoteProvider
+from src.platform.providers.biquote_quote import BiQuoteQuoteProvider
+from src.platform.services.provider_registry import ProviderRegistry
+from src.platform.services.provider_access import ProviderAccess
+from src.platform.services.provider_operations import ProviderOperations, InvalidOperationError, ProviderOperationFailure
+from src.platform.services.market_overview import MarketOverviewService
 
 logger = logging.getLogger("platform.server")
 
@@ -51,6 +57,10 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
     notification_delivery_service: NotificationDeliveryService
     audit_control_service: PlatformAuditControlService
     ai_gateway_service: AIGatewayService
+    provider_registry: ProviderRegistry
+    provider_access: ProviderAccess
+    provider_operations: ProviderOperations
+    market_overview_service: MarketOverviewService
     static_dir: str
 
     def log_message(self, format: str, *args: Any) -> None:
@@ -304,6 +314,147 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                     origin=origin,
                 )
                 return
+
+            if path == "/api/v1/providers":
+                token = self._extract_bearer_token()
+                user = None
+                if token:
+                    _, user = self.server_user_auth_service.validate_session_token(token)
+
+                records = self.provider_access.list_providers()
+                self._send_json_response(
+                    200,
+                    {
+                        "success": True,
+                        "providers": [r.to_dict() for r in records],
+                        "supported_categories": list(self.provider_access.supported_categories()),
+                    },
+                    origin=origin,
+                )
+                return
+
+            if path == "/api/v1/market/candles":
+                token = self._extract_bearer_token()
+                user = None
+                if token:
+                    _, user = self.server_user_auth_service.validate_session_token(token)
+
+                query_params = urllib.parse.parse_qs(parsed_url.query)
+                symbol = query_params.get("symbol", ["XAUUSD"])[0]
+                timeframe = query_params.get("timeframe", ["1h"])[0]
+                provider_id = query_params.get("provider_id", ["biquote"])[0]
+                limit_str = query_params.get("limit", ["100"])[0]
+                try:
+                    limit = int(limit_str)
+                except ValueError:
+                    limit = 100
+
+                try:
+                    res = self.provider_operations.fetch_candles(
+                        provider_id=provider_id,
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        limit=limit,
+                    )
+                    self._send_json_response(
+                        200,
+                        {
+                            "success": True,
+                            "provider_id": res.provider_id,
+                            "symbol": res.symbol,
+                            "timeframe": res.timeframe,
+                            "candles": [c.to_dict() for c in res.candles],
+                        },
+                        origin=origin,
+                    )
+                    return
+                except InvalidOperationError as err:
+                    self._send_error_response(400, "Invalid Request", str(err), "Verify symbol, timeframe, or limit parameters.", origin=origin)
+                    return
+                except ProviderOperationFailure as err:
+                    self._send_error_response(502, "Provider Fetch Failed", str(err), "Check market data provider status.", origin=origin)
+                    return
+                except Exception as err:
+                    self._send_error_response(500, "Market Data Error", str(err), "Try again or contact support.", origin=origin)
+                    return
+
+            if path == "/api/v1/market/quote":
+                token = self._extract_bearer_token()
+                user = None
+                if token:
+                    _, user = self.server_user_auth_service.validate_session_token(token)
+
+                query_params = urllib.parse.parse_qs(parsed_url.query)
+                symbol = query_params.get("symbol", ["XAUUSD"])[0]
+                provider_id = query_params.get("provider_id", ["biquote"])[0]
+
+                try:
+                    res = self.provider_operations.fetch_quote(
+                        provider_id=provider_id,
+                        symbol=symbol,
+                    )
+                    self._send_json_response(
+                        200,
+                        {
+                            "success": True,
+                            "provider_id": res.provider_id,
+                            "symbol": res.symbol,
+                            "quote": res.quote.to_dict(),
+                        },
+                        origin=origin,
+                    )
+                    return
+                except InvalidOperationError as err:
+                    self._send_error_response(400, "Invalid Request", str(err), "Verify symbol or provider_id.", origin=origin)
+                    return
+                except ProviderOperationFailure as err:
+                    self._send_error_response(502, "Provider Quote Failed", str(err), "Check quote provider status.", origin=origin)
+                    return
+                except Exception as err:
+                    self._send_error_response(500, "Market Quote Error", str(err), "Try again or contact support.", origin=origin)
+                    return
+
+            if path == "/api/v1/market/overview":
+                token = self._extract_bearer_token()
+                user = None
+                if token:
+                    _, user = self.server_user_auth_service.validate_session_token(token)
+
+                query_params = urllib.parse.parse_qs(parsed_url.query)
+                symbol = query_params.get("symbol", ["XAUUSD"])[0]
+                timeframe = query_params.get("timeframe", ["1h"])[0]
+                candles_provider_id = query_params.get("candles_provider_id", ["biquote"])[0]
+                quote_provider_id = query_params.get("quote_provider_id", ["biquote"])[0]
+                limit_str = query_params.get("limit", ["100"])[0]
+                try:
+                    limit = int(limit_str)
+                except ValueError:
+                    limit = 100
+
+                try:
+                    ov = self.market_overview_service.get_overview(
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        candles_provider_id=candles_provider_id,
+                        candles_limit=limit,
+                        quote_provider_id=quote_provider_id,
+                    )
+                    self._send_json_response(
+                        200,
+                        {
+                            "success": True,
+                            "symbol": ov.symbol,
+                            "timeframe": ov.timeframe,
+                            "quote": ov.quote.to_dict() if ov.quote else None,
+                            "candles": [c.to_dict() for c in ov.candles],
+                            "availability": ov.availability.to_dict() if ov.availability else None,
+                        },
+                        origin=origin,
+                    )
+                    return
+                except Exception as err:
+                    self._send_error_response(500, "Market Overview Error", str(err), "Verify parameters and provider connectivity.", origin=origin)
+                    return
 
             if path in ("/api/v1/integration/project1/capabilities", "/api/v1/integration/project1/contract"):
                 token = self._extract_bearer_token()
@@ -977,6 +1128,21 @@ def create_server(
         audit_control_service=audit_control_service,
         notification_service=notification_service,
     )
+
+    # Initialize Provider Infrastructure
+    provider_registry = ProviderRegistry()
+    biquote_md = BiQuoteProvider()
+    biquote_md.connect()
+    biquote_quote = BiQuoteQuoteProvider()
+    biquote_quote.connect()
+
+    provider_registry.register(provider_id="biquote", category="market_data", provider=biquote_md)
+    provider_registry.register(provider_id="biquote", category="quote", provider=biquote_quote)
+
+    provider_access = ProviderAccess(registry=provider_registry)
+    provider_operations = ProviderOperations(access=provider_access)
+    market_overview_service = MarketOverviewService(operations=provider_operations)
+
     port_adapter = DisconnectedProject1Adapter()
     presenter = Project1SignalPresenter(
         port=port_adapter,
@@ -984,6 +1150,8 @@ def create_server(
         audit_control_service=audit_control_service,
         health_service=health_service,
         gateway_service=gateway_service,
+        provider_operations=provider_operations,
+        market_overview_service=market_overview_service,
     )
 
     # Perform startup recovery and persistence integrity validation
@@ -1011,6 +1179,10 @@ def create_server(
     CustomHandler.gateway_service = gateway_service
     CustomHandler.audit_control_service = audit_control_service
     CustomHandler.ai_gateway_service = ai_gateway_service
+    CustomHandler.provider_registry = provider_registry
+    CustomHandler.provider_access = provider_access
+    CustomHandler.provider_operations = provider_operations
+    CustomHandler.market_overview_service = market_overview_service
     CustomHandler.static_dir = resolved_static_dir
 
     server = ThreadingHTTPServer((host, port), CustomHandler)

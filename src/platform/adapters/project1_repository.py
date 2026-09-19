@@ -63,8 +63,13 @@ class Project1IntegrationRepositoryPort(ABC):
 class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort):
     """Hexagonal file-backed persistence adapter for Project 1 integration records."""
 
-    def __init__(self, storage_filepath: str = DEFAULT_STORAGE_PATH) -> None:
+    def __init__(
+        self,
+        storage_filepath: str = DEFAULT_STORAGE_PATH,
+        audit_control: Optional[Any] = None,
+    ) -> None:
         self._storage_filepath = storage_filepath
+        self._audit_control = audit_control
         self._records: List[Dict[str, Any]] = []
         self._load_from_storage()
 
@@ -82,7 +87,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                     self._records = data
                 else:
                     self._records = []
-        except Exception:
+        except Exception as exc:
             # Corrupt file handling: backup corrupt file and start fresh
             backup_path = f"{self._storage_filepath}.corrupt.{int(time.time())}"
             try:
@@ -90,6 +95,13 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
             except Exception:
                 pass
             self._records = []
+            if self._audit_control is not None and hasattr(self._audit_control, "record_failure"):
+                self._audit_control.record_failure(
+                    component="Project1IntegrationRepository",
+                    error_type="CORRUPT_STORAGE_DETECTED",
+                    message=f"Corrupt Project 1 repository file backed up to {backup_path}: {str(exc)}",
+                    diagnostic_details=f"Filepath: {self._storage_filepath}",
+                )
 
     def _flush_to_storage(self) -> None:
         dir_name = os.path.dirname(self._storage_filepath)
@@ -103,10 +115,20 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
         }
 
         tmp_path = f"{self._storage_filepath}.tmp.{int(time.time()*1000)}"
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, ensure_ascii=False)
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, ensure_ascii=False)
 
-        os.replace(tmp_path, self._storage_filepath)
+            os.replace(tmp_path, self._storage_filepath)
+        except Exception as exc:
+            if self._audit_control is not None and hasattr(self._audit_control, "record_failure"):
+                self._audit_control.record_failure(
+                    component="Project1IntegrationRepository",
+                    error_type="STORAGE_WRITE_FAILURE",
+                    message=f"Failed flushing Project 1 integration records: {str(exc)}",
+                    diagnostic_details=f"Filepath: {self._storage_filepath}",
+                )
+            raise
 
     def save_record(self, record: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(record, dict):

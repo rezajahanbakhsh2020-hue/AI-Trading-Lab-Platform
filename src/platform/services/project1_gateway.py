@@ -41,9 +41,9 @@ class Project1IntegrationGatewayService:
         audit_control: Optional[PlatformAuditControlService] = None,
         notification_service: Optional[NotificationService] = None,
     ) -> None:
-        self._repo = repository or FileBackedProject1IntegrationRepository()
         self._security = security_boundary or SecurityBoundaryService()
         self._audit = audit_control or PlatformAuditControlService(security_boundary=self._security)
+        self._repo = repository or FileBackedProject1IntegrationRepository(audit_control=self._audit)
         self._notif_svc = notification_service
 
     def get_capabilities(self, user: Optional[UserAuthorization] = None) -> Dict[str, Any]:
@@ -75,13 +75,24 @@ class Project1IntegrationGatewayService:
         payload: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Validate, authorize, scope, check replay, and ingest Project 1 signal contract payload."""
+        raw_payload = payload if isinstance(payload, dict) else {}
+        corr_id = raw_payload.get("correlation_id") or f"p1_corr_{int(time.time()*1000)}"
 
         # 1. Authentication Check
         if user is None:
+            self._audit.record_failure(
+                component="Project1IntegrationGateway",
+                error_type="UNAUTHENTICATED_INGESTION_ATTEMPT",
+                message="Authentication required for Project 1 output ingestion.",
+                severity=AuditEventSeverity.WARNING,
+                correlation_id=corr_id,
+                user_id="anonymous",
+            )
             return {
                 "success": False,
                 "error_code": "UNAUTHENTICATED",
                 "message": "Authentication required for Project 1 output ingestion.",
+                "correlation_id": corr_id,
             }
 
         # 2. RBAC Authorization Check
@@ -96,16 +107,26 @@ class Project1IntegrationGatewayService:
                 outcome="FAILURE",
                 severity=AuditEventSeverity.WARNING,
                 resource_id="project1_gateway",
+                correlation_id=corr_id,
                 details=f"Project 1 output ingestion denied: {reason}",
+            )
+            self._audit.record_failure(
+                component="Project1IntegrationGateway",
+                error_type="UNAUTHORIZED_INGESTION_ATTEMPT",
+                message=f"Access denied: {reason}",
+                severity=AuditEventSeverity.WARNING,
+                correlation_id=corr_id,
+                user_id=user.user_id,
             )
             return {
                 "success": False,
                 "error_code": "UNAUTHORIZED",
                 "message": f"Access denied: {reason}",
+                "correlation_id": corr_id,
             }
 
         # 3. Schema & Version Contract Validation
-        val_res = validate_project1_contract_payload(payload)
+        val_res = validate_project1_contract_payload(raw_payload)
         if not val_res.is_valid:
             err_msg = "; ".join(val_res.errors)
             is_version_err = any("Unsupported contract version" in e for e in val_res.errors)
@@ -120,13 +141,23 @@ class Project1IntegrationGatewayService:
                 outcome="FAILURE",
                 severity=AuditEventSeverity.WARNING,
                 resource_id="project1_gateway",
+                correlation_id=corr_id,
                 details=f"Payload rejected at boundary: {err_msg}",
+            )
+            self._audit.record_failure(
+                component="Project1IntegrationGateway",
+                error_type=err_code,
+                message=f"Contract validation failed: {err_msg}",
+                severity=AuditEventSeverity.WARNING,
+                correlation_id=corr_id,
+                user_id=user.user_id,
             )
             return {
                 "success": False,
                 "error_code": err_code,
                 "message": f"Contract validation failed: {err_msg}",
                 "errors": list(val_res.errors),
+                "correlation_id": corr_id,
             }
 
         sanitized = dict(val_res.sanitized_payload or {})
@@ -143,12 +174,22 @@ class Project1IntegrationGatewayService:
                 outcome="FAILURE",
                 severity=AuditEventSeverity.ERROR,
                 resource_id=payload_user_id,
+                correlation_id=corr_id,
                 details=f"User {user.user_id} attempted signal ingestion targeting {payload_user_id}",
+            )
+            self._audit.record_failure(
+                component="Project1IntegrationGateway",
+                error_type="FORBIDDEN_USER_MISMATCH",
+                message=f"User {user.user_id} attempted signal ingestion targeting {payload_user_id}",
+                severity=AuditEventSeverity.ERROR,
+                correlation_id=corr_id,
+                user_id=user.user_id,
             )
             return {
                 "success": False,
                 "error_code": "FORBIDDEN_USER_MISMATCH",
                 "message": "Cannot ingest signal for another user identity.",
+                "correlation_id": corr_id,
             }
 
         sanitized["user_id"] = user.user_id
@@ -248,11 +289,15 @@ class Project1IntegrationGatewayService:
         payload: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Update lifecycle state of an existing ingested signal record."""
+        raw_payload = payload if isinstance(payload, dict) else {}
+        corr_id = raw_payload.get("correlation_id") or f"p1_lifecycle_{int(time.time()*1000)}"
+
         if user is None:
             return {
                 "success": False,
                 "error_code": "UNAUTHENTICATED",
                 "message": "Authentication required for lifecycle transition.",
+                "correlation_id": corr_id,
             }
 
         allowed, reason = self._security.authorize(user, "signals", action="write")
@@ -261,6 +306,7 @@ class Project1IntegrationGatewayService:
                 "success": False,
                 "error_code": "UNAUTHORIZED",
                 "message": f"Access denied: {reason}",
+                "correlation_id": corr_id,
             }
 
         if not isinstance(payload, dict):
@@ -268,6 +314,7 @@ class Project1IntegrationGatewayService:
                 "success": False,
                 "error_code": "INVALID_PAYLOAD",
                 "message": "Payload must be a JSON dictionary.",
+                "correlation_id": corr_id,
             }
 
         signal_id = payload.get("signal_id")
@@ -279,6 +326,7 @@ class Project1IntegrationGatewayService:
                 "success": False,
                 "error_code": "INVALID_SIGNAL_ID",
                 "message": "signal_id is required.",
+                "correlation_id": corr_id,
             }
 
         if not lifecycle_state or not isinstance(lifecycle_state, str):
@@ -286,6 +334,7 @@ class Project1IntegrationGatewayService:
                 "success": False,
                 "error_code": "INVALID_LIFECYCLE_STATE",
                 "message": "lifecycle_state is required.",
+                "correlation_id": corr_id,
             }
 
         ls_upper = lifecycle_state.strip().upper()
@@ -294,6 +343,7 @@ class Project1IntegrationGatewayService:
                 "success": False,
                 "error_code": "UNSUPPORTED_LIFECYCLE_STATE",
                 "message": f"Unsupported lifecycle state: {lifecycle_state}",
+                "correlation_id": corr_id,
             }
 
         success = self._repo.update_lifecycle_state(
@@ -308,9 +358,8 @@ class Project1IntegrationGatewayService:
                 "success": False,
                 "error_code": "RECORD_NOT_FOUND",
                 "message": f"No signal record found with signal_id '{signal_id}' for current user.",
+                "correlation_id": corr_id,
             }
-
-        corr_id = payload.get("correlation_id") or f"p1_lifecycle_{int(time.time())}"
 
         self._audit.record_event(
             user_id=user.user_id,
@@ -348,6 +397,29 @@ class Project1IntegrationGatewayService:
             "lifecycle_state": ls_upper,
             "message": f"Signal {signal_id} lifecycle state updated to {ls_upper}.",
             "correlation_id": corr_id,
+        }
+
+    def get_gateway_monitoring_summary(
+        self,
+        user: Optional[UserAuthorization] = None,
+    ) -> Dict[str, Any]:
+        """Produce gateway monitoring summary for HostSnapshot and UI presentation."""
+        caps_res = self.get_capabilities(user=user)
+        caps = caps_res.get("capabilities")
+        recs_res = self.list_records(user=user, limit=10) if user else {"records": []}
+        recs = recs_res.get("records", [])
+
+        last_comm = recs[0].get("created_at") if recs else None
+        last_comm_str = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(last_comm)) if last_comm else None
+
+        return {
+            "connected": True,
+            "contractVersion": caps.get("current_contract_version", "1.0") if caps else "1.0",
+            "supportedVersions": caps.get("supported_contract_versions", ["1.0", "1.0.0", "v1.0"]) if caps else ["1.0"],
+            "ingestedRecordsCount": len(recs),
+            "lastCommunicatedAt": last_comm_str,
+            "capabilities": caps,
+            "recentRecords": recs,
         }
 
     def list_records(

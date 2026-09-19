@@ -65,54 +65,61 @@ export function OperationalControlCenter({ snapshot }: OperationalControlCenterP
       </div>
 
       {/* Project 1 Integration Gateway Summary Card */}
-      <div className="card project1-gateway-card">
-        <div className="card-head flex-header-row">
-          <div>
-            <h4 className="header-title" style={{ margin: 0, fontSize: 16 }}>
-              🔌 {t('project1Gateway.title')}
-            </h4>
-            <span className="hint" style={{ fontSize: 12 }}>
-              {t('project1Gateway.subtitle')}
-            </span>
-          </div>
-          <span className={`status ${snapshot.project1.connected ? 'ready' : 'disconnected'}`}>
-            {snapshot.project1.connected ? t('project1Gateway.connected') : t('project1Gateway.disconnected')}
-          </span>
-        </div>
-        <div className="card-body space-v-3">
-          <div className="grid cols-4" style={{ gap: 12 }}>
-            <div>
-              <span className="hint block-label">{t('project1Gateway.contractVersion')}</span>
-              <strong className="mono-val metric-md">1.0</strong>
-            </div>
-            <div>
-              <span className="hint block-label">{t('signal.port')} / {t('signal.adapter')}</span>
-              <span className="mono-val" style={{ fontSize: 12 }}>
-                {snapshot.project1.port} ({snapshot.project1.adapterName})
+      {(() => {
+        const p1Gw = snapshot.project1Gateway;
+        return (
+          <div className="card project1-gateway-card">
+            <div className="card-head flex-header-row">
+              <div>
+                <h4 className="header-title" style={{ margin: 0, fontSize: 16 }}>
+                  🔌 {t('project1Gateway.title')}
+                </h4>
+                <span className="hint" style={{ fontSize: 12 }}>
+                  {t('project1Gateway.subtitle')}
+                </span>
+              </div>
+              <span className={`status ${snapshot.project1.connected ? 'ready' : 'disconnected'}`}>
+                {snapshot.project1.connected ? t('project1Gateway.connected') : t('project1Gateway.disconnected')}
               </span>
             </div>
-            <div>
-              <span className="hint block-label">{t('project1Gateway.supportedVersions')}</span>
-              <span className="chip muted-chip">1.0, 1.0.0, v1.0</span>
-            </div>
-            <div>
-              <span className="hint block-label">{t('status.ready')}</span>
-              <span className="chip ready-chip">Audit & Auth Active</span>
+            <div className="card-body space-v-3">
+              <div className="grid cols-4" style={{ gap: 12 }}>
+                <div>
+                  <span className="hint block-label">{t('project1Gateway.contractVersion')}</span>
+                  <strong className="mono-val metric-md">{p1Gw?.contractVersion || '1.0'}</strong>
+                </div>
+                <div>
+                  <span className="hint block-label">{t('signal.port')} / {t('signal.adapter')}</span>
+                  <span className="mono-val" style={{ fontSize: 12 }}>
+                    {snapshot.project1.port} ({snapshot.project1.adapterName})
+                  </span>
+                </div>
+                <div>
+                  <span className="hint block-label">{t('project1Gateway.supportedVersions')}</span>
+                  <span className="chip muted-chip">{(p1Gw?.supportedVersions || ['1.0', '1.0.0', 'v1.0']).join(', ')}</span>
+                </div>
+                <div>
+                  <span className="hint block-label">{t('status.ready')}</span>
+                  <span className="chip ready-chip">
+                    {p1Gw ? `${p1Gw.ingestedRecordsCount} Ingested` : 'Audit & Auth Active'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="capabilities-badges flex-row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                <span className="chip ready-chip">✓ {t('project1Gateway.guarantees.nonCalculation')}</span>
+                <span className="chip ready-chip">✓ {t('project1Gateway.guarantees.sourceOfTruth')}</span>
+                <span className="chip ready-chip">✓ {t('project1Gateway.guarantees.tenantIsolation')}</span>
+                <span className="chip ready-chip">✓ {t('project1Gateway.guarantees.auditLogged')}</span>
+              </div>
+
+              <p className="hint notice-footer" style={{ margin: 0, marginTop: 8, fontStyle: 'italic' }}>
+                {t('project1Gateway.nonCalculationNotice')}
+              </p>
             </div>
           </div>
-
-          <div className="capabilities-badges flex-row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-            <span className="chip ready-chip">✓ {t('project1Gateway.guarantees.nonCalculation')}</span>
-            <span className="chip ready-chip">✓ {t('project1Gateway.guarantees.sourceOfTruth')}</span>
-            <span className="chip ready-chip">✓ {t('project1Gateway.guarantees.tenantIsolation')}</span>
-            <span className="chip ready-chip">✓ {t('project1Gateway.guarantees.auditLogged')}</span>
-          </div>
-
-          <p className="hint notice-footer" style={{ margin: 0, marginTop: 8, fontStyle: 'italic' }}>
-            {t('project1Gateway.nonCalculationNotice')}
-          </p>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* Execution Gateway & Reconciliation Summary Card */}
       {execMon && (

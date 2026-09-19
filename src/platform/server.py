@@ -20,6 +20,7 @@ from src.platform.config import PlatformConfig
 from src.platform.adapters.user_repository import FileBackedUserRepository
 from src.platform.adapters.workspace_repository import FileBackedWorkspaceRepository
 from src.platform.adapters.project1_adapter import DisconnectedProject1Adapter
+from src.platform.adapters.project1_repository import FileBackedProject1IntegrationRepository
 from src.platform.services.user_authorization import UserAuthorizationService
 from src.platform.services.workspace import WorkspaceService
 from src.platform.services.health_operations import SystemHealthService, log_operational_event
@@ -903,16 +904,23 @@ def create_server(
 
     health_service = SystemHealthService(config=cfg)
     audit_control_service = PlatformAuditControlService(security_boundary=security_service)
+    p1_repo = FileBackedProject1IntegrationRepository(
+        storage_filepath=os.path.join(cfg.persistence_dir, "project1_integration_records.json"),
+        audit_control=audit_control_service,
+    )
+    gateway_service = Project1IntegrationGatewayService(
+        repository=p1_repo,
+        security_boundary=security_service,
+        audit_control=audit_control_service,
+        notification_service=notification_service,
+    )
     port_adapter = DisconnectedProject1Adapter()
     presenter = Project1SignalPresenter(
         port=port_adapter,
         security_service=security_service,
         audit_control_service=audit_control_service,
         health_service=health_service,
-    )
-    gateway_service = Project1IntegrationGatewayService(
-        security_boundary=security_service,
-        notification_service=notification_service,
+        gateway_service=gateway_service,
     )
 
     # Perform startup recovery and persistence integrity validation

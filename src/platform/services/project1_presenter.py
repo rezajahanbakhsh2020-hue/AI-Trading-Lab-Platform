@@ -14,6 +14,7 @@ Rules:
 
 from typing import Any, Dict, Optional, Tuple
 
+import time
 from src.platform.domain.readiness import Readiness
 from src.platform.domain.security import Permission
 from src.platform.domain.signal import Signal
@@ -28,6 +29,8 @@ from src.platform.services.execution_gateway import ExecutionGatewayService
 from src.platform.services.health_operations import SystemHealthService
 from src.platform.services.order_intent import OrderIntentService
 from src.platform.services.project1_gateway import Project1IntegrationGatewayService
+from src.platform.services.provider_operations import ProviderOperations
+from src.platform.services.market_overview import MarketOverviewService
 from src.platform.services.security import SecretSanitizer, SecurityBoundaryService
 
 
@@ -44,6 +47,8 @@ class Project1SignalPresenter:
         order_intent_service: Optional[OrderIntentService] = None,
         health_service: Optional[SystemHealthService] = None,
         gateway_service: Optional[Project1IntegrationGatewayService] = None,
+        provider_operations: Optional[ProviderOperations] = None,
+        market_overview_service: Optional[MarketOverviewService] = None,
     ) -> None:
         if port is None or not isinstance(port, Project1IntegrationPort):
             raise ValueError("port must be a valid Project1IntegrationPort")
@@ -75,6 +80,86 @@ class Project1SignalPresenter:
             security_boundary=self._security_service,
             audit_control=self._audit_control_service,
         )
+        self._provider_ops = provider_operations
+        self._overview_service = market_overview_service
+
+    def _get_market_state(
+        self,
+        symbol: str,
+        timeframe: str,
+        candles_provider_id: str = "biquote",
+        quote_provider_id: str = "biquote",
+    ) -> Dict[str, Any]:
+        """Fetch real normalized market data state via ProviderOperations / MarketOverviewService."""
+        if self._overview_service is not None:
+            try:
+                ov = self._overview_service.get_overview(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    candles_provider_id=candles_provider_id,
+                    quote_provider_id=quote_provider_id,
+                )
+                candles_dicts = [c.to_dict() for c in ov.candles]
+                quote_dict = ov.quote.to_dict() if ov.quote else None
+                q_avail = quote_dict.get("availability") if quote_dict else None
+                status = "connected"
+                if q_avail and isinstance(q_avail, dict) and q_avail.get("status") in ("stale", "delayed", "unavailable"):
+                    status = q_avail["status"]
+                elif not candles_dicts and not quote_dict:
+                    status = "empty"
+
+                return {
+                    "symbol": symbol,
+                    "timeframe": timeframe,
+                    "provider": {
+                        "id": candles_provider_id,
+                        "name": "BiQuoteProvider",
+                        "provider": "biquote",
+                        "status": status,
+                        "supportedTimeframes": ["1m", "5m", "15m", "30m", "1h", "4h", "1d"],
+                        "lastUpdated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    },
+                    "quote": quote_dict,
+                    "change": quote_dict.get("change_percent") if quote_dict else None,
+                    "volume": quote_dict.get("volume24h") if quote_dict else (candles_dicts[-1].get("volume") if candles_dicts and "volume" in candles_dicts[-1] else None),
+                    "candles": candles_dicts,
+                    "status": status,
+                    "message": f"Market data active from {candles_provider_id}.",
+                    "lastFetchedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                }
+            except Exception as exc:
+                return {
+                    "symbol": symbol,
+                    "timeframe": timeframe,
+                    "provider": {
+                        "id": candles_provider_id,
+                        "name": "BiQuoteProvider",
+                        "provider": "biquote",
+                        "status": "error",
+                        "supportedTimeframes": ["1m", "5m", "15m", "30m", "1h", "4h", "1d"],
+                        "errorMessage": SecretSanitizer.sanitize_string(str(exc)),
+                    },
+                    "quote": None,
+                    "change": None,
+                    "volume": None,
+                    "candles": [],
+                    "status": "error",
+                    "message": f"Market data provider error: {SecretSanitizer.sanitize_string(str(exc))}",
+                    "lastFetchedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                }
+
+        return {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "provider": None,
+            "quote": None,
+            "change": None,
+            "volume": None,
+            "candles": [],
+            "status": "disconnected",
+            "message": "Market data feed relies on provider selection.",
+            "lastFetchedAt": None,
+        }
 
     def present_signal(
         self,
@@ -238,15 +323,17 @@ class Project1SignalPresenter:
                     "adapterName": desc.get("name", "DisconnectedProject1Adapter"),
                     "message": pres["message"],
                 },
-                "market": {
+                "market": self._get_market_state(symbol, timeframe) if pres["status"] != "unauthorized" else {
                     "symbol": symbol,
                     "timeframe": timeframe,
+                    "provider": None,
                     "quote": None,
                     "change": None,
                     "volume": None,
                     "candles": [],
                     "status": "unavailable",
                     "message": "Market data is restricted or unavailable.",
+                    "lastFetchedAt": None,
                 },
                 "strategy": {
                     "name": None,
@@ -311,16 +398,7 @@ class Project1SignalPresenter:
                     "adapterName": desc.get("name", "DisconnectedProject1Adapter"),
                     "message": desc.get("message", "No Project 1 data connected yet."),
                 },
-                "market": {
-                    "symbol": symbol,
-                    "timeframe": timeframe,
-                    "quote": None,
-                    "change": None,
-                    "volume": None,
-                    "candles": [],
-                    "status": "unavailable",
-                    "message": "Market data is unavailable until a provider is connected.",
-                },
+                "market": self._get_market_state(symbol, timeframe),
                 "strategy": {
                     "name": None,
                     "stability": None,
@@ -580,16 +658,7 @@ class Project1SignalPresenter:
                 "adapterName": desc.get("name", "Project1LabArtifactAdapter"),
                 "message": f"Project 1 emitting signals via {desc.get('name', 'adapter')}.",
             },
-            "market": {
-                "symbol": symbol,
-                "timeframe": signal_dict.get("timeframe") or timeframe,
-                "quote": None,
-                "change": None,
-                "volume": None,
-                "candles": [],
-                "status": "unavailable",
-                "message": "Market data feed relies on provider selection.",
-            },
+            "market": self._get_market_state(symbol, signal_dict.get("timeframe") or timeframe),
             "strategy": {
                 "name": strat_name,
                 "stability": int(conf * 100) if conf is not None else None,

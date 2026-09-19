@@ -131,6 +131,33 @@ class TestHealthOperationsAndRecovery(unittest.TestCase):
             extra_data=secret_payload,
         )
 
+    def test_get_unified_observability_report(self) -> None:
+        """Verify unified operational observability report aggregates all platform subsystem states."""
+        rep = self.health_service.get_unified_observability_report(
+            active_sessions_count=3,
+            provider_checks={"biquote_md": True, "biquote_quote": True},
+            project1_gateway_connected=True,
+            notification_pipeline_healthy=True,
+            ai_provider_status="connected",
+            recent_failures_count=2,
+        )
+
+        self.assertEqual(rep.overall_status, "HEALTHY")
+        self.assertTrue(rep.liveness)
+        self.assertTrue(rep.readiness)
+        self.assertEqual(rep.active_sessions_count, 3)
+        self.assertEqual(rep.recent_failures_count, 2)
+        self.assertIn("application_server", rep.components)
+        self.assertIn("persistence_storage", rep.components)
+        self.assertIn("project1_gateway", rep.components)
+        self.assertIn("execution_gateway_boundary", rep.components)
+        self.assertIn("notification_pipeline", rep.components)
+        self.assertIn("ai_provider_gateway", rep.components)
+
+        rep_dict = rep.to_dict()
+        self.assertEqual(rep_dict["overall_status"], "HEALTHY")
+        self.assertEqual(rep_dict["components"]["project1_gateway"]["status"], "HEALTHY")
+
 
 class TestOperationalFailureAndAudit(unittest.TestCase):
     """Test suite for operational failure tracking, incident logs, and RBAC."""

@@ -631,11 +631,20 @@ class Project1SignalPresenter:
                     "data": None,
                 }
 
-        # Retrieve operational audit summary for HostSnapshot
+        # Retrieve operational audit summary and observability report for HostSnapshot
         _, _, audit_summary = self._audit_control_service.get_control_summary(user=user)
         _, _, audit_events = self._audit_control_service.query_events(user=user, filter_params=None)
         _, _, operational_failures = self._audit_control_service.query_failures(user=user, limit=50)
         persistence_rec = self._health_service.validate_persistence_integrity()
+        mkt_state = self._get_market_state(symbol, signal_dict.get("timeframe") or timeframe)
+
+        observability_rep = self._health_service.get_unified_observability_report(
+            active_sessions_count=1 if user else 0,
+            project1_gateway_connected=is_connected,
+            execution_boundary_status=self._execution_gateway_service.get_boundary_status(user=user),
+            market_data_status=mkt_state,
+            recent_failures_count=len(operational_failures),
+        )
 
         return {
             "generatedAt": signal_dict.get("timestamp"),
@@ -646,6 +655,7 @@ class Project1SignalPresenter:
             },
             "persistenceRecovery": persistence_rec.to_dict(),
             "operationalFailures": [f.to_dict() for f in operational_failures],
+            "observability": observability_rep.to_dict(),
             "auditControl": {
                 "status": "available" if audit_summary is not None else "unavailable",
                 "summary": audit_summary.to_dict() if audit_summary else None,

@@ -27,6 +27,7 @@ from src.platform.services.audit_control import PlatformAuditControlService
 from src.platform.services.execution_gateway import ExecutionGatewayService
 from src.platform.services.health_operations import SystemHealthService
 from src.platform.services.order_intent import OrderIntentService
+from src.platform.services.project1_gateway import Project1IntegrationGatewayService
 from src.platform.services.security import SecretSanitizer, SecurityBoundaryService
 
 
@@ -42,6 +43,7 @@ class Project1SignalPresenter:
         audit_control_service: Optional[PlatformAuditControlService] = None,
         order_intent_service: Optional[OrderIntentService] = None,
         health_service: Optional[SystemHealthService] = None,
+        gateway_service: Optional[Project1IntegrationGatewayService] = None,
     ) -> None:
         if port is None or not isinstance(port, Project1IntegrationPort):
             raise ValueError("port must be a valid Project1IntegrationPort")
@@ -61,6 +63,10 @@ class Project1SignalPresenter:
         self._audit_control_service = audit_control_service or PlatformAuditControlService(security_boundary=self._security_service)
         self._health_service = health_service or SystemHealthService()
         self._order_intent_service = order_intent_service or OrderIntentService(
+            security_boundary=self._security_service,
+            audit_control=self._audit_control_service,
+        )
+        self._gateway_service = gateway_service or Project1IntegrationGatewayService(
             security_boundary=self._security_service,
             audit_control=self._audit_control_service,
         )
@@ -287,6 +293,7 @@ class Project1SignalPresenter:
                 "activity": [],
                 "orderIntents": self.get_order_intents_payload(user=user),
                 "executionGateway": self._execution_gateway_service.get_boundary_status(user=user),
+                "project1Gateway": self._gateway_service.get_gateway_monitoring_summary(user=user),
             }
 
         if not is_connected:
@@ -358,6 +365,7 @@ class Project1SignalPresenter:
                 },
                 "activity": [],
                 "orderIntents": self.get_order_intents_payload(user=user),
+                "project1Gateway": self._gateway_service.get_gateway_monitoring_summary(user=user),
             }
 
         # Connected port handling
@@ -437,6 +445,7 @@ class Project1SignalPresenter:
                 },
                 "activity": [],
                 "orderIntents": self.get_order_intents_payload(user=user),
+                "project1Gateway": self._gateway_service.get_gateway_monitoring_summary(user=user),
             }
 
         action_str = str(signal_dict["signal_type"]).upper()
@@ -628,6 +637,7 @@ class Project1SignalPresenter:
             "orderIntents": self.get_order_intents_payload(user=user),
             "executionGateway": self._execution_gateway_service.get_boundary_status(user=user),
             "executionMonitoring": self._execution_gateway_service.get_execution_monitoring_summary(user=user),
+            "project1Gateway": self._gateway_service.get_gateway_monitoring_summary(user=user),
         }
 
     def _compute_authorization_object(

@@ -160,7 +160,7 @@ class FileBackedOrderIntentRepository(OrderIntentRepositoryPort):
         intent = self._intents_by_id.get(order_intent_id)
         if intent is None:
             return None
-        if user_id is not None and intent.user_id != user_id and user_id != "admin":
+        if user_id is not None and intent.user_id != user_id:
             return None
         return intent
 
@@ -185,7 +185,7 @@ class FileBackedOrderIntentRepository(OrderIntentRepositoryPort):
         clean_ls = lifecycle_state.strip().upper() if lifecycle_state and lifecycle_state.strip() else None
 
         for intent in self._intents_by_id.values():
-            if user_id is not None and intent.user_id != user_id and user_id != "admin":
+            if user_id is not None and intent.user_id != user_id:
                 continue
             if clean_symbol and intent.symbol != clean_symbol:
                 continue

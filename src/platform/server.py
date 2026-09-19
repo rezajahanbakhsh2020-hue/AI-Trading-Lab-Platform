@@ -13,6 +13,7 @@ import mimetypes
 import os
 import signal
 import sys
+import threading
 import time
 from typing import Any, Dict, Optional, Tuple
 import urllib.parse
@@ -36,6 +37,7 @@ from src.platform.services.notification import NotificationService
 from src.platform.services.notification_delivery import NotificationDeliveryService
 from src.platform.services.audit_control import PlatformAuditControlService
 from src.platform.services.ai_gateway import AIGatewayService
+from src.platform.services.persistence_recovery import PersistenceRecoveryEngine
 from src.platform.domain.ai_gateway import AICapability, AIRequest
 from src.platform.providers.notification_delivery import RecordingNotificationDeliveryAdapter
 from src.platform.providers.biquote import BiQuoteProvider
@@ -64,6 +66,7 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
     notification_delivery_service: NotificationDeliveryService
     audit_control_service: PlatformAuditControlService
     ai_gateway_service: AIGatewayService
+    persistence_recovery_engine: PersistenceRecoveryEngine
     provider_registry: ProviderRegistry
     provider_access: ProviderAccess
     provider_operations: ProviderOperations
@@ -245,6 +248,19 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                     },
                     origin=origin,
                 )
+                return
+
+            if path == "/api/v1/operational/backups":
+                valid, actor = self._authenticate_request_user()
+                if not valid or not actor:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login as Admin to list backups.", origin=origin)
+                    return
+                if not actor.is_admin:
+                    self._send_error_response(403, "Access Denied", "Admin privileges required.", "Contact platform administrator.", origin=origin)
+                    return
+
+                backups = self.persistence_recovery_engine.list_backups()
+                self._send_json_response(200, {"success": True, "backups": backups, "count": len(backups)}, origin=origin)
                 return
 
             if path == "/api/v1/users/audit":
@@ -787,6 +803,39 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                     self.server_user_auth_service.revoke_session_token(token)
                 self._send_json_response(200, {"success": True, "message": "Logged out successfully"}, origin=origin)
                 return
+
+            if path in ("/api/v1/operational/backups/create", "/api/v1/operational/backups/restore"):
+                valid, actor = self._authenticate_request_user()
+                if not valid or not actor:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login as Admin.", origin=origin)
+                    return
+                if not actor.is_admin:
+                    self._send_error_response(403, "Access Denied", "Admin privileges required.", "Contact administrator.", origin=origin)
+                    return
+
+                try:
+                    req_data = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                except Exception:
+                    self._send_error_response(400, "Invalid JSON Request", "Request body was not valid JSON.", "Provide valid JSON body.", origin=origin)
+                    return
+
+                if path == "/api/v1/operational/backups/create":
+                    lbl = req_data.get("label")
+                    res = self.persistence_recovery_engine.create_backup(user=actor, label=lbl)
+                    st_code = 200 if res.success else 400
+                    self._send_json_response(st_code, res.to_dict(), origin=origin)
+                    return
+
+                if path == "/api/v1/operational/backups/restore":
+                    b_id = str(req_data.get("backup_id", req_data.get("backup_filepath", ""))).strip()
+                    if not b_id:
+                        self._send_error_response(400, "Missing Parameters", "'backup_id' parameter is required.", "Provide backup_id.", origin=origin)
+                        return
+
+                    res = self.persistence_recovery_engine.restore_backup(user=actor, backup_id_or_path=b_id)
+                    st_code = 200 if res.success else 400
+                    self._send_json_response(st_code, res.to_dict(), origin=origin)
+                    return
 
             if path in (
                 "/api/v1/users/create",
@@ -1331,6 +1380,12 @@ def create_server(
 
     health_service = SystemHealthService(config=cfg)
     audit_control_service = PlatformAuditControlService(security_boundary=security_service)
+    persistence_recovery_engine = PersistenceRecoveryEngine(
+        storage_dir=cfg.persistence_dir,
+        security_boundary=security_service,
+        audit_control=audit_control_service,
+        app_env=cfg.app_env,
+    )
     p1_repo = FileBackedProject1IntegrationRepository(
         storage_filepath=os.path.join(cfg.persistence_dir, "project1_integration_records.json"),
         audit_control=audit_control_service,
@@ -1415,6 +1470,7 @@ def create_server(
     CustomHandler.execution_gateway_service = execution_gateway_service
     CustomHandler.audit_control_service = audit_control_service
     CustomHandler.ai_gateway_service = ai_gateway_service
+    CustomHandler.persistence_recovery_engine = persistence_recovery_engine
     CustomHandler.provider_registry = provider_registry
     CustomHandler.provider_access = provider_access
     CustomHandler.provider_operations = provider_operations

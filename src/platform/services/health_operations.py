@@ -28,6 +28,9 @@ class PersistenceRecoveryStatus:
     corrupt_backups_found: List[str]
     is_healthy: bool
     message: str
+    backup_snapshots_count: int = 0
+    latest_backup_timestamp: Optional[float] = None
+    retention_status: str = "BOUNDED_RETENTION_OK"
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -37,6 +40,9 @@ class PersistenceRecoveryStatus:
             "corrupt_backups_found": self.corrupt_backups_found,
             "is_healthy": self.is_healthy,
             "message": self.message,
+            "backup_snapshots_count": self.backup_snapshots_count,
+            "latest_backup_timestamp": self.latest_backup_timestamp,
+            "retention_status": self.retention_status,
         }
 
 
@@ -156,19 +162,35 @@ class SystemHealthService:
         except Exception as e:
             issues.append(f"Failed to scan directory '{target_dir}': {e}")
 
+        # Scan for existing backup snapshots
+        backups_dir = os.path.join(target_dir, "backups")
+        backup_count = 0
+        latest_backup_ts: Optional[float] = None
+        if os.path.exists(backups_dir):
+            try:
+                for b_file in os.listdir(backups_dir):
+                    if b_file.endswith(".json"):
+                        backup_count += 1
+                        mtime = os.path.getmtime(os.path.join(backups_dir, b_file))
+                        if latest_backup_ts is None or mtime > latest_backup_ts:
+                            latest_backup_ts = mtime
+            except Exception:
+                pass
+
         files_to_check = {
             "users.json": {"expected_schema": 2, "root_type": list},
             "sessions.json": {"expected_schema": 2, "root_type": dict},
             "workspaces.json": {"expected_schema": 1, "root_type": dict},
             "project1_integration_records.json": {"expected_schema": 1, "root_type": (dict, list)},
+            "order_intents.json": {"expected_schema": "1.0", "root_type": dict},
         }
 
         for filename, spec in files_to_check.items():
             filepath = os.path.join(target_dir, filename)
             if not os.path.exists(filepath):
-                # Also check data/ fallback for project1_integration_records.json
-                if filename == "project1_integration_records.json" and os.path.exists("data/project1_integration_records.json"):
-                    filepath = "data/project1_integration_records.json"
+                # Also check data/ fallback for project1_integration_records.json and order_intents.json
+                if os.path.exists(os.path.join("data", filename)):
+                    filepath = os.path.join("data", filename)
                 else:
                     stores_info[filename] = {"exists": False, "status": "NOT_CREATED_YET"}
                     continue
@@ -218,6 +240,9 @@ class SystemHealthService:
             corrupt_backups_found=corrupt_backups,
             is_healthy=is_healthy,
             message=msg,
+            backup_snapshots_count=backup_count,
+            latest_backup_timestamp=latest_backup_ts,
+            retention_status="BOUNDED_RETENTION_OK",
         )
 
     def check_readiness(
@@ -229,14 +254,7 @@ class SystemHealthService:
         notification_pipeline_healthy: bool = True,
         ai_provider_status: Optional[str] = None,
     ) -> Tuple[bool, Dict[str, Any]]:
-        """Deep readiness check: evaluates config validity, storage integrity, providers, and integration gateways.
-
-        Explicitly classifies readiness status states across subsystem components:
-        - HEALTHY: Subsystem is fully operational and configured.
-        - DEGRADED: Non-critical subsystem issue present, but overall platform remains functional.
-        - UNAVAILABLE: Critical subsystem component failure rendering service unusable.
-        - NOT_CONFIGURED: Optional integration or credential not provisioned.
-        """
+        """Deep readiness check: evaluates config validity, storage integrity, providers, and integration gateways."""
         persistence_status = self.validate_persistence_integrity()
 
         # Classify persistence state

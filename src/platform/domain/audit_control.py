@@ -102,6 +102,37 @@ class AuditQueryFilter:
 
 
 @dataclass
+class OperationalFailureRecord:
+    """Canonical representation of platform operational failures and incidents."""
+
+    failure_id: str
+    timestamp: float
+    correlation_id: str
+    component: str
+    error_type: str
+    severity: AuditEventSeverity
+    retryable: bool
+    message: str
+    diagnostic_details: Optional[str] = None
+    user_id: str = "system"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert failure record to dictionary representation."""
+        return {
+            "failure_id": self.failure_id,
+            "timestamp": self.timestamp,
+            "correlation_id": self.correlation_id,
+            "component": self.component,
+            "error_type": self.error_type,
+            "severity": self.severity.value if isinstance(self.severity, AuditEventSeverity) else str(self.severity),
+            "retryable": self.retryable,
+            "message": self.message,
+            "diagnostic_details": self.diagnostic_details,
+            "user_id": self.user_id,
+        }
+
+
+@dataclass
 class AuditControlSummary:
     """Summary metrics of operational control plane events."""
 

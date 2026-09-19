@@ -5,12 +5,39 @@ application health status, safe operational diagnostics, correlation request tra
 """
 
 from dataclasses import dataclass, field
+import json
+import logging
+import os
 import secrets
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.platform.config import PlatformConfig
 from src.platform.services.security import SecretSanitizer
+
+logger = logging.getLogger("platform.health")
+
+
+@dataclass
+class PersistenceRecoveryStatus:
+    """Status report for persistence integrity, schema validation, and storage recovery."""
+
+    status: str  # "CLEAN", "RECOVERED_FROM_CORRUPTION", "DEGRADED", "UNAVAILABLE"
+    storage_dir: str
+    stores_checked: Dict[str, Any]
+    corrupt_backups_found: List[str]
+    is_healthy: bool
+    message: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "status": self.status,
+            "storage_dir": self.storage_dir,
+            "stores_checked": self.stores_checked,
+            "corrupt_backups_found": self.corrupt_backups_found,
+            "is_healthy": self.is_healthy,
+            "message": self.message,
+        }
 
 
 @dataclass(frozen=True)
@@ -23,7 +50,25 @@ class OperationalDiagnostics:
     app_env: str
     active_sessions_count: int
     system_status: str
+    persistence_recovery: Dict[str, Any]
     diagnostics_summary: Dict[str, Any]
+
+
+def log_operational_event(
+    level: int,
+    message: str,
+    component: str,
+    correlation_id: Optional[str] = None,
+    extra_data: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Safely format and log a structured, secret-sanitized operational log event."""
+    sanitized_msg = SecretSanitizer.sanitize_string(message)
+    sanitized_extra = SecretSanitizer.sanitize_data(extra_data or {})
+    corr_part = f" [corr_id={correlation_id}]" if correlation_id else ""
+    extra_part = f" | details={json.dumps(sanitized_extra)}" if extra_data else ""
+
+    formatted = f"[{component}]{corr_part} {sanitized_msg}{extra_part}"
+    logger.log(level, formatted)
 
 
 class SystemHealthService:
@@ -44,28 +89,128 @@ class SystemHealthService:
         """Liveness check: returns True if process is alive and responsive."""
         return True, "Process is live"
 
+    def validate_persistence_integrity(
+        self, storage_dir: Optional[str] = None
+    ) -> PersistenceRecoveryStatus:
+        """Validate integrity and schema versions of all file-backed persistence stores."""
+        target_dir = storage_dir or self.config.persistence_dir
+        stores_info: Dict[str, Any] = {}
+        corrupt_backups: List[str] = []
+        is_healthy = True
+        recovered_mode = False
+        issues: List[str] = []
+
+        if not os.path.exists(target_dir):
+            try:
+                os.makedirs(target_dir, exist_ok=True)
+            except Exception as e:
+                return PersistenceRecoveryStatus(
+                    status="UNAVAILABLE",
+                    storage_dir=target_dir,
+                    stores_checked={},
+                    corrupt_backups_found=[],
+                    is_healthy=False,
+                    message=f"Cannot create persistence storage directory '{target_dir}': {e}",
+                )
+
+        # Scan for existing corrupt backup files
+        try:
+            for filename in os.listdir(target_dir):
+                if ".corrupt." in filename:
+                    corrupt_backups.append(os.path.join(target_dir, filename))
+                    recovered_mode = True
+        except Exception as e:
+            issues.append(f"Failed to scan directory '{target_dir}': {e}")
+
+        files_to_check = {
+            "users.json": {"expected_schema": 2, "root_type": list},
+            "sessions.json": {"expected_schema": 2, "root_type": dict},
+            "workspaces.json": {"expected_schema": 1, "root_type": dict},
+            "project1_integration_records.json": {"expected_schema": 1, "root_type": (dict, list)},
+        }
+
+        for filename, spec in files_to_check.items():
+            filepath = os.path.join(target_dir, filename)
+            if not os.path.exists(filepath):
+                # Also check data/ fallback for project1_integration_records.json
+                if filename == "project1_integration_records.json" and os.path.exists("data/project1_integration_records.json"):
+                    filepath = "data/project1_integration_records.json"
+                else:
+                    stores_info[filename] = {"exists": False, "status": "NOT_CREATED_YET"}
+                    continue
+
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+
+                expected_type = spec["root_type"]
+                if not isinstance(data, expected_type):
+                    is_healthy = False
+                    issues.append(f"Store '{filename}' root is not of expected type {expected_type}")
+                    stores_info[filename] = {"exists": True, "status": "INVALID_ROOT_TYPE"}
+                else:
+                    record_count = len(data) if isinstance(data, (list, dict)) else 0
+                    schema_ver = spec["expected_schema"]
+                    if isinstance(data, dict) and "schema_version" in data:
+                        schema_ver = data["schema_version"]
+                    elif isinstance(data, dict) and "_schema_version" in data:
+                        schema_ver = data["_schema_version"]
+
+                    stores_info[filename] = {
+                        "exists": True,
+                        "status": "VALID",
+                        "record_count": record_count,
+                        "schema_version": schema_ver,
+                    }
+            except Exception as err:
+                is_healthy = False
+                issues.append(f"Store '{filename}' corrupted or unparseable: {err}")
+                stores_info[filename] = {"exists": True, "status": "CORRUPTED", "error": str(err)}
+
+        if not is_healthy:
+            status = "DEGRADED"
+            msg = f"Persistence store issues detected: {'; '.join(issues)}"
+        elif recovered_mode:
+            status = "RECOVERED_FROM_CORRUPTION"
+            msg = f"Storage operational ({len(corrupt_backups)} historical corrupt backup file(s) found)."
+        else:
+            status = "CLEAN"
+            msg = "All persistence stores valid and healthy."
+
+        return PersistenceRecoveryStatus(
+            status=status,
+            storage_dir=target_dir,
+            stores_checked=stores_info,
+            corrupt_backups_found=corrupt_backups,
+            is_healthy=is_healthy,
+            message=msg,
+        )
+
     def check_readiness(
         self,
         active_sessions_count: int = 0,
         provider_checks: Optional[Dict[str, bool]] = None,
         persistence_healthy: bool = True,
+        project1_gateway_connected: bool = True,
+        notification_pipeline_healthy: bool = True,
     ) -> Tuple[bool, Dict[str, Any]]:
-        """Readiness check: evaluates configuration validity and dependency readiness.
+        """Deep readiness check: evaluates config validity, storage integrity, providers, and integration gateways."""
+        persistence_status = self.validate_persistence_integrity()
 
-        Returns:
-            Tuple[is_ready, readiness_details]
-        """
         details: Dict[str, Any] = {
             "config_valid": True,
             "app_env": self.config.app_env,
             "is_production": self.config.is_production,
             "active_sessions": active_sessions_count,
             "providers": provider_checks or {},
-            "persistence_healthy": persistence_healthy,
+            "persistence_healthy": persistence_healthy and persistence_status.is_healthy,
+            "persistence_status": persistence_status.status,
+            "project1_gateway_connected": project1_gateway_connected,
+            "notification_pipeline_healthy": notification_pipeline_healthy,
         }
 
-        if not persistence_healthy:
-            details["reason"] = "Persistence store corrupted or unwritable"
+        if not details["persistence_healthy"]:
+            details["reason"] = f"Persistence integrity check failed: {persistence_status.message}"
             return False, details
 
         # Validate production configuration if in production mode
@@ -82,6 +227,10 @@ class SystemHealthService:
                     details["reason"] = f"Provider '{provider_name}' unavailable"
                     return False, details
 
+        if not project1_gateway_connected:
+            details["reason"] = "Project 1 Integration Gateway disconnected"
+            # Note: Project 1 Gateway disconnection marks subsystem as degraded, but platform remains operational
+
         return True, details
 
     def get_operational_diagnostics(
@@ -89,13 +238,18 @@ class SystemHealthService:
         active_sessions_count: int = 0,
         provider_checks: Optional[Dict[str, bool]] = None,
         persistence_healthy: bool = True,
+        project1_gateway_connected: bool = True,
+        notification_pipeline_healthy: bool = True,
     ) -> OperationalDiagnostics:
         """Return comprehensive sanitized operational diagnostics report."""
         is_live, _ = self.check_liveness()
+        persistence_recovery = self.validate_persistence_integrity()
         is_ready, readiness_details = self.check_readiness(
             active_sessions_count=active_sessions_count,
             provider_checks=provider_checks,
             persistence_healthy=persistence_healthy,
+            project1_gateway_connected=project1_gateway_connected,
+            notification_pipeline_healthy=notification_pipeline_healthy,
         )
 
         uptime_seconds = time.time() - self._startup_time
@@ -114,5 +268,6 @@ class SystemHealthService:
             app_env=self.config.app_env,
             active_sessions_count=active_sessions_count,
             system_status="HEALTHY" if is_ready else "DEGRADED",
+            persistence_recovery=persistence_recovery.to_dict(),
             diagnostics_summary=sanitized_summary if isinstance(sanitized_summary, dict) else {},
         )

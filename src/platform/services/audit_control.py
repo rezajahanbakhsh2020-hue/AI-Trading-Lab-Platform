@@ -14,6 +14,7 @@ from src.platform.domain.audit_control import (
     AuditEvent,
     AuditEventSeverity,
     AuditQueryFilter,
+    OperationalFailureRecord,
     OperationalLifecycleState,
 )
 from src.platform.domain.security import Permission
@@ -32,6 +33,7 @@ class PlatformAuditControlService:
         self.security_boundary = security_boundary or SecurityBoundaryService()
         self._max_events = max(100, max_events)
         self._events: List[AuditEvent] = []
+        self._failures: List[OperationalFailureRecord] = []
         self._seed_initial_system_events()
 
     def _seed_initial_system_events(self) -> None:
@@ -122,6 +124,84 @@ class PlatformAuditControlService:
             self._events.pop(0)
 
         return event
+
+    def record_failure(
+        self,
+        component: str,
+        error_type: str,
+        message: str,
+        severity: AuditEventSeverity = AuditEventSeverity.ERROR,
+        retryable: bool = False,
+        correlation_id: Optional[str] = None,
+        diagnostic_details: Optional[str] = None,
+        user_id: str = "system",
+    ) -> OperationalFailureRecord:
+        """Record a sanitized canonical operational failure incident."""
+        clean_component = SecretSanitizer.sanitize_string(component or "UNKNOWN")
+        clean_error_type = SecretSanitizer.sanitize_string(error_type or "OPERATIONAL_ERROR")
+        clean_message = SecretSanitizer.sanitize_string(message or "An error occurred.")
+        clean_details = SecretSanitizer.sanitize_string(diagnostic_details) if diagnostic_details else None
+        corr_id = correlation_id or f"fail_{uuid.uuid4().hex[:12]}"
+
+        failure = OperationalFailureRecord(
+            failure_id=str(uuid.uuid4()),
+            timestamp=time.time(),
+            correlation_id=corr_id,
+            component=clean_component,
+            error_type=clean_error_type,
+            severity=severity,
+            retryable=retryable,
+            message=clean_message,
+            diagnostic_details=clean_details,
+            user_id=user_id,
+        )
+
+        self._failures.append(failure)
+        if len(self._failures) > 500:
+            self._failures.pop(0)
+
+        # Also record as an AuditEvent for unified audit tracking
+        self.record_event(
+            user_id=user_id,
+            category=AuditCategory.OPERATIONAL_SYSTEM,
+            event_type=clean_error_type,
+            lifecycle_state=OperationalLifecycleState.FAILED,
+            action=f"OPERATIONAL_FAILURE_{clean_component}",
+            outcome="FAILURE",
+            severity=severity,
+            resource_id=clean_component,
+            correlation_id=corr_id,
+            details=clean_message,
+            metadata={"retryable": retryable, "diagnostic": clean_details},
+        )
+
+        return failure
+
+    def query_failures(
+        self,
+        user: Optional[UserAuthorization],
+        limit: int = 50,
+    ) -> Tuple[bool, str, List[OperationalFailureRecord]]:
+        """Query operational failures for authorized administrative users."""
+        authorized, reason = self.security_boundary.authorize(
+            user=user,
+            resource="signals",
+            action="read",
+        )
+        if not authorized or user is None:
+            return False, f"Unauthorized: {reason}", []
+
+        # Multi-tenant / User isolation: non-admins only see system failures or their own failures
+        is_admin = user.is_admin
+        result: List[OperationalFailureRecord] = []
+
+        for f in self._failures:
+            if not is_admin and f.user_id not in ("system", user.user_id):
+                continue
+            result.append(f)
+
+        result.sort(key=lambda x: x.timestamp, reverse=True)
+        return True, "Failures retrieved successfully.", result[:limit]
 
     def query_events(
         self,

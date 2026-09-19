@@ -168,6 +168,26 @@ export interface HostSnapshot {
   orderIntents?: readonly OrderIntentPayload[];
   executionGateway?: ExecutionGatewayStatusPayload;
   executionMonitoring?: ExecutionMonitoringSummaryPayload;
+  persistenceRecovery?: {
+    status: string;
+    storage_dir: string;
+    stores_checked: Record<string, any>;
+    corrupt_backups_found: string[];
+    is_healthy: boolean;
+    message: string;
+  };
+  operationalFailures?: readonly {
+    failure_id: string;
+    timestamp: number;
+    correlation_id: string;
+    component: string;
+    error_type: string;
+    severity: string;
+    retryable: boolean;
+    message: string;
+    diagnostic_details?: string | null;
+    user_id: string;
+  }[];
 }
 
 export function createDisconnectedHostSnapshot(

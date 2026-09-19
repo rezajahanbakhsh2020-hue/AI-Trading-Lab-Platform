@@ -33,6 +33,19 @@ export interface AccountStatusEvaluation {
   message: string;
 }
 
+export interface RecoveryRequestResult {
+  success: boolean;
+  message: string;
+  deliveryStatus: "NOT_CONFIGURED" | "DELIVERED" | "UNAVAILABLE";
+  deliveryDetail?: string;
+  recoveryToken?: string | null;
+}
+
+export interface RecoveryResetResult {
+  success: boolean;
+  message: string;
+}
+
 export const PERMANENT_ADMIN_ACCOUNT: UserAccount = {
   userId: "admin_owner",
   role: "owner",
@@ -317,6 +330,71 @@ export function renewCustomerAccount(
     accounts: updatedAccounts,
     message: `Account '${target.userId}' renewed until ${new Date(newExpirationTs * 1000).toLocaleDateString()}.`,
   };
+}
+
+export async function requestPasswordRecoveryApi(
+  userId: string,
+  recoveryEmail: string
+): Promise<RecoveryRequestResult> {
+  try {
+    const res = await fetch("/api/v1/auth/recovery/request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: userId, recovery_email: recoveryEmail }),
+    });
+
+    const data = await res.json();
+    return {
+      success: data.success !== false,
+      message: data.message || "Recovery request processed.",
+      deliveryStatus: data.delivery_status || "NOT_CONFIGURED",
+      deliveryDetail: data.delivery_detail || "External email provider is Not Configured.",
+      recoveryToken: data.recovery_token || null,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err.message || "Network error requesting recovery.",
+      deliveryStatus: "UNAVAILABLE",
+      deliveryDetail: "Unable to reach recovery endpoint.",
+      recoveryToken: null,
+    };
+  }
+}
+
+export async function resetPasswordWithTokenApi(
+  userId: string,
+  recoveryToken: string,
+  newPassword: string
+): Promise<RecoveryResetResult> {
+  try {
+    const res = await fetch("/api/v1/auth/recovery/reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: userId,
+        recovery_token: recoveryToken,
+        new_password: newPassword,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      return {
+        success: false,
+        message: data.error?.why || data.message || "Password reset failed.",
+      };
+    }
+    return {
+      success: true,
+      message: data.message || "Password reset successful.",
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err.message || "Network error resetting password.",
+    };
+  }
 }
 
 export function toggleAccountActiveStatus(

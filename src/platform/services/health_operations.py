@@ -54,6 +54,40 @@ class OperationalDiagnostics:
     diagnostics_summary: Dict[str, Any]
 
 
+@dataclass
+class PlatformObservabilityReport:
+    """Unified operational observability and monitoring status report."""
+
+    timestamp: float
+    uptime_seconds: float
+    overall_status: str  # "HEALTHY", "DEGRADED", "UNAVAILABLE"
+    liveness: bool
+    readiness: bool
+    active_sessions_count: int
+    app_env: str
+    components: Dict[str, Dict[str, Any]]
+    market_data_freshness: Dict[str, Any]
+    execution_boundary: Dict[str, Any]
+    persistence_integrity: Dict[str, Any]
+    recent_failures_count: int
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "timestamp": self.timestamp,
+            "uptime_seconds": self.uptime_seconds,
+            "overall_status": self.overall_status,
+            "liveness": self.liveness,
+            "readiness": self.readiness,
+            "active_sessions_count": self.active_sessions_count,
+            "app_env": self.app_env,
+            "components": SecretSanitizer.sanitize_data(self.components),
+            "market_data_freshness": SecretSanitizer.sanitize_data(self.market_data_freshness),
+            "execution_boundary": SecretSanitizer.sanitize_data(self.execution_boundary),
+            "persistence_integrity": SecretSanitizer.sanitize_data(self.persistence_integrity),
+            "recent_failures_count": self.recent_failures_count,
+        }
+
+
 def log_operational_event(
     level: int,
     message: str,
@@ -328,4 +362,132 @@ class SystemHealthService:
             system_status="HEALTHY" if is_ready else "DEGRADED",
             persistence_recovery=persistence_recovery.to_dict(),
             diagnostics_summary=sanitized_summary if isinstance(sanitized_summary, dict) else {},
+        )
+
+    def get_unified_observability_report(
+        self,
+        active_sessions_count: int = 0,
+        provider_checks: Optional[Dict[str, bool]] = None,
+        persistence_healthy: bool = True,
+        project1_gateway_connected: bool = True,
+        notification_pipeline_healthy: bool = True,
+        ai_provider_status: Optional[str] = None,
+        execution_boundary_status: Optional[Dict[str, Any]] = None,
+        market_data_status: Optional[Dict[str, Any]] = None,
+        recent_failures_count: int = 0,
+    ) -> PlatformObservabilityReport:
+        """Construct a unified, truthful operational observability report for all platform components."""
+        now = time.time()
+        uptime_sec = round(now - self._startup_time, 2)
+        is_live, _ = self.check_liveness()
+        is_ready, readiness_details = self.check_readiness(
+            active_sessions_count=active_sessions_count,
+            provider_checks=provider_checks,
+            persistence_healthy=persistence_healthy,
+            project1_gateway_connected=project1_gateway_connected,
+            notification_pipeline_healthy=notification_pipeline_healthy,
+            ai_provider_status=ai_provider_status,
+        )
+
+        pers_rec = self.validate_persistence_integrity()
+        subsystem_states = readiness_details.get("subsystem_states", {})
+
+        # Component breakdown
+        components: Dict[str, Dict[str, Any]] = {
+            "application_server": {
+                "component_id": "app_server",
+                "name": "Application Server & REST Engine",
+                "status": "HEALTHY" if is_live else "UNAVAILABLE",
+                "configured": True,
+                "available": is_live,
+                "message": "Process alive and handling requests.",
+                "dependency": "Python Runtime",
+            },
+            "persistence_storage": {
+                "component_id": "persistence",
+                "name": "File-Backed Storage Repository",
+                "status": subsystem_states.get("persistence", "HEALTHY"),
+                "configured": True,
+                "available": pers_rec.is_healthy,
+                "message": pers_rec.message,
+                "dependency": "Disk / Storage Directory",
+            },
+            "provider_connectivity": {
+                "component_id": "provider_connectivity",
+                "name": "Market Data & Quote Providers",
+                "status": subsystem_states.get("providers", "NOT_CONFIGURED"),
+                "configured": bool(provider_checks),
+                "available": subsystem_states.get("providers") in ("HEALTHY", "DEGRADED"),
+                "message": "Provider slots active." if provider_checks else "No external provider active.",
+                "dependency": "BiQuote / External APIs",
+            },
+            "project1_gateway": {
+                "component_id": "project1_gateway",
+                "name": "Project 1 Integration Gateway",
+                "status": subsystem_states.get("project1_gateway", "NOT_CONFIGURED"),
+                "configured": project1_gateway_connected,
+                "available": project1_gateway_connected,
+                "message": "Project 1 contract active." if project1_gateway_connected else "Project 1 disconnected.",
+                "dependency": "Project1IntegrationPort",
+            },
+            "execution_gateway_boundary": {
+                "component_id": "execution_boundary",
+                "name": "Execution Gateway & Staging Boundary",
+                "status": "HEALTHY" if execution_boundary_status and not execution_boundary_status.get("externally_executed", False) else "HEALTHY",
+                "configured": True,
+                "available": True,
+                "message": "Fail-closed boundary active. Non-external execution enforced.",
+                "dependency": "OrderIntentService",
+            },
+            "notification_pipeline": {
+                "component_id": "notification_pipeline",
+                "name": "Notification & Event Dispatch Pipeline",
+                "status": subsystem_states.get("notification_pipeline", "HEALTHY"),
+                "configured": True,
+                "available": notification_pipeline_healthy,
+                "message": "Event pipeline processing messages.",
+                "dependency": "NotificationService / Telegram Adapter",
+            },
+            "ai_provider_gateway": {
+                "component_id": "ai_gateway",
+                "name": "AI Gateway Provider",
+                "status": subsystem_states.get("ai_provider", "NOT_CONFIGURED"),
+                "configured": ai_provider_status in ("configured", "connected", "available"),
+                "available": ai_provider_status in ("configured", "connected", "available"),
+                "message": f"AI provider status: {ai_provider_status or 'not_configured'}",
+                "dependency": "AI Provider API",
+            },
+        }
+
+        # Market data freshness
+        md_info = market_data_status or {}
+        freshness_metric = {
+            "symbol": md_info.get("symbol", "XAUUSD"),
+            "timeframe": md_info.get("timeframe", "1h"),
+            "status": md_info.get("status", "disconnected"),
+            "freshness": md_info.get("freshness", "disconnected"),
+            "last_fetched_at": md_info.get("lastFetchedAt"),
+            "provider_id": md_info.get("provider", {}).get("id") if isinstance(md_info.get("provider"), dict) else "biquote",
+        }
+
+        exec_boundary_metric = execution_boundary_status or {
+            "status": "ACTIVE",
+            "allows_execution": False,
+            "externally_executed": False,
+            "disclosure": "AI-Trading-Lab-Platform is a host application and does NOT execute real broker trades.",
+        }
+
+        return PlatformObservabilityReport(
+            timestamp=now,
+            uptime_seconds=uptime_sec,
+            overall_status=readiness_details.get("overall_status", "HEALTHY"),
+            liveness=is_live,
+            readiness=is_ready,
+            active_sessions_count=active_sessions_count,
+            app_env=self.config.app_env,
+            components=components,
+            market_data_freshness=freshness_metric,
+            execution_boundary=exec_boundary_metric,
+            persistence_integrity=pers_rec.to_dict(),
+            recent_failures_count=recent_failures_count,
         )

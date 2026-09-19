@@ -200,6 +200,31 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                 )
                 return
 
+            if path in ("/api/v1/operational/observability", "/api/v1/operational/status"):
+                valid, actor = self._authenticate_request_user()
+                ai_st = self.ai_gateway_service.get_provider().get_status().value if hasattr(self, "ai_gateway_service") else "not_configured"
+                active_sess = self.user_auth_service.count_active_sessions() if hasattr(self, "user_auth_service") else 0
+                exec_bound = self.execution_gateway_service.get_boundary_status(user=actor) if hasattr(self, "execution_gateway_service") and actor else None
+                _, _, fails = self.audit_control_service.query_failures(actor, limit=50) if hasattr(self, "audit_control_service") and actor else (False, "", [])
+
+                rep = self.health_service.get_unified_observability_report(
+                    active_sessions_count=active_sess,
+                    ai_provider_status=ai_st,
+                    execution_boundary_status=exec_bound,
+                    recent_failures_count=len(fails),
+                )
+
+                payload = rep.to_dict()
+                if not (valid and actor and actor.is_admin):
+                    # Redact admin-only internal diagnostic paths and operational failures for non-admin viewers
+                    payload["recent_failures_count"] = 0
+                    if "persistence_integrity" in payload:
+                        payload["persistence_integrity"].pop("storage_dir", None)
+                        payload["persistence_integrity"].pop("corrupt_backups_found", None)
+
+                self._send_json_response(200, {"success": True, "observability": payload}, origin=origin)
+                return
+
             if path in ("/api/v1/operational/recovery", "/api/v1/operational/failures"):
                 valid, actor = self._authenticate_request_user()
                 if not valid or not actor:

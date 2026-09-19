@@ -98,6 +98,38 @@ export interface MarketStateSnapshot {
   lastFetchedAt: string | null;
 }
 
+export interface ComponentObservabilityStatus {
+  component_id: string;
+  name: string;
+  status: string;
+  configured: boolean;
+  available: boolean;
+  message: string;
+  dependency: string;
+}
+
+export interface ObservabilityReportPayload {
+  timestamp: number;
+  uptime_seconds: number;
+  overall_status: string;
+  liveness: boolean;
+  readiness: boolean;
+  active_sessions_count: number;
+  app_env: string;
+  components: Record<string, ComponentObservabilityStatus>;
+  market_data_freshness: {
+    symbol: string;
+    timeframe: string;
+    status: string;
+    freshness: string;
+    last_fetched_at: string | null;
+    provider_id: string;
+  };
+  execution_boundary: Record<string, unknown>;
+  persistence_integrity: Record<string, unknown>;
+  recent_failures_count: number;
+}
+
 export interface HostSnapshot {
   generatedAt: string | null;
   platform: {
@@ -170,6 +202,7 @@ export interface HostSnapshot {
   executionGateway?: ExecutionGatewayStatusPayload;
   executionMonitoring?: ExecutionMonitoringSummaryPayload;
   project1Gateway?: Project1GatewayMonitoringSummary;
+  observability?: ObservabilityReportPayload;
   persistenceRecovery?: {
     status: string;
     storage_dir: string;

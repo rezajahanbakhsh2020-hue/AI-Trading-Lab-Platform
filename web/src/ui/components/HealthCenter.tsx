@@ -123,6 +123,55 @@ export function HealthCenter({ snapshot, onRefresh, isLoading = false }: HealthC
         </div>
       )}
 
+      {/* Platform Subsystem Observability Breakdown */}
+      {snapshot.observability?.components && (
+        <section className="card" style={{ marginBottom: 16 }}>
+          <div className="card-head flex-header-row">
+            <h3>👁️ Subsystem Observability & Component Health</h3>
+            <span className={`status ${snapshot.observability.overall_status === "HEALTHY" ? "ready" : snapshot.observability.overall_status === "DEGRADED" ? "warn" : "unavailable"}`}>
+              {snapshot.observability.overall_status}
+            </span>
+          </div>
+          <div className="card-body">
+            <div className="table-responsive">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Component Name</th>
+                    <th>Status</th>
+                    <th>Configured</th>
+                    <th>Dependency</th>
+                    <th>Diagnostic Message</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(snapshot.observability.components).map(([key, compVal]) => {
+                    const comp = compVal as { name: string; status: string; configured: boolean; dependency: string; message: string };
+                    return (
+                      <tr key={key}>
+                        <td><strong>{comp.name}</strong></td>
+                        <td>
+                          <span className={`status ${comp.status === "HEALTHY" ? "ready" : comp.status === "DEGRADED" ? "warn" : comp.status === "NOT_CONFIGURED" ? "muted-chip" : "unavailable"}`}>
+                            {comp.status}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={`chip ${comp.configured ? "ready-chip" : "muted-chip"}`}>
+                            {comp.configured ? "CONFIGURED" : "NOT_SET"}
+                          </span>
+                        </td>
+                        <td><code>{comp.dependency}</code></td>
+                        <td style={{ fontSize: 13 }}>{comp.message}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Provider Health & Readiness Grid */}
       <section className="card" style={{ marginBottom: 16 }}>
         <div className="card-head">

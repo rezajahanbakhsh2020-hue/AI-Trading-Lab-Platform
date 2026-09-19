@@ -194,44 +194,87 @@ class SystemHealthService:
         project1_gateway_connected: bool = True,
         notification_pipeline_healthy: bool = True,
     ) -> Tuple[bool, Dict[str, Any]]:
-        """Deep readiness check: evaluates config validity, storage integrity, providers, and integration gateways."""
+        """Deep readiness check: evaluates config validity, storage integrity, providers, and integration gateways.
+
+        Explicitly classifies readiness status states across subsystem components:
+        - HEALTHY: Subsystem is fully operational and configured.
+        - DEGRADED: Non-critical subsystem issue present, but overall platform remains functional.
+        - UNAVAILABLE: Critical subsystem component failure rendering service unusable.
+        - NOT_CONFIGURED: Optional integration or credential not provisioned.
+        """
         persistence_status = self.validate_persistence_integrity()
 
+        # Classify persistence state
+        if not (persistence_healthy and persistence_status.is_healthy):
+            persistence_state = "UNAVAILABLE" if persistence_status.status == "UNAVAILABLE" else "DEGRADED"
+        else:
+            persistence_state = "HEALTHY"
+
+        # Classify provider states
+        providers_dict = provider_checks or {}
+        if not providers_dict:
+            providers_state = "NOT_CONFIGURED"
+        elif all(providers_dict.values()):
+            providers_state = "HEALTHY"
+        elif any(providers_dict.values()):
+            providers_state = "DEGRADED"
+        else:
+            providers_state = "UNAVAILABLE"
+
+        # Classify Project 1 Gateway state
+        project1_state = "HEALTHY" if project1_gateway_connected else "NOT_CONFIGURED"
+
+        # Classify Notification Pipeline state
+        notification_state = "HEALTHY" if notification_pipeline_healthy else "DEGRADED"
+
+        # Determine overall readiness status
+        if persistence_state == "UNAVAILABLE":
+            overall_status = "UNAVAILABLE"
+        elif persistence_state == "DEGRADED" or providers_state in ("DEGRADED", "UNAVAILABLE") or notification_state == "DEGRADED":
+            overall_status = "DEGRADED"
+        else:
+            overall_status = "HEALTHY"
+
         details: Dict[str, Any] = {
+            "overall_status": overall_status,
             "config_valid": True,
             "app_env": self.config.app_env,
             "is_production": self.config.is_production,
             "active_sessions": active_sessions_count,
-            "providers": provider_checks or {},
+            "providers": providers_dict,
+            "subsystem_states": {
+                "persistence": persistence_state,
+                "providers": providers_state,
+                "project1_gateway": project1_state,
+                "notification_pipeline": notification_state,
+            },
             "persistence_healthy": persistence_healthy and persistence_status.is_healthy,
             "persistence_status": persistence_status.status,
             "project1_gateway_connected": project1_gateway_connected,
             "notification_pipeline_healthy": notification_pipeline_healthy,
         }
 
-        if not details["persistence_healthy"]:
-            details["reason"] = f"Persistence integrity check failed: {persistence_status.message}"
+        if persistence_state == "UNAVAILABLE":
+            details["reason"] = f"Persistence storage unavailable: {persistence_status.message}"
             return False, details
 
         # Validate production configuration if in production mode
         if self.config.is_production:
             if not self.config.session_secret or len(self.config.session_secret) < 32:
                 details["config_valid"] = False
+                details["overall_status"] = "UNAVAILABLE"
                 details["reason"] = "Insecure SESSION_SECRET in production"
                 return False, details
 
-        # Check if any provider failed
+        # Check if any provider is failing
         if provider_checks:
-            for provider_name, is_ok in provider_checks.items():
+            for p_name, is_ok in provider_checks.items():
                 if not is_ok:
-                    details["reason"] = f"Provider '{provider_name}' unavailable"
+                    details["reason"] = f"Provider '{p_name}' unavailable"
                     return False, details
 
-        if not project1_gateway_connected:
-            details["reason"] = "Project 1 Integration Gateway disconnected"
-            # Note: Project 1 Gateway disconnection marks subsystem as degraded, but platform remains operational
-
-        return True, details
+        is_ready = overall_status in ("HEALTHY", "DEGRADED")
+        return is_ready, details
 
     def get_operational_diagnostics(
         self,

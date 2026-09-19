@@ -106,6 +106,7 @@ class PlatformConfig:
             "app_env": self.app_env,
             "allowed_origins": list(self.allowed_origins),
             "session_secret": "[REDACTED]",
+            "initial_admin_password": "[REDACTED]" if self.initial_admin_password else None,
             "recovery_email": self.recovery_email,
             "persistence_dir": self.persistence_dir,
             "session_max_age_seconds": self.session_max_age_seconds,

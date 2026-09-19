@@ -11,6 +11,7 @@ import os
 import socket
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional, Union
 
@@ -168,10 +169,11 @@ class HttpAIProviderAdapter(AIProviderPort):
         """Validate endpoint URL scheme and basic SSRF prevention."""
         if not self._endpoint_url:
             return False
-        parsed_scheme = self._endpoint_url.split("://")[0].lower() if "://" in self._endpoint_url else ""
-        if parsed_scheme not in ("http", "https"):
+        try:
+            parsed = urllib.parse.urlparse(self._endpoint_url)
+            return parsed.scheme.lower() in ("http", "https") and bool(parsed.netloc)
+        except Exception:
             return False
-        return True
 
     def get_status(self) -> AIProviderStatus:
         if not self._endpoint_url or not self._validate_url():

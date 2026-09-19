@@ -30,18 +30,42 @@ export function LoginModal({
   const [showRecovery, setShowRecovery] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState("");
   const [recoverySuccessMsg, setRecoverySuccessMsg] = useState<string | null>(null);
+  const [recoveryDeliveryInfo, setRecoveryDeliveryInfo] = useState<{ status: string; detail: string; token?: string | null } | null>(null);
 
   if (!isOpen) return null;
 
-  const handleRecoveryRequest = (e: React.FormEvent) => {
+  const handleRecoveryRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorReason(null);
     setRecoverySuccessMsg(null);
-    if (!recoveryEmail.trim() || !recoveryEmail.includes("@")) {
+    setRecoveryDeliveryInfo(null);
+
+    const cleanEmail = recoveryEmail.trim();
+    if (!cleanEmail || !cleanEmail.includes("@")) {
       setErrorReason(t("auth.invalidCredentials"));
       return;
     }
-    setRecoverySuccessMsg(t("auth.recoverySentMsg"));
+
+    try {
+      const res = await fetch("/api/v1/auth/recovery/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: username.trim() || "admin_owner", recovery_email: cleanEmail }),
+      });
+      const data = await res.json();
+      setRecoveryDeliveryInfo({
+        status: data.delivery_status || "NOT_CONFIGURED",
+        detail: data.delivery_detail || "External email provider is Not Configured.",
+        token: data.recovery_token || null,
+      });
+      setRecoverySuccessMsg(t("auth.recoverySentMsg"));
+    } catch {
+      setRecoveryDeliveryInfo({
+        status: "NOT_CONFIGURED",
+        detail: "External email provider is Not Configured. Follow recovery contract procedures.",
+      });
+      setRecoverySuccessMsg(t("auth.recoverySentMsg"));
+    }
   };
 
   const handleLogin = (e: React.FormEvent) => {
@@ -223,8 +247,30 @@ export function LoginModal({
                 {t("auth.requestRecoveryToken")}
               </button>
               {recoverySuccessMsg && (
-                <div style={{ color: "#4ade80", fontSize: "0.875rem", marginTop: "0.25rem" }}>
-                  ✓ {recoverySuccessMsg}
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.25rem" }}>
+                  <div style={{ color: "#4ade80", fontSize: "0.875rem" }}>
+                    ✓ {recoverySuccessMsg}
+                  </div>
+                  {recoveryDeliveryInfo && (
+                    <div
+                      style={{
+                        padding: "0.5rem 0.75rem",
+                        borderRadius: "4px",
+                        backgroundColor: "rgba(245, 158, 11, 0.15)",
+                        border: "1px solid #f59e0b",
+                        color: "#fcd34d",
+                        fontSize: "0.8125rem",
+                      }}
+                    >
+                      <div><strong>Delivery Status:</strong> {recoveryDeliveryInfo.status}</div>
+                      <div style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>{recoveryDeliveryInfo.detail}</div>
+                      {recoveryDeliveryInfo.token && (
+                        <div style={{ marginTop: "0.375rem", fontFamily: "monospace", color: "#60a5fa" }}>
+                          Recovery Token: <code>{recoveryDeliveryInfo.token}</code>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

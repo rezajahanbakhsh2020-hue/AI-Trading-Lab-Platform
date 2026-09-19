@@ -804,6 +804,47 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                 self._send_json_response(200, {"success": True, "message": "Logged out successfully"}, origin=origin)
                 return
 
+            if path == "/api/v1/auth/recovery/request":
+                try:
+                    req_data = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                except Exception:
+                    self._send_error_response(400, "Invalid JSON Request", "Request body was not valid JSON.", "Provide valid JSON with user_id and recovery_email.", origin=origin)
+                    return
+
+                user_id = str(req_data.get("user_id", "")).strip()
+                email = str(req_data.get("recovery_email", "")).strip()
+
+                if not user_id or not email:
+                    self._send_error_response(400, "Missing Parameters", "Both 'user_id' and 'recovery_email' fields are required.", "Provide user_id and recovery_email.", origin=origin)
+                    return
+
+                res = self.server_user_auth_service.request_password_recovery(user_id, email)
+                self._send_json_response(200, res, origin=origin, sanitize=False)
+                return
+
+            if path == "/api/v1/auth/recovery/reset":
+                try:
+                    req_data = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                except Exception:
+                    self._send_error_response(400, "Invalid JSON Request", "Request body was not valid JSON.", "Provide valid JSON with user_id, recovery_token, and new_password.", origin=origin)
+                    return
+
+                user_id = str(req_data.get("user_id", "")).strip()
+                token = str(req_data.get("recovery_token", "")).strip()
+                new_pwd = str(req_data.get("new_password", "")).strip()
+
+                if not user_id or not token or not new_pwd:
+                    self._send_error_response(400, "Missing Parameters", "'user_id', 'recovery_token', and 'new_password' are required.", "Provide all required recovery fields.", origin=origin)
+                    return
+
+                ok, msg = self.server_user_auth_service.reset_password_with_recovery_token(user_id, token, new_pwd)
+                if not ok:
+                    self._send_error_response(400, "Password Reset Failed", msg, "Ensure recovery_token is valid and not expired.", origin=origin)
+                    return
+
+                self._send_json_response(200, {"success": True, "message": msg}, origin=origin)
+                return
+
             if path in ("/api/v1/operational/backups/create", "/api/v1/operational/backups/restore"):
                 valid, actor = self._authenticate_request_user()
                 if not valid or not actor:

@@ -5,6 +5,7 @@ role, signal delivery permissions, and time-limited account credentials.
 """
 
 from dataclasses import dataclass, field
+from enum import Enum
 import hashlib
 import os
 import secrets
@@ -16,6 +17,16 @@ from src.platform.domain.security import (
     Permission,
     UserRole,
 )
+
+
+class AccountStatus(str, Enum):
+    """Canonical user account lifecycle and validity status."""
+
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    EXPIRED = "EXPIRED"
+    NOT_ACTIVE_YET = "NOT_ACTIVE_YET"
+    PERMANENT_ADMIN = "PERMANENT_ADMIN"
 
 
 def hash_password(plaintext: str, salt: Optional[str] = None) -> Tuple[str, str]:
@@ -128,6 +139,25 @@ class UserAuthorization:
             object.__setattr__(self, "detail", self.detail.strip())
 
     @property
+    def account_status(self) -> AccountStatus:
+        """Return canonical account lifecycle status at current time."""
+        return self.get_account_status()
+
+    def get_account_status(self, now_ts: Optional[float] = None) -> AccountStatus:
+        """Evaluate account lifecycle status given a reference timestamp."""
+        if self.is_permanent_admin or self.role in (UserRole.OWNER, UserRole.ADMIN):
+            return AccountStatus.PERMANENT_ADMIN
+        if not self.is_active:
+            return AccountStatus.INACTIVE
+        if now_ts is None:
+            now_ts = time.time()
+        if self.activation_timestamp is not None and now_ts < self.activation_timestamp:
+            return AccountStatus.NOT_ACTIVE_YET
+        if self.is_expired(now_ts):
+            return AccountStatus.EXPIRED
+        return AccountStatus.ACTIVE
+
+    @property
     def is_owner(self) -> bool:
         """Return True if user is platform Owner."""
         return self.role == UserRole.OWNER or (self.is_permanent_admin and Permission.MANAGE_SYSTEM in self.permissions)
@@ -216,4 +246,6 @@ class UserAuthorization:
             "is_permanent_admin": self.is_permanent_admin,
             "is_expired": self.is_expired(),
             "is_account_valid": self.is_account_valid(),
+            "account_status": self.get_account_status().value,
+            "recovery_email": self.recovery_email,
         }

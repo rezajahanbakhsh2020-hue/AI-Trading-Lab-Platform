@@ -235,20 +235,55 @@ class UserAuthorizationService:
             return False, None
         return True, user
 
-    def request_password_recovery(self, user_id: str, recovery_email: str) -> Tuple[bool, str, Optional[str]]:
+    def request_password_recovery(
+        self, user_id: str, recovery_email: str
+    ) -> Dict[str, Any]:
         """Initiate password recovery flow. Generates a token contract without emailing external third parties.
 
+        Exposes honest delivery state ('NOT_CONFIGURED') and supports user enumeration defense.
+
         Returns:
-            Tuple[success, message, recovery_token]
+            Dict containing success, message, delivery_status, and recovery_token if generated.
         """
         user = self.get_user_authorization(user_id)
-        if not user:
-            return False, "User not found", None
+        generic_msg = "If the user account and recovery email match our records, a recovery token contract has been created."
 
+        if not user or not user.is_account_valid():
+            self._audit_logger.log(
+                user_id=user_id or "unknown",
+                event_type="AUTH_RECOVERY_REQUESTED",
+                resource="auth.recovery",
+                action="request_recovery",
+                outcome="DENY",
+                details="Recovery request for non-existent or invalid account",
+            )
+            return {
+                "success": True,
+                "message": generic_msg,
+                "delivery_status": "NOT_CONFIGURED",
+                "delivery_detail": "External email provider is not configured. Token generated for direct operator/modal presentation.",
+                "recovery_token": None,
+            }
+
+        # Validate recovery_email if account has one configured, otherwise set it
         if user.recovery_email and user.recovery_email.lower() != recovery_email.strip().lower():
-            return False, "Recovery email does not match account records", None
+            self._audit_logger.log(
+                user_id=user.user_id,
+                event_type="AUTH_RECOVERY_REQUESTED",
+                resource="auth.recovery",
+                action="request_recovery",
+                outcome="DENY",
+                details="Recovery email mismatch",
+            )
+            return {
+                "success": True,
+                "message": generic_msg,
+                "delivery_status": "NOT_CONFIGURED",
+                "delivery_detail": "External email provider is not configured.",
+                "recovery_token": None,
+            }
 
-        recovery_token = secrets.token_hex(20)
+        recovery_token = f"rec_{secrets.token_urlsafe(24)}"
         token_hash = hash_token(recovery_token)
         expiration = time.time() + 3600  # 1 hour validity
 
@@ -282,12 +317,19 @@ class UserAuthorizationService:
             outcome="ALLOW",
             details="Password recovery token generated for user",
         )
-        return True, "Recovery token generated successfully", recovery_token
+
+        return {
+            "success": True,
+            "message": generic_msg,
+            "delivery_status": "NOT_CONFIGURED",
+            "delivery_detail": "External email delivery is Not Configured. Recovery token is available for immediate presentation.",
+            "recovery_token": recovery_token,
+        }
 
     def reset_password_with_recovery_token(
         self, user_id: str, recovery_token: str, new_password: str
     ) -> Tuple[bool, str]:
-        """Reset user password using a valid, non-expired recovery token."""
+        """Reset user password using a valid, non-expired recovery token and revoke existing active user sessions."""
         user = self.get_user_authorization(user_id)
         if not user or not user.recovery_token_hash or not user.recovery_token_expiration:
             return False, "No active recovery request found"
@@ -307,6 +349,9 @@ class UserAuthorizationService:
                 details="Invalid recovery token",
             )
             return False, "Invalid recovery token"
+
+        if not new_password or len(new_password) < 6:
+            return False, "New password must be at least 6 characters long"
 
         new_hash, new_salt = hash_password(new_password)
         updated_user = UserAuthorization(
@@ -331,13 +376,16 @@ class UserAuthorizationService:
         )
         self.register_user(updated_user)
 
+        # Invalidate all active sessions for this user post-password reset
+        revoked_sessions = self.revoke_user_sessions(updated_user, updated_user.user_id)
+
         self._audit_logger.log(
             user_id=user.user_id,
             event_type="AUTH_RECOVERY_SUCCESS",
             resource="auth.recovery",
             action="reset_password",
             outcome="ALLOW",
-            details="Password reset completed via recovery token",
+            details=f"Password reset completed via recovery token. Revoked {revoked_sessions} session(s).",
         )
         return True, "Password reset successful"
 
@@ -489,7 +537,7 @@ class UserAuthorizationService:
         target_user_id: str,
         is_active: bool,
     ) -> UserAuthorization:
-        """Toggle active status for an account."""
+        """Toggle active status for an account. Revokes sessions if deactivated."""
         if not actor_user.is_admin:
             raise PermissionError("Only Admin can modify user active status")
 
@@ -516,18 +564,35 @@ class UserAuthorizationService:
             activation_timestamp=target.activation_timestamp,
             expiration_timestamp=target.expiration_timestamp,
             is_permanent_admin=False,
+            recovery_email=target.recovery_email,
         )
         self.register_user(updated_user)
+
+        # If deactivating, immediately revoke active sessions for this target user
+        if not is_active:
+            self.revoke_user_sessions(actor_user, target.user_id)
 
         self._audit_logger.log(
             user_id=actor_user.user_id,
             event_type="ADMIN_ACTION",
             resource=f"admin.set_active.{target_user_id}",
-            action="set_active",
+            action="deactivate" if not is_active else "reactivate",
             outcome="ALLOW",
             details=f"Set is_active={is_active}",
         )
         return updated_user
+
+    def deactivate_user_account(
+        self, actor_user: UserAuthorization, target_user_id: str
+    ) -> UserAuthorization:
+        """Explicitly deactivate a user account and revoke all active sessions."""
+        return self.set_account_active_status(actor_user, target_user_id, is_active=False)
+
+    def reactivate_user_account(
+        self, actor_user: UserAuthorization, target_user_id: str
+    ) -> UserAuthorization:
+        """Explicitly reactivate a user account."""
+        return self.set_account_active_status(actor_user, target_user_id, is_active=True)
 
     def list_user_accounts(self, actor_user: UserAuthorization) -> List[UserAuthorization]:
         """List all managed user accounts (Owner/Admin only)."""

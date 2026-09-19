@@ -58,12 +58,16 @@ class AIGatewayService:
         security_boundary: Optional[SecurityBoundaryService] = None,
         audit_logger: Optional[AuditLogger] = None,
         provider: Optional[AIProviderPort] = None,
+        audit_control_service: Optional[Any] = None,
+        notification_service: Optional[Any] = None,
     ) -> None:
         self.audit_logger = audit_logger or AuditLogger()
         self.security_boundary = security_boundary or SecurityBoundaryService(
             audit_logger=self.audit_logger
         )
         self._provider = provider or create_default_ai_provider()
+        self.audit_control_service = audit_control_service
+        self.notification_service = notification_service
 
     def set_provider(self, provider: AIProviderPort) -> None:
         """Set or replace the AI Provider Adapter (cloud, local model, or test mock)."""
@@ -285,14 +289,15 @@ class AIGatewayService:
             details=f"Provider '{self._provider.provider_name()}' status: {provider_status.value}",
         )
 
-        if provider_status != AIProviderStatus.AVAILABLE:
+        available_statuses = (AIProviderStatus.AVAILABLE, AIProviderStatus.CONFIGURED, AIProviderStatus.CONNECTED)
+        if provider_status not in available_statuses:
             self.audit_logger.log(
                 user_id=user_id,
                 event_type="AI_REQUEST_FAILED",
                 resource="ai_gateway",
                 action=request.capability.value,
                 outcome="DENY",
-                details=f"Request ID {request.request_id} failed: AI provider unavailable.",
+                details=f"Request ID {request.request_id} failed: AI provider unavailable (status={provider_status.value}).",
             )
             return AIResponse(
                 request_id=request.request_id,
@@ -302,7 +307,7 @@ class AIGatewayService:
                 content="AI unavailable / provider not configured",
                 created_at=time.time(),
                 context_summary=context.to_dict(),
-                error_message="AI provider is unavailable or not configured.",
+                error_message=f"AI provider is unavailable or not configured (status={provider_status.value}).",
             )
 
         # 4. Delegate to AI Provider Adapter
@@ -316,6 +321,20 @@ class AIGatewayService:
                 outcome="ALLOW" if response.status == "SUCCESS" else "DENY",
                 details=f"Provider status '{response.status}' from {self._provider.provider_name()}: {response.error_message or 'Success'}",
             )
+
+            if response.status == "ERROR" and self.audit_control_service:
+                try:
+                    self.audit_control_service.record_failure(
+                        component="ai_gateway",
+                        operation=request.capability.value,
+                        failure_type="AI_PROVIDER_ERROR",
+                        message=response.error_message or "AI provider request returned error status",
+                        actor_user_id=user_id,
+                        context_data={"provider_name": self._provider.provider_name(), "request_id": request.request_id},
+                    )
+                except Exception:
+                    pass
+
             return response
         except Exception as err:
             err_msg = SecretSanitizer.sanitize_string(str(err))
@@ -327,6 +346,19 @@ class AIGatewayService:
                 outcome="DENY",
                 details=f"Provider exception: {err_msg}",
             )
+            if self.audit_control_service:
+                try:
+                    self.audit_control_service.record_failure(
+                        component="ai_gateway",
+                        operation=request.capability.value,
+                        failure_type="AI_PROVIDER_EXCEPTION",
+                        message=err_msg,
+                        actor_user_id=user_id,
+                        context_data={"provider_name": self._provider.provider_name(), "request_id": request.request_id},
+                    )
+                except Exception:
+                    pass
+
             return AIResponse(
                 request_id=request.request_id,
                 status="ERROR",

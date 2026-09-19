@@ -33,6 +33,15 @@ class AIProviderPort(ABC):
         """Return the current operational status of the AI provider."""
         pass
 
+    def get_health_details(self) -> Dict[str, Any]:
+        """Return structured, non-secret diagnostic health details for the AI provider."""
+        st = self.get_status()
+        return {
+            "provider_name": self.provider_name(),
+            "status": st.value,
+            "configured": st in (AIProviderStatus.CONFIGURED, AIProviderStatus.CONNECTED, AIProviderStatus.AVAILABLE),
+        }
+
     @abstractmethod
     def provider_name(self) -> str:
         """Return the unique provider name or identifier."""
@@ -56,7 +65,17 @@ class UnavailableAIProviderAdapter(AIProviderPort):
         self._message = message
 
     def get_status(self) -> AIProviderStatus:
-        return AIProviderStatus.UNAVAILABLE
+        return AIProviderStatus.NOT_CONFIGURED
+
+    def get_health_details(self) -> Dict[str, Any]:
+        return {
+            "provider_name": self.provider_name(),
+            "status": self.get_status().value,
+            "configured": False,
+            "connected": False,
+            "endpoint_configured": False,
+            "message": self._message,
+        }
 
     def provider_name(self) -> str:
         return "UnavailableAIProviderAdapter"
@@ -145,16 +164,41 @@ class HttpAIProviderAdapter(AIProviderPort):
 
         self._provider_name = str(provider_name_override).strip() if provider_name_override else "HttpAIProviderAdapter"
 
+    def _validate_url(self) -> bool:
+        """Validate endpoint URL scheme and basic SSRF prevention."""
+        if not self._endpoint_url:
+            return False
+        parsed_scheme = self._endpoint_url.split("://")[0].lower() if "://" in self._endpoint_url else ""
+        if parsed_scheme not in ("http", "https"):
+            return False
+        return True
+
     def get_status(self) -> AIProviderStatus:
-        if (
-            self._api_key
-            and self._endpoint_url
-            and not self._api_key.lower().startswith("placeholder")
-            and not self._api_key.lower().startswith("your_api_key")
-            and (self._endpoint_url.startswith("http://") or self._endpoint_url.startswith("https://"))
-        ):
-            return AIProviderStatus.AVAILABLE
-        return AIProviderStatus.UNAVAILABLE
+        if not self._endpoint_url or not self._validate_url():
+            if self._endpoint_url:
+                return AIProviderStatus.MISCONFIGURED
+            return AIProviderStatus.NOT_CONFIGURED
+
+        if not self._api_key:
+            return AIProviderStatus.NOT_CONFIGURED
+
+        lowered_key = self._api_key.lower()
+        if lowered_key.startswith("placeholder") or lowered_key.startswith("your_api_key") or len(self._api_key) < 8:
+            return AIProviderStatus.MISCONFIGURED
+
+        return AIProviderStatus.CONFIGURED
+
+    def get_health_details(self) -> Dict[str, Any]:
+        st = self.get_status()
+        return {
+            "provider_name": self.provider_name(),
+            "status": st.value,
+            "configured": st in (AIProviderStatus.CONFIGURED, AIProviderStatus.CONNECTED, AIProviderStatus.AVAILABLE),
+            "endpoint_configured": self._validate_url(),
+            "model": self._model,
+            "timeout_seconds": self._timeout,
+            "has_credentials": bool(self._api_key and not self._api_key.lower().startswith("placeholder")),
+        }
 
     def provider_name(self) -> str:
         return self._provider_name
@@ -162,7 +206,8 @@ class HttpAIProviderAdapter(AIProviderPort):
     def generate_explanation(
         self, context: AllowedIntelligenceContext, request: AIRequest
     ) -> AIResponse:
-        if self.get_status() != AIProviderStatus.AVAILABLE:
+        current_status = self.get_status()
+        if current_status in (AIProviderStatus.NOT_CONFIGURED, AIProviderStatus.MISCONFIGURED):
             return AIResponse(
                 request_id=request.request_id,
                 status="UNAVAILABLE",
@@ -171,7 +216,7 @@ class HttpAIProviderAdapter(AIProviderPort):
                 content="AI unavailable / provider not configured",
                 created_at=time.time(),
                 context_summary=context.to_dict(),
-                error_message="AI provider API key or endpoint URL is not configured.",
+                error_message="AI provider API key or endpoint URL is not properly configured.",
             )
 
         messages = _format_prompt_messages(context, request)
@@ -196,130 +241,165 @@ class HttpAIProviderAdapter(AIProviderPort):
             method="POST",
         )
 
-        try:
-            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
-                raw_data = read_limited(resp)
-                data = json.loads(raw_data.decode("utf-8"))
+        max_attempts = 3
+        last_error: Optional[Exception] = None
 
-                content = ""
-                if isinstance(data, dict):
-                    if (
-                        "choices" in data
-                        and isinstance(data["choices"], list)
-                        and len(data["choices"]) > 0
-                    ):
-                        choice = data["choices"][0]
+        for attempt in range(max_attempts):
+            try:
+                with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+                    raw_data = read_limited(resp, max_bytes=1024 * 512)
+                    data = json.loads(raw_data.decode("utf-8"))
+
+                    content = ""
+                    if isinstance(data, dict):
                         if (
-                            isinstance(choice, dict)
-                            and "message" in choice
-                            and isinstance(choice["message"], dict)
+                            "choices" in data
+                            and isinstance(data["choices"], list)
+                            and len(data["choices"]) > 0
                         ):
-                            content = choice["message"].get("content", "").strip()
-                    elif "content" in data and isinstance(data["content"], str):
-                        content = data["content"].strip()
-                    elif "explanation" in data and isinstance(data["explanation"], str):
-                        content = data["explanation"].strip()
+                            choice = data["choices"][0]
+                            if (
+                                isinstance(choice, dict)
+                                and "message" in choice
+                                and isinstance(choice["message"], dict)
+                            ):
+                                content = choice["message"].get("content", "").strip()
+                        elif "content" in data and isinstance(data["content"], str):
+                            content = data["content"].strip()
+                        elif "explanation" in data and isinstance(data["explanation"], str):
+                            content = data["explanation"].strip()
 
-                if not content:
-                    content = "AI response received, but no text content could be extracted."
+                    if not content:
+                        content = "AI response received, but no text content could be extracted."
 
-                return AIResponse(
-                    request_id=request.request_id,
-                    status="SUCCESS",
-                    capability=request.capability,
-                    provider_name=self.provider_name(),
-                    content=SecretSanitizer.sanitize_string(content),
-                    created_at=time.time(),
-                    context_summary=context.to_dict(),
+                    return AIResponse(
+                        request_id=request.request_id,
+                        status="SUCCESS",
+                        capability=request.capability,
+                        provider_name=self.provider_name(),
+                        content=SecretSanitizer.sanitize_string(content),
+                        created_at=time.time(),
+                        context_summary=context.to_dict(),
+                    )
+
+            except urllib.error.HTTPError as http_err:
+                status_code = http_err.code
+                # Never retry client / authentication or rate limit errors
+                if status_code in (401, 403):
+                    return AIResponse(
+                        request_id=request.request_id,
+                        status="ERROR",
+                        capability=request.capability,
+                        provider_name=self.provider_name(),
+                        content="AI provider authentication failed.",
+                        created_at=time.time(),
+                        context_summary=context.to_dict(),
+                        error_message=f"HTTP {status_code} Unauthorized",
+                    )
+                elif status_code == 429:
+                    return AIResponse(
+                        request_id=request.request_id,
+                        status="ERROR",
+                        capability=request.capability,
+                        provider_name=self.provider_name(),
+                        content="AI provider rate limit or quota exceeded.",
+                        created_at=time.time(),
+                        context_summary=context.to_dict(),
+                        error_message="HTTP 429 Rate Limit Exceeded",
+                    )
+                elif status_code >= 500 and attempt < max_attempts - 1:
+                    time.sleep(0.1 * (2 ** attempt))
+                    last_error = http_err
+                    continue
+                else:
+                    return AIResponse(
+                        request_id=request.request_id,
+                        status="ERROR",
+                        capability=request.capability,
+                        provider_name=self.provider_name(),
+                        content=f"AI provider returned HTTP status {status_code}.",
+                        created_at=time.time(),
+                        context_summary=context.to_dict(),
+                        error_message=f"HTTP {status_code}",
+                    )
+
+            except (urllib.error.URLError, socket.timeout) as net_err:
+                is_timeout = isinstance(net_err, socket.timeout) or (
+                    isinstance(net_err, urllib.error.URLError)
+                    and isinstance(net_err.reason, socket.timeout)
                 )
+                if attempt < max_attempts - 1 and is_timeout:
+                    time.sleep(0.1 * (2 ** attempt))
+                    last_error = net_err
+                    continue
 
-        except urllib.error.HTTPError as http_err:
-            status_code = http_err.code
-            if status_code in (401, 403):
-                err_content = "AI provider authentication failed."
-                err_msg = f"HTTP {status_code} Unauthorized"
-            elif status_code == 429:
-                err_content = "AI provider rate limit or quota exceeded."
-                err_msg = "HTTP 429 Rate Limit Exceeded"
-            elif status_code >= 500:
-                err_content = "AI provider service error."
-                err_msg = f"HTTP {status_code} Server Error"
-            else:
-                err_content = f"AI provider returned HTTP status {status_code}."
-                err_msg = f"HTTP {status_code}"
+                if is_timeout:
+                    return AIResponse(
+                        request_id=request.request_id,
+                        status="ERROR",
+                        capability=request.capability,
+                        provider_name=self.provider_name(),
+                        content="AI provider request timed out.",
+                        created_at=time.time(),
+                        context_summary=context.to_dict(),
+                        error_message="Request timed out",
+                    )
 
-            return AIResponse(
-                request_id=request.request_id,
-                status="ERROR",
-                capability=request.capability,
-                provider_name=self.provider_name(),
-                content=err_content,
-                created_at=time.time(),
-                context_summary=context.to_dict(),
-                error_message=err_msg,
-            )
-
-        except (urllib.error.URLError, socket.timeout) as net_err:
-            is_timeout = isinstance(net_err, socket.timeout) or (
-                isinstance(net_err, urllib.error.URLError)
-                and isinstance(net_err.reason, socket.timeout)
-            )
-            if is_timeout:
+                err_reason = str(getattr(net_err, "reason", net_err))
+                sanitized_reason = SecretSanitizer.sanitize_string(err_reason)
                 return AIResponse(
                     request_id=request.request_id,
                     status="ERROR",
                     capability=request.capability,
                     provider_name=self.provider_name(),
-                    content="AI provider request timed out.",
+                    content="Unable to reach AI provider endpoint.",
                     created_at=time.time(),
                     context_summary=context.to_dict(),
-                    error_message="Request timed out",
+                    error_message=f"Network error: {sanitized_reason}",
                 )
 
-            err_reason = str(getattr(net_err, "reason", net_err))
-            sanitized_reason = SecretSanitizer.sanitize_string(err_reason)
-            return AIResponse(
-                request_id=request.request_id,
-                status="ERROR",
-                capability=request.capability,
-                provider_name=self.provider_name(),
-                content="Unable to reach AI provider endpoint.",
-                created_at=time.time(),
-                context_summary=context.to_dict(),
-                error_message=f"Network error: {sanitized_reason}",
-            )
+            except (json.JSONDecodeError, KeyError, ValueError) as parse_err:
+                return AIResponse(
+                    request_id=request.request_id,
+                    status="ERROR",
+                    capability=request.capability,
+                    provider_name=self.provider_name(),
+                    content="Invalid response format received from AI provider.",
+                    created_at=time.time(),
+                    context_summary=context.to_dict(),
+                    error_message=f"Parse error: {SecretSanitizer.sanitize_string(str(parse_err))}",
+                )
 
-        except (json.JSONDecodeError, KeyError, ValueError) as parse_err:
-            return AIResponse(
-                request_id=request.request_id,
-                status="ERROR",
-                capability=request.capability,
-                provider_name=self.provider_name(),
-                content="Invalid response format received from AI provider.",
-                created_at=time.time(),
-                context_summary=context.to_dict(),
-                error_message=f"Parse error: {SecretSanitizer.sanitize_string(str(parse_err))}",
-            )
+            except Exception as gen_err:
+                clean_err = SecretSanitizer.sanitize_string(str(gen_err))
+                return AIResponse(
+                    request_id=request.request_id,
+                    status="ERROR",
+                    capability=request.capability,
+                    provider_name=self.provider_name(),
+                    content="An error occurred while communicating with the AI provider.",
+                    created_at=time.time(),
+                    context_summary=context.to_dict(),
+                    error_message=clean_err,
+                )
 
-        except Exception as gen_err:
-            clean_err = SecretSanitizer.sanitize_string(str(gen_err))
-            return AIResponse(
-                request_id=request.request_id,
-                status="ERROR",
-                capability=request.capability,
-                provider_name=self.provider_name(),
-                content="An error occurred while communicating with the AI provider.",
-                created_at=time.time(),
-                context_summary=context.to_dict(),
-                error_message=clean_err,
-            )
+        return AIResponse(
+            request_id=request.request_id,
+            status="ERROR",
+            capability=request.capability,
+            provider_name=self.provider_name(),
+            content="AI provider request failed after max retry attempts.",
+            created_at=time.time(),
+            context_summary=context.to_dict(),
+            error_message=SecretSanitizer.sanitize_string(str(last_error)) if last_error else "Max retries exceeded",
+        )
 
 
 def create_default_ai_provider() -> AIProviderPort:
     """Factory helper creating configured HttpAIProviderAdapter if environment variables are set, else UnavailableAIProviderAdapter."""
     try:
         http_adapter = HttpAIProviderAdapter()
-        if http_adapter.get_status() == AIProviderStatus.AVAILABLE:
+        if http_adapter.get_status() in (AIProviderStatus.CONFIGURED, AIProviderStatus.AVAILABLE, AIProviderStatus.CONNECTED):
             return http_adapter
     except Exception:
         pass

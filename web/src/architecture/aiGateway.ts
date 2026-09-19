@@ -6,7 +6,19 @@ export type AICapability =
   | "summarize_timeline"
   | "explain_health";
 
-export type AIProviderStatus = "available" | "unavailable" | "error";
+export type AIProviderStatus =
+  | "not_configured"
+  | "configured"
+  | "connecting"
+  | "connected"
+  | "degraded"
+  | "unavailable"
+  | "auth_failed"
+  | "rate_limited"
+  | "timed_out"
+  | "misconfigured"
+  | "error"
+  | "available";
 
 export type AIResponseStatus =
   | "SUCCESS"
@@ -141,7 +153,9 @@ export function processAIGatewayRequest(
   const providerName = providerOverride?.name || "UnavailableAIProviderAdapter";
   const errorType = providerOverride?.simulatedErrorType || "none";
 
-  if (providerStatus === "unavailable") {
+  const isAvailable = providerStatus === "available" || providerStatus === "configured" || providerStatus === "connected";
+
+  if (!isAvailable && providerStatus !== "error" && errorType === "none") {
     return {
       requestId: request.requestId,
       status: "UNAVAILABLE",
@@ -150,7 +164,7 @@ export function processAIGatewayRequest(
       content: "AI unavailable / provider not configured",
       createdAt: now,
       contextSummary: context,
-      errorMessage: "No external AI provider adapter attached.",
+      errorMessage: `AI provider status is '${providerStatus}'.`,
     };
   }
 

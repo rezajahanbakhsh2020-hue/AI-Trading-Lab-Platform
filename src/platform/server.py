@@ -30,6 +30,8 @@ from src.platform.services.project1_gateway import Project1IntegrationGatewaySer
 from src.platform.services.notification import NotificationService
 from src.platform.services.notification_delivery import NotificationDeliveryService
 from src.platform.services.audit_control import PlatformAuditControlService
+from src.platform.services.ai_gateway import AIGatewayService
+from src.platform.domain.ai_gateway import AICapability, AIRequest
 from src.platform.providers.notification_delivery import RecordingNotificationDeliveryAdapter
 
 logger = logging.getLogger("platform.server")
@@ -48,6 +50,7 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
     notification_service: NotificationService
     notification_delivery_service: NotificationDeliveryService
     audit_control_service: PlatformAuditControlService
+    ai_gateway_service: AIGatewayService
     static_dir: str
 
     def log_message(self, format: str, *args: Any) -> None:
@@ -138,13 +141,15 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                 return
 
             if path in ("/health/readiness", "/health/ready"):
-                is_ready, details = self.health_service.check_readiness()
+                ai_st = self.ai_gateway_service.get_provider().get_status().value if hasattr(self, "ai_gateway_service") else "not_configured"
+                is_ready, details = self.health_service.check_readiness(ai_provider_status=ai_st)
                 status_code = 200 if is_ready else 503
                 self._send_json_response(status_code, {"status": "ready" if is_ready else "not_ready", "readiness": details}, origin=origin)
                 return
 
             if path in ("/api/v1/diagnostics", "/diagnostics"):
-                diag = self.health_service.get_operational_diagnostics()
+                ai_st = self.ai_gateway_service.get_provider().get_status().value if hasattr(self, "ai_gateway_service") else "not_configured"
+                diag = self.health_service.get_operational_diagnostics(ai_provider_status=ai_st)
                 self._send_json_response(
                     200,
                     {
@@ -156,6 +161,23 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                         "system_status": diag.system_status,
                         "persistence_recovery": diag.persistence_recovery,
                         "summary": diag.diagnostics_summary,
+                    },
+                    origin=origin,
+                )
+                return
+
+            if path == "/api/v1/ai/status":
+                token = self._extract_bearer_token()
+                user = None
+                if token:
+                    _, user = self.server_user_auth_service.validate_session_token(token)
+                provider = self.ai_gateway_service.get_provider()
+                self._send_json_response(
+                    200,
+                    {
+                        "success": True,
+                        "provider_status": provider.get_status().value,
+                        "health_details": provider.get_health_details(),
                     },
                     origin=origin,
                 )
@@ -770,6 +792,42 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                     self._send_error_response(404, "Notification Not Found", str(err), "Check notification ID.", origin=origin)
                     return
 
+            if path == "/api/v1/ai/explain":
+                valid, user = self._authenticate_request_user()
+                if not valid or not user:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to process AI requests.", origin=origin)
+                    return
+
+                try:
+                    req_data = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                except Exception:
+                    self._send_error_response(400, "Invalid JSON Request", "Request body was not valid JSON.", "Provide valid JSON payload.", origin=origin)
+                    return
+
+                cap_str = req_data.get("capability", "explain_signal")
+                try:
+                    cap = AICapability(str(cap_str).lower().strip())
+                except ValueError:
+                    self._send_error_response(400, "Invalid Capability", f"Capability '{cap_str}' is not supported.", "Choose valid AICapability.", origin=origin)
+                    return
+
+                target_symbol = req_data.get("target_symbol")
+                prompt_query = req_data.get("prompt_query")
+                req_id = req_data.get("request_id") or f"req_ai_{int(time.time()*1000)}"
+
+                ai_req = AIRequest(
+                    request_id=req_id,
+                    user_id=user.user_id,
+                    capability=cap,
+                    target_symbol=target_symbol,
+                    prompt_query=prompt_query,
+                )
+
+                snapshot = self.presenter.build_host_snapshot(user=user)
+                ai_resp = self.ai_gateway_service.process_ai_request(user=user, request=ai_req, snapshot=snapshot)
+                self._send_json_response(200, ai_resp.to_dict(), origin=origin)
+                return
+
             if path in ("/api/v1/notifications/delete", "/api/v1/notifications/preferences/update"):
                 valid, user = self._authenticate_request_user()
                 if not valid or not user:
@@ -914,6 +972,11 @@ def create_server(
         audit_control=audit_control_service,
         notification_service=notification_service,
     )
+    ai_gateway_service = AIGatewayService(
+        security_boundary=security_service,
+        audit_control_service=audit_control_service,
+        notification_service=notification_service,
+    )
     port_adapter = DisconnectedProject1Adapter()
     presenter = Project1SignalPresenter(
         port=port_adapter,
@@ -947,6 +1010,7 @@ def create_server(
     CustomHandler.presenter = presenter
     CustomHandler.gateway_service = gateway_service
     CustomHandler.audit_control_service = audit_control_service
+    CustomHandler.ai_gateway_service = ai_gateway_service
     CustomHandler.static_dir = resolved_static_dir
 
     server = ThreadingHTTPServer((host, port), CustomHandler)

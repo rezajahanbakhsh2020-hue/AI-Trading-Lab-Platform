@@ -2,7 +2,8 @@
 
 Provides production-grade HTTP serving using standard library ThreadingHTTPServer,
 handling API endpoints, operational health/readiness probes, authentication gates,
-user management lifecycle, CORS origin validation, production security headers, and SPA static asset routing.
+user management lifecycle, execution gateway operations, CORS origin validation,
+production security headers, and SPA static asset routing.
 """
 
 from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -19,6 +20,7 @@ import urllib.parse
 from src.platform.config import PlatformConfig
 from src.platform.adapters.user_repository import FileBackedUserRepository
 from src.platform.adapters.workspace_repository import FileBackedWorkspaceRepository
+from src.platform.adapters.order_intent_repository import FileBackedOrderIntentRepository
 from src.platform.adapters.project1_adapter import DisconnectedProject1Adapter
 from src.platform.adapters.project1_repository import FileBackedProject1IntegrationRepository
 from src.platform.services.user_authorization import UserAuthorizationService
@@ -27,6 +29,9 @@ from src.platform.services.health_operations import SystemHealthService, log_ope
 from src.platform.services.security import SecurityBoundaryService, SecretSanitizer
 from src.platform.services.project1_presenter import Project1SignalPresenter
 from src.platform.services.project1_gateway import Project1IntegrationGatewayService
+from src.platform.services.order_intent import OrderIntentService
+from src.platform.services.execution_gateway import ExecutionGatewayService
+from src.platform.domain.order_intent import OrderLifecycleState
 from src.platform.services.notification import NotificationService
 from src.platform.services.notification_delivery import NotificationDeliveryService
 from src.platform.services.audit_control import PlatformAuditControlService
@@ -53,6 +58,8 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
     security_service: SecurityBoundaryService
     presenter: Project1SignalPresenter
     gateway_service: Project1IntegrationGatewayService
+    order_intent_service: OrderIntentService
+    execution_gateway_service: ExecutionGatewayService
     notification_service: NotificationService
     notification_delivery_service: NotificationDeliveryService
     audit_control_service: PlatformAuditControlService
@@ -489,6 +496,79 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                 self._send_json_response(200, res, origin=origin)
                 return
 
+            if path in ("/api/v1/execution/intents", "/api/v1/intents"):
+                valid, user = self._authenticate_request_user()
+                if not valid or not user:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to view order intents.", origin=origin)
+                    return
+
+                query_params = urllib.parse.parse_qs(parsed_url.query)
+                symbol = query_params.get("symbol", [None])[0]
+                lifecycle_state = query_params.get("lifecycle_state", [None])[0]
+
+                payloads = self.presenter.get_order_intents_payload(
+                    user=user,
+                    symbol=symbol,
+                    lifecycle_state=lifecycle_state,
+                )
+                self._send_json_response(
+                    200,
+                    {
+                        "success": True,
+                        "order_intents": payloads,
+                        "count": len(payloads),
+                    },
+                    origin=origin,
+                )
+                return
+
+            if path in ("/api/v1/execution/boundary", "/api/v1/execution/status", "/api/v1/execution/monitoring"):
+                token = self._extract_bearer_token()
+                user = None
+                if token:
+                    _, user = self.server_user_auth_service.validate_session_token(token)
+
+                boundary_status = self.execution_gateway_service.get_boundary_status(user=user)
+                summary = self.execution_gateway_service.get_execution_monitoring_summary(user=user)
+                self._send_json_response(
+                    200,
+                    {
+                        "success": True,
+                        "boundary": boundary_status,
+                        "monitoring": summary,
+                    },
+                    origin=origin,
+                )
+                return
+
+            if path == "/api/v1/execution/attempts":
+                valid, user = self._authenticate_request_user()
+                if not valid or not user:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to view execution attempts.", origin=origin)
+                    return
+
+                query_params = urllib.parse.parse_qs(parsed_url.query)
+                order_intent_id = query_params.get("order_intent_id", [None])[0]
+                if not order_intent_id:
+                    self._send_error_response(400, "Missing Parameters", "'order_intent_id' query parameter required.", "Provide order_intent_id.", origin=origin)
+                    return
+
+                ok, msg, attempts = self.execution_gateway_service.get_execution_attempts(user=user, order_intent_id=order_intent_id)
+                if not ok:
+                    self._send_error_response(400, "Fetch Attempts Failed", msg, "Check order_intent_id.", origin=origin)
+                    return
+
+                self._send_json_response(
+                    200,
+                    {
+                        "success": True,
+                        "order_intent_id": order_intent_id,
+                        "attempts": attempts,
+                    },
+                    origin=origin,
+                )
+                return
+
             if path == "/api/v1/snapshot":
                 token = self._extract_bearer_token()
                 user = None
@@ -823,6 +903,119 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                 self._send_json_response(status_code, res, origin=origin)
                 return
 
+            if path == "/api/v1/execution/intent/update":
+                valid, user = self._authenticate_request_user()
+                if not valid or not user:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to update order intent.", origin=origin)
+                    return
+
+                try:
+                    req_data = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                except Exception:
+                    self._send_error_response(400, "Invalid JSON Request", "Request body was not valid JSON.", "Provide valid JSON payload.", origin=origin)
+                    return
+
+                order_intent_id = str(req_data.get("order_intent_id", "")).strip()
+                target_state_str = str(req_data.get("lifecycle_state", "")).strip()
+                reason = req_data.get("reason")
+
+                if not order_intent_id or not target_state_str:
+                    self._send_error_response(400, "Missing Parameters", "Both 'order_intent_id' and 'lifecycle_state' are required.", "Provide order_intent_id and target lifecycle_state.", origin=origin)
+                    return
+
+                ok, msg, updated = self.order_intent_service.transition_order_intent_state(
+                    user=user,
+                    order_intent_id=order_intent_id,
+                    target_state=target_state_str,
+                    reason=reason,
+                )
+                if not ok or updated is None:
+                    self._send_error_response(400, "State Transition Failed", msg, "Verify state transition rules.", origin=origin)
+                    return
+
+                self._send_json_response(
+                    200,
+                    {
+                        "success": True,
+                        "message": msg,
+                        "order_intent": updated.to_dict(),
+                    },
+                    origin=origin,
+                )
+                return
+
+            if path == "/api/v1/execution/request":
+                valid, user = self._authenticate_request_user()
+                if not valid or not user:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to request execution.", origin=origin)
+                    return
+
+                try:
+                    req_data = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                except Exception:
+                    self._send_error_response(400, "Invalid JSON Request", "Request body was not valid JSON.", "Provide valid JSON payload.", origin=origin)
+                    return
+
+                order_intent_id = str(req_data.get("order_intent_id", "")).strip()
+                command_id = req_data.get("execution_command_id")
+
+                if not order_intent_id:
+                    self._send_error_response(400, "Missing Parameters", "'order_intent_id' is required.", "Provide order_intent_id.", origin=origin)
+                    return
+
+                result = self.execution_gateway_service.request_execution(
+                    user=user,
+                    order_intent_id=order_intent_id,
+                    execution_command_id=command_id,
+                )
+
+                self._send_json_response(
+                    200,
+                    {
+                        "success": result.success,
+                        "status": result.status.value,
+                        "attempt": result.to_dict(),
+                    },
+                    origin=origin,
+                )
+                return
+
+            if path == "/api/v1/execution/reconcile":
+                valid, user = self._authenticate_request_user()
+                if not valid or not user:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to reconcile execution.", origin=origin)
+                    return
+
+                try:
+                    req_data = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                except Exception:
+                    self._send_error_response(400, "Invalid JSON Request", "Request body was not valid JSON.", "Provide valid JSON payload.", origin=origin)
+                    return
+
+                order_intent_id = str(req_data.get("order_intent_id", "")).strip()
+                if not order_intent_id:
+                    self._send_error_response(400, "Missing Parameters", "'order_intent_id' is required.", "Provide order_intent_id.", origin=origin)
+                    return
+
+                ok, msg, rec_record = self.execution_gateway_service.reconcile_execution(
+                    user=user,
+                    order_intent_id=order_intent_id,
+                )
+                if not ok or rec_record is None:
+                    self._send_error_response(400, "Reconciliation Failed", msg, "Check order_intent_id.", origin=origin)
+                    return
+
+                self._send_json_response(
+                    200,
+                    {
+                        "success": True,
+                        "message": msg,
+                        "reconciliation": rec_record,
+                    },
+                    origin=origin,
+                )
+                return
+
             if path in ("/api/v1/profile/update", "/api/v1/workspace/update"):
                 valid, user = self._authenticate_request_user()
                 if not valid or not user:
@@ -1129,6 +1322,21 @@ def create_server(
         notification_service=notification_service,
     )
 
+    order_intent_repo = FileBackedOrderIntentRepository(
+        storage_filepath=os.path.join(cfg.persistence_dir, "order_intents.json"),
+        audit_control=audit_control_service,
+    )
+    order_intent_service = OrderIntentService(
+        security_boundary=security_service,
+        audit_control=audit_control_service,
+        repository=order_intent_repo,
+    )
+    execution_gateway_service = ExecutionGatewayService(
+        order_intent_service=order_intent_service,
+        security_boundary=security_service,
+        audit_control=audit_control_service,
+    )
+
     # Initialize Provider Infrastructure
     provider_registry = ProviderRegistry()
     biquote_md = BiQuoteProvider()
@@ -1150,6 +1358,7 @@ def create_server(
         audit_control_service=audit_control_service,
         health_service=health_service,
         gateway_service=gateway_service,
+        order_intent_service=order_intent_service,
         provider_operations=provider_operations,
         market_overview_service=market_overview_service,
     )
@@ -1177,6 +1386,8 @@ def create_server(
     CustomHandler.security_service = security_service
     CustomHandler.presenter = presenter
     CustomHandler.gateway_service = gateway_service
+    CustomHandler.order_intent_service = order_intent_service
+    CustomHandler.execution_gateway_service = execution_gateway_service
     CustomHandler.audit_control_service = audit_control_service
     CustomHandler.ai_gateway_service = ai_gateway_service
     CustomHandler.provider_registry = provider_registry

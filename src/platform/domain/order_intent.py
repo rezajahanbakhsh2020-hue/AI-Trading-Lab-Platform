@@ -248,3 +248,29 @@ class OrderIntent:
             "is_terminal": self.is_terminal,
             "rejection_reason": self.rejection_reason,
         }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "OrderIntent":
+        """Reconstruct OrderIntent from dictionary representation."""
+        if not isinstance(d, dict):
+            raise ValueError("d must be a dictionary")
+
+        return cls(
+            order_intent_id=d["order_intent_id"],
+            authorization_id=d["authorization_id"],
+            user_id=d["user_id"],
+            symbol=d["symbol"],
+            direction=d["direction"],
+            idempotency_key=d["idempotency_key"],
+            creation_timestamp=float(d["creation_timestamp"]),
+            lifecycle_state=OrderLifecycleState(d.get("lifecycle_state", "STAGED")),
+            order_type=d.get("order_type", "market"),
+            requested_price=float(d["requested_price"]) if d.get("requested_price") is not None else None,
+            requested_quantity=float(d["requested_quantity"]) if d.get("requested_quantity") is not None else None,
+            stop_loss=float(d["stop_loss"]) if d.get("stop_loss") is not None else None,
+            take_profit_1=float(d["take_profit_1"]) if d.get("take_profit_1") is not None else None,
+            take_profit_2=float(d["take_profit_2"]) if d.get("take_profit_2") is not None else None,
+            take_profit_3=float(d["take_profit_3"]) if d.get("take_profit_3") is not None else None,
+            time_in_force=d.get("time_in_force"),
+            rejection_reason=d.get("rejection_reason"),
+        )

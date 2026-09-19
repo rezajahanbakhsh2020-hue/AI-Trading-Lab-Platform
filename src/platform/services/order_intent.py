@@ -9,6 +9,7 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from src.platform.adapters.order_intent_repository import OrderIntentRepositoryPort
 from src.platform.domain.audit_control import (
     AuditCategory,
     AuditEventSeverity,
@@ -32,11 +33,13 @@ class OrderIntentService:
         self,
         security_boundary: Optional[SecurityBoundaryService] = None,
         audit_control: Optional[PlatformAuditControlService] = None,
+        repository: Optional[OrderIntentRepositoryPort] = None,
     ) -> None:
         self.security_boundary = security_boundary or SecurityBoundaryService()
         self.audit_control = audit_control or PlatformAuditControlService(
             security_boundary=self.security_boundary
         )
+        self.repository = repository
         # Store in-memory indexed by order_intent_id
         self._intents_by_id: Dict[str, OrderIntent] = {}
         # Store idempotency map: (user_id, idempotency_key) -> order_intent_id
@@ -94,23 +97,27 @@ class OrderIntentService:
 
         # 2. Idempotency check: if already created for (user_id, idempotency_key), return existing
         idempotency_pair = (user_id, clean_idempotency_key)
-        if idempotency_pair in self._idempotency_map:
+        existing_intent = None
+        if self.repository is not None:
+            existing_intent = self.repository.get_by_idempotency_key(user_id, clean_idempotency_key)
+        elif idempotency_pair in self._idempotency_map:
             existing_id = self._idempotency_map[idempotency_pair]
             existing_intent = self._intents_by_id.get(existing_id)
-            if existing_intent is not None:
-                self.audit_control.record_event(
-                    user_id=user_id,
-                    category=AuditCategory.ORDER_INTENT,
-                    event_type="ORDER_INTENT_IDEMPOTENT_DUPLICATE",
-                    lifecycle_state=existing_intent.lifecycle_state,
-                    action="CREATE_ORDER_INTENT",
-                    outcome="SUCCESS",
-                    severity=AuditEventSeverity.INFO,
-                    resource_id=existing_intent.order_intent_id,
-                    correlation_id=clean_idempotency_key,
-                    details="Returned existing order intent for idempotent key without duplication.",
-                )
-                return True, "Existing order intent returned (idempotent)", existing_intent
+
+        if existing_intent is not None:
+            self.audit_control.record_event(
+                user_id=user_id,
+                category=AuditCategory.ORDER_INTENT,
+                event_type="ORDER_INTENT_IDEMPOTENT_DUPLICATE",
+                lifecycle_state=existing_intent.lifecycle_state,
+                action="CREATE_ORDER_INTENT",
+                outcome="SUCCESS",
+                severity=AuditEventSeverity.INFO,
+                resource_id=existing_intent.order_intent_id,
+                correlation_id=clean_idempotency_key,
+                details="Returned existing order intent for idempotent key without duplication.",
+            )
+            return True, "Existing order intent returned (idempotent)", existing_intent
 
         # 3. Validate AutonomousAuthorization
         if not isinstance(authorization, AutonomousAuthorization):
@@ -195,6 +202,8 @@ class OrderIntentService:
         # 5. Store order intent
         self._intents_by_id[intent.order_intent_id] = intent
         self._idempotency_map[idempotency_pair] = intent.order_intent_id
+        if self.repository is not None:
+            self.repository.save_order_intent(intent)
 
         # 6. Audit logging
         self.audit_control.record_event(
@@ -244,7 +253,11 @@ class OrderIntentService:
             return False, "order_intent_id must be a non-empty string", None
 
         clean_id = order_intent_id.strip()
-        intent = self._intents_by_id.get(clean_id)
+        intent = None
+        if self.repository is not None:
+            intent = self.repository.get_order_intent(clean_id, user_id=None if user.is_admin else user.user_id)
+        else:
+            intent = self._intents_by_id.get(clean_id)
 
         if intent is None:
             return False, f"Order intent '{clean_id}' not found", None
@@ -286,6 +299,8 @@ class OrderIntentService:
 
         # Save updated intent
         self._intents_by_id[clean_id] = updated_intent
+        if self.repository is not None:
+            self.repository.save_order_intent(updated_intent)
 
         audit_lifecycle = (
             OperationalLifecycleState.CANCELLED
@@ -330,7 +345,11 @@ class OrderIntentService:
             return False, "order_intent_id must be a non-empty string", None
 
         clean_id = order_intent_id.strip()
-        intent = self._intents_by_id.get(clean_id)
+        intent = None
+        if self.repository is not None:
+            intent = self.repository.get_order_intent(clean_id, user_id=None if user.is_admin else user.user_id)
+        else:
+            intent = self._intents_by_id.get(clean_id)
 
         if intent is None:
             return False, f"Order intent '{clean_id}' not found", None
@@ -358,6 +377,18 @@ class OrderIntentService:
         )
         if not authorized:
             return False, f"Unauthorized: {sec_msg}", []
+
+        ls_str = None
+        if lifecycle_state:
+            ls_str = lifecycle_state.value if isinstance(lifecycle_state, OrderLifecycleState) else str(lifecycle_state)
+
+        if self.repository is not None:
+            intents = self.repository.list_order_intents(
+                user_id=None if user.is_admin else user.user_id,
+                symbol=symbol,
+                lifecycle_state=ls_str,
+            )
+            return True, "Order intents retrieved successfully", intents
 
         results: List[OrderIntent] = []
         target_symbol = symbol.strip().upper() if symbol and symbol.strip() else None

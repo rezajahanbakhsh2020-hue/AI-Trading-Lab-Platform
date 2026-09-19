@@ -165,3 +165,25 @@ To perform a live public HTTPS deployment to remote cloud infrastructure, the fo
 2. **Domain Name & DNS A/AAAA Records** pointing to host IP.
 3. **TLS/SSL Certificate Termination** (e.g. Nginx/Caddy reverse proxy with Let's Encrypt or Cloudflare TLS).
 4. **Environment Secrets Provisioning** (`SESSION_SECRET`, `INITIAL_ADMIN_PASSWORD`, `ALLOWED_ORIGINS`).
+
+---
+
+## 9. Professional Financial Charting & Visual Boundary Architecture
+
+The platform embeds TradingView Lightweight Charts (`lightweight-charts` v5.2.1, Apache-2.0 open-source license) as its primary financial visualization foundation (`web/src/ui/components/InteractiveChart.tsx`).
+
+### Architectural Principles & Licensing Rationale
+- **Apache-2.0 License Compatibility:** Lightweight Charts is an open-source, high-performance HTML5 Canvas chart engine designed for financial applications.
+- **Zero Proprietary/Paid Dependencies:** No proprietary TradingView widgets or paid external market data APIs are introduced.
+- **Mobile-First Responsive Layout:** Fluid `ResizeObserver` auto-scaling supports viewports from 360px, 390px, 430px portrait to full-screen desktop without horizontal overflow or clipped controls.
+
+### Chart Capabilities & Data Flow
+- **Multi-Series Support:** Dynamic switching between Candlestick, Line, and Area chart views.
+- **Volume Histogram Pane:** Dedicated histogram volume pane synchronized with the price time scale.
+- **Crosshair Legend & Tooltip:** Real-time crosshair inspection feeding OHLCV status indicators.
+- **Data Truthfulness Overlays:** Explicit visual state indicators for `connected`, `disconnected`, `loading`, `stale`, and `error` states without fake candles or fabricated price feeds.
+
+### Project 1 Visualization Boundary
+- **Read-Only Level Rendering:** Entry, Stop Loss (SL), and Take Profit (TP1, TP2, TP3) levels from authorized Project 1 contracts are rendered as styled price lines (`createPriceLine`).
+- **Signal Event Markers:** Project 1 signal actions are rendered as explicit arrow markers (`createSeriesMarkers`).
+- **Strict Non-Calculation Contract:** Project 2 NEVER calculates, alters, infers, or replaces Project 1 strategy outputs or price levels.

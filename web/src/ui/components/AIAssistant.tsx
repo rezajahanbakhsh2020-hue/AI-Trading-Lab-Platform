@@ -177,6 +177,8 @@ export function AIAssistant({ snapshot }: AIAssistantProps) {
                   style={{ width: "100%", padding: "8px" }}
                 >
                   <option value="unavailable">No Provider (Default)</option>
+                  <option value="not_configured">Not Configured</option>
+                  <option value="misconfigured">Misconfigured</option>
                   <option value="available">Connected Provider (HTTP Adapter)</option>
                   <option value="error">Provider Error / Timeout</option>
                 </select>

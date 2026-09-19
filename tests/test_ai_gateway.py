@@ -172,7 +172,7 @@ def test_ai_response_validation() -> None:
 
 def test_unavailable_provider_adapter() -> None:
     adapter = UnavailableAIProviderAdapter()
-    assert adapter.get_status() == AIProviderStatus.UNAVAILABLE
+    assert adapter.get_status() == AIProviderStatus.NOT_CONFIGURED
     assert adapter.provider_name() == "UnavailableAIProviderAdapter"
 
     ctx = AllowedIntelligenceContext(

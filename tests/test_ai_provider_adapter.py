@@ -57,7 +57,7 @@ def mock_request() -> AIRequest:
 
 def test_http_provider_unconfigured_status() -> None:
     adapter = HttpAIProviderAdapter(api_key="", endpoint_url="")
-    assert adapter.get_status() == AIProviderStatus.UNAVAILABLE
+    assert adapter.get_status() == AIProviderStatus.NOT_CONFIGURED
     assert adapter.provider_name() == "HttpAIProviderAdapter"
 
     req = AIRequest(request_id="r1", user_id="u1", capability=AICapability.EXPLAIN_SIGNAL)
@@ -72,7 +72,7 @@ def test_http_provider_configured_status() -> None:
         api_key="sk-test-key-12345",
         endpoint_url="https://api.openai.com/v1/chat/completions",
     )
-    assert adapter.get_status() == AIProviderStatus.AVAILABLE
+    assert adapter.get_status() == AIProviderStatus.CONFIGURED
 
 
 def test_http_provider_successful_openai_response(
@@ -195,7 +195,7 @@ def test_create_default_ai_provider_factory() -> None:
     with patch.dict(os.environ, {"AI_PROVIDER_API_KEY": "", "AI_PROVIDER_URL": ""}, clear=True):
         provider = create_default_ai_provider()
         assert isinstance(provider, UnavailableAIProviderAdapter)
-        assert provider.get_status() == AIProviderStatus.UNAVAILABLE
+        assert provider.get_status() == AIProviderStatus.NOT_CONFIGURED
 
     # Configured env -> HttpAIProviderAdapter
     env = {
@@ -205,7 +205,7 @@ def test_create_default_ai_provider_factory() -> None:
     with patch.dict(os.environ, env, clear=True):
         provider = create_default_ai_provider()
         assert isinstance(provider, HttpAIProviderAdapter)
-        assert provider.get_status() == AIProviderStatus.AVAILABLE
+        assert provider.get_status() == AIProviderStatus.CONFIGURED
 
 
 def test_http_provider_edge_case_config_handling(
@@ -216,14 +216,14 @@ def test_http_provider_edge_case_config_handling(
         api_key="placeholder_key_123",
         endpoint_url="https://api.openai.com/v1/chat/completions",
     )
-    assert adapter_placeholder.get_status() == AIProviderStatus.UNAVAILABLE
+    assert adapter_placeholder.get_status() == AIProviderStatus.MISCONFIGURED
 
     # Non-HTTP/HTTPS URL check
     adapter_bad_url = HttpAIProviderAdapter(
         api_key="sk-valid-key",
         endpoint_url="ftp://invalid.endpoint/completions",
     )
-    assert adapter_bad_url.get_status() == AIProviderStatus.UNAVAILABLE
+    assert adapter_bad_url.get_status() == AIProviderStatus.MISCONFIGURED
 
     # Invalid timeout type falls back cleanly
     adapter_invalid_timeout = HttpAIProviderAdapter(

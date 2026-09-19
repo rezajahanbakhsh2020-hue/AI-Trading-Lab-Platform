@@ -193,6 +193,7 @@ class SystemHealthService:
         persistence_healthy: bool = True,
         project1_gateway_connected: bool = True,
         notification_pipeline_healthy: bool = True,
+        ai_provider_status: Optional[str] = None,
     ) -> Tuple[bool, Dict[str, Any]]:
         """Deep readiness check: evaluates config validity, storage integrity, providers, and integration gateways.
 
@@ -227,6 +228,16 @@ class SystemHealthService:
         # Classify Notification Pipeline state
         notification_state = "HEALTHY" if notification_pipeline_healthy else "DEGRADED"
 
+        # Classify AI Provider state
+        if ai_provider_status in ("configured", "connected", "available"):
+            ai_provider_state = "HEALTHY"
+        elif ai_provider_status in ("not_configured", None):
+            ai_provider_state = "NOT_CONFIGURED"
+        elif ai_provider_status in ("degraded", "rate_limited", "timed_out"):
+            ai_provider_state = "DEGRADED"
+        else:
+            ai_provider_state = "UNAVAILABLE"
+
         # Determine overall readiness status
         if persistence_state == "UNAVAILABLE":
             overall_status = "UNAVAILABLE"
@@ -247,11 +258,13 @@ class SystemHealthService:
                 "providers": providers_state,
                 "project1_gateway": project1_state,
                 "notification_pipeline": notification_state,
+                "ai_provider": ai_provider_state,
             },
             "persistence_healthy": persistence_healthy and persistence_status.is_healthy,
             "persistence_status": persistence_status.status,
             "project1_gateway_connected": project1_gateway_connected,
             "notification_pipeline_healthy": notification_pipeline_healthy,
+            "ai_provider_status": ai_provider_status or "not_configured",
         }
 
         if persistence_state == "UNAVAILABLE":
@@ -283,6 +296,7 @@ class SystemHealthService:
         persistence_healthy: bool = True,
         project1_gateway_connected: bool = True,
         notification_pipeline_healthy: bool = True,
+        ai_provider_status: Optional[str] = None,
     ) -> OperationalDiagnostics:
         """Return comprehensive sanitized operational diagnostics report."""
         is_live, _ = self.check_liveness()
@@ -293,6 +307,7 @@ class SystemHealthService:
             persistence_healthy=persistence_healthy,
             project1_gateway_connected=project1_gateway_connected,
             notification_pipeline_healthy=notification_pipeline_healthy,
+            ai_provider_status=ai_provider_status,
         )
 
         uptime_seconds = time.time() - self._startup_time

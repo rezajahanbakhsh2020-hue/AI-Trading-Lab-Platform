@@ -22,9 +22,18 @@ class AICapability(str, Enum):
 class AIProviderStatus(str, Enum):
     """AI Provider operational statuses."""
 
-    AVAILABLE = "available"
+    NOT_CONFIGURED = "not_configured"
+    CONFIGURED = "configured"
+    CONNECTING = "connecting"
+    CONNECTED = "connected"
+    DEGRADED = "degraded"
     UNAVAILABLE = "unavailable"
+    AUTH_FAILED = "auth_failed"
+    RATE_LIMITED = "rate_limited"
+    TIMED_OUT = "timed_out"
+    MISCONFIGURED = "misconfigured"
     ERROR = "error"
+    AVAILABLE = "available"
 
 
 @dataclass(frozen=True)

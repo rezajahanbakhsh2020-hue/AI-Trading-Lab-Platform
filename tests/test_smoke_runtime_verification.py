@@ -8,6 +8,7 @@ Exercises actual deployed application server paths in production mode:
 - SPA Static Asset Serving & Path Traversal Security Verification
 - Authentication Gate (/api/v1/auth/login, /validate, /logout)
 - User Isolated Workspace Persistence (/api/v1/workspace)
+- Execution Gateway Boundary & Order Intent REST API (/api/v1/execution/*)
 - Operational Recovery Diagnostics (/api/v1/operational/recovery)
 - Graceful Server Shutdown
 """
@@ -203,7 +204,18 @@ def test_smoke_auth_workspace_and_recovery_flow(running_prod_server):
         assert ws_payload["success"] is True
         assert ws_payload["workspace"]["user_id"] == "smoke_cust"
 
-    # 5. Customer attempting recovery endpoint raises 403 Forbidden
+    # 5. Access Execution Gateway boundary status in production
+    req_exec_bound = urllib.request.Request(
+        f"{base_url}/api/v1/execution/boundary",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    with urllib.request.urlopen(req_exec_bound) as resp_eb:
+        assert resp_eb.status == 200
+        eb_payload = json.loads(resp_eb.read().decode("utf-8"))
+        assert eb_payload["success"] is True
+        assert eb_payload["boundary"]["allows_execution"] is False
+
+    # 6. Customer attempting recovery endpoint raises 403 Forbidden
     req_rec = urllib.request.Request(
         f"{base_url}/api/v1/operational/recovery",
         headers={"Authorization": f"Bearer {token}"},
@@ -212,7 +224,7 @@ def test_smoke_auth_workspace_and_recovery_flow(running_prod_server):
         urllib.request.urlopen(req_rec)
     assert exc_info.value.code == 403
 
-    # 6. Admin accesses recovery endpoint successfully
+    # 7. Admin accesses recovery endpoint successfully
     req_admin_rec = urllib.request.Request(
         f"{base_url}/api/v1/operational/recovery",
         headers={"Authorization": f"Bearer {adm_token}"},

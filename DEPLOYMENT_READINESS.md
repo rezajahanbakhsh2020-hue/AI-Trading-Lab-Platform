@@ -187,3 +187,25 @@ The platform embeds TradingView Lightweight Charts (`lightweight-charts` v5.2.1,
 - **Read-Only Level Rendering:** Entry, Stop Loss (SL), and Take Profit (TP1, TP2, TP3) levels from authorized Project 1 contracts are rendered as styled price lines (`createPriceLine`).
 - **Signal Event Markers:** Project 1 signal actions are rendered as explicit arrow markers (`createSeriesMarkers`).
 - **Strict Non-Calculation Contract:** Project 2 NEVER calculates, alters, infers, or replaces Project 1 strategy outputs or price levels.
+
+---
+
+## 10. Execution Gateway & Order Intent Persistence Layer
+
+The platform provides persistent storage and authenticated REST endpoints for managing Order Intents and Execution Gateway operations.
+
+### Order Intent Persistence Architecture
+- **Persistent Storage Adapter (`FileBackedOrderIntentRepository`):** OrderIntents are stored on disk (`data/order_intents.json`) across process restarts with schema versioning (`1.0`), corrupt backup recovery (`.corrupt`), user/tenant isolation, and idempotency key mapping.
+- **Atomic File Writes:** Writes use temporary file staging and atomic OS replacements to prevent data corruption during unexpected server shutdowns.
+
+### Execution Gateway REST API Endpoints
+- **List Order Intents (`GET /api/v1/execution/intents`):** Authenticates the requester and returns user-isolated OrderIntents with execution attempt history and reconciliation status.
+- **Update Intent Lifecycle (`POST /api/v1/execution/intent/update`):** Transitions order intent lifecycle state (`CANCELLED`, `EXPIRED`, `REJECTED`) with audit control logging and legal state transition enforcement.
+- **Request Execution (`POST /api/v1/execution/request`):** Submits staged order intents to the execution boundary adapter with idempotency guarantees.
+- **Reconcile Execution (`POST /api/v1/execution/reconcile`):** Evaluates operational reconciliation between internal order intent evidence and external evidence ports.
+- **Execution Attempts History (`GET /api/v1/execution/attempts`):** Retrieves execution attempt history for a specific order intent ID.
+- **Boundary Capabilities & Status (`GET /api/v1/execution/boundary`):** Exposes boundary configuration, capability status, and monitoring summary.
+
+### Operational Safety & Non-Execution Contract
+- **Fail-Closed Execution Boundary:** `externally_executed=False` is permanently enforced across all execution attempts and reconciliation records.
+- **Zero False Execution Claims:** Project 2 never claims broker order routing, fills, or position creation.

@@ -75,14 +75,38 @@ In production (`APP_ENV=production`), missing critical secrets or unprovisioned 
 
 ---
 
-## 5. Operational Health & Diagnostics
+## 5. Operational Health, Readiness States & Diagnostics
 
 Distinct liveness and readiness probes are exposed via `src/platform/server.py`:
 
 - **Liveness Endpoint (`/health/liveness`):** Confirms process execution health (`200 OK`).
-- **Readiness Endpoint (`/health/readiness`):** Verifies configuration validity, provider health, and persistence storage integrity (`200 OK` or `503 Service Unavailable`).
-- **Diagnostics Endpoint (`/api/v1/diagnostics`):** Exposes safe operational diagnostics.
+- **Readiness Endpoint (`/health/readiness`):** Performs deep evaluation across subsystems (`200 OK` or `503 Service Unavailable`).
+- **Subsystem State Classifications:**
+  - `HEALTHY`: Subsystem is fully operational and configured.
+  - `DEGRADED`: Non-critical subsystem issue present, but overall platform remains functional.
+  - `UNAVAILABLE`: Critical subsystem component failure rendering service unusable.
+  - `NOT_CONFIGURED`: Optional integration or credential not provisioned (e.g. Project 1 Gateway or Telegram bot tokens).
+- **Diagnostics Endpoint (`/api/v1/diagnostics`):** Exposes safe operational diagnostics with secret redaction.
 - **Request Correlation:** Generates unique request correlation identifiers (`req_<hex>`) for audit tracking.
+
+---
+
+## 5.1 Real Smoke & End-to-End Verification
+
+Automated production smoke verification can be executed at any time using:
+
+```bash
+PYTHONPATH=. pytest tests/test_smoke_runtime_verification.py
+```
+
+The smoke test suite verifies:
+1. Application startup under `APP_ENV=production`.
+2. Liveness (`/health/liveness`) and HSTS/Security headers.
+3. Deep readiness probe (`/health/readiness`) and subsystem health state classification.
+4. Operational diagnostics (`/api/v1/diagnostics`) secret redaction.
+5. Production SPA static asset serving (`web/dist`) and directory traversal attack defense (`/../../../../etc/passwd`).
+6. End-to-end authentication, RBAC authorization, customer workspace persistence (`/api/v1/workspace`), and recovery diagnostics (`/api/v1/operational/recovery`).
+7. Signal-handled graceful server shutdown (`SIGTERM` / `SIGINT`).
 
 ---
 

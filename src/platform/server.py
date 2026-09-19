@@ -10,7 +10,9 @@ import json
 import logging
 import mimetypes
 import os
+import signal
 import sys
+import time
 from typing import Any, Dict, Optional, Tuple
 import urllib.parse
 
@@ -834,10 +836,11 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
             return
 
         rel_path = path.lstrip("/")
-        target_path = os.path.normpath(os.path.join(self.static_dir, rel_path))
+        abs_static_dir = os.path.abspath(self.static_dir)
+        target_path = os.path.abspath(os.path.join(abs_static_dir, rel_path))
 
         # Prevent directory traversal
-        if not target_path.startswith(os.path.abspath(self.static_dir)):
+        if not target_path.startswith(abs_static_dir):
             self._send_error_response(403, "Forbidden", "Access denied.", "Request valid path.", origin=origin)
             return
 
@@ -956,10 +959,21 @@ def main() -> None:
     try:
         cfg = PlatformConfig.load_from_env()
         server = create_server(host=host, port=port, config=cfg)
+
+        def _handle_shutdown(signum: int, frame: Any) -> None:
+            sig_name = signal.Signals(signum).name
+            logger.info("Received signal %s (%d). Initiating graceful server shutdown...", sig_name, signum)
+            threading.Thread(target=server.shutdown, daemon=True).start()
+
+        signal.signal(signal.SIGTERM, _handle_shutdown)
+        signal.signal(signal.SIGINT, _handle_shutdown)
+
         logger.info("AI-Trading-Lab-Platform server running on http://%s:%d (env: %s)", host, port, cfg.app_env)
         server.serve_forever()
+        server.server_close()
+        logger.info("AI-Trading-Lab-Platform server stopped cleanly.")
     except KeyboardInterrupt:
-        logger.info("Server shutting down cleanly.")
+        logger.info("Server shutting down cleanly via KeyboardInterrupt.")
         sys.exit(0)
     except Exception as exc:
         logger.critical("Fatal server startup failure: %s", str(exc), exc_info=True)

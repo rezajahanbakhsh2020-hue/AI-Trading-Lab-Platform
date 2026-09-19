@@ -247,6 +247,7 @@ function DashboardPage({
           entryPrice={snapshot.risk.entry}
           stopLossPrice={snapshot.risk.stopLoss}
           takeProfits={snapshot.risk.takeProfits}
+          signalAction={snapshot.signal.action}
           isProviderConnected={snapshot.project1.connected && snapshot.market.status === "connected"}
           onTimeframeChange={onSelectTimeframe}
           onRefresh={onSync}
@@ -386,6 +387,7 @@ function MarketsPage({
           entryPrice={currentSymbol === snapshot.market.symbol ? snapshot.risk.entry : null}
           stopLossPrice={currentSymbol === snapshot.market.symbol ? snapshot.risk.stopLoss : null}
           takeProfits={currentSymbol === snapshot.market.symbol ? snapshot.risk.takeProfits : []}
+          signalAction={currentSymbol === snapshot.market.symbol ? snapshot.signal.action : null}
           isProviderConnected={snapshot.project1.connected && isMarketConnected}
           onTimeframeChange={onSelectTimeframe}
           onRefresh={onRefresh}

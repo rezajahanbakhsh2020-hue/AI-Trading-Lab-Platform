@@ -34,12 +34,14 @@ class OrderIntentService:
         security_boundary: Optional[SecurityBoundaryService] = None,
         audit_control: Optional[PlatformAuditControlService] = None,
         repository: Optional[OrderIntentRepositoryPort] = None,
+        notification_service: Optional[Any] = None,
     ) -> None:
         self.security_boundary = security_boundary or SecurityBoundaryService()
         self.audit_control = audit_control or PlatformAuditControlService(
             security_boundary=self.security_boundary
         )
         self.repository = repository
+        self.notification_service = notification_service
         # Store in-memory indexed by order_intent_id
         self._intents_by_id: Dict[str, OrderIntent] = {}
         # Store idempotency map: (user_id, idempotency_key) -> order_intent_id
@@ -228,6 +230,34 @@ class OrderIntentService:
             },
         )
 
+        # 7. Dispatch canonical notification event
+        if self.notification_service is not None:
+            try:
+                from src.platform.domain.notification import (
+                    NotificationCategory,
+                    NotificationEvent,
+                    NotificationSeverity,
+                )
+                evt = NotificationEvent(
+                    event_id=f"evt_order_staged_{intent.order_intent_id}",
+                    event_type="ORDER_INTENT_STAGED",
+                    category=NotificationCategory.SIGNAL_LIFECYCLE,
+                    severity=NotificationSeverity.INFO,
+                    title=f"Order Intent Staged ({intent.symbol})",
+                    message=f"Order intent staged for {intent.symbol} ({intent.direction.upper()}) at price {intent.requested_price or 'Market'}.",
+                    timestamp=intent.creation_timestamp,
+                    target_user_id=intent.user_id,
+                    payload={
+                        "order_intent_id": intent.order_intent_id,
+                        "symbol": intent.symbol,
+                        "direction": intent.direction,
+                        "lifecycle_state": intent.lifecycle_state.value,
+                    },
+                )
+                self.notification_service.create_notification_from_event(evt)
+            except Exception:
+                pass
+
         return True, "Order intent staged successfully", intent
 
     def transition_order_intent_state(
@@ -323,6 +353,39 @@ class OrderIntentService:
             resource_id=clean_id,
             details=f"Order intent state transitioned to {target_state.value}. {reason or ''}".strip(),
         )
+
+        # Dispatch canonical notification event
+        if self.notification_service is not None:
+            try:
+                from src.platform.domain.notification import (
+                    NotificationCategory,
+                    NotificationEvent,
+                    NotificationSeverity,
+                )
+                sev = (
+                    NotificationSeverity.WARNING
+                    if target_state in (OrderLifecycleState.CANCELLED, OrderLifecycleState.REJECTED)
+                    else NotificationSeverity.INFO
+                )
+                evt = NotificationEvent(
+                    event_id=f"evt_order_{target_state.value.lower()}_{updated_intent.order_intent_id}_{int(time.time())}",
+                    event_type=f"ORDER_INTENT_{target_state.value}",
+                    category=NotificationCategory.SIGNAL_LIFECYCLE,
+                    severity=sev,
+                    title=f"Order Intent {target_state.value.capitalize()} ({updated_intent.symbol})",
+                    message=f"Order intent '{updated_intent.order_intent_id}' transitioned to {target_state.value}. {reason or ''}".strip(),
+                    timestamp=time.time(),
+                    target_user_id=updated_intent.user_id,
+                    payload={
+                        "order_intent_id": updated_intent.order_intent_id,
+                        "symbol": updated_intent.symbol,
+                        "lifecycle_state": updated_intent.lifecycle_state.value,
+                        "reason": reason,
+                    },
+                )
+                self.notification_service.create_notification_from_event(evt)
+            except Exception:
+                pass
 
         return True, f"Order intent state transitioned to {target_state.value}", updated_intent
 

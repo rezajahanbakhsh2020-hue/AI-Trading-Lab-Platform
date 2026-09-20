@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Route, Routes } from "react-router-dom";
+import { Route, Routes, useNavigate } from "react-router-dom";
 import { HostPage } from "./HostPage";
 import { TopBar } from "./components/TopBar";
 import { DesktopSidebar } from "./components/DesktopSidebar";
@@ -23,6 +23,11 @@ import {
   fetchMarketQuote,
 } from "../architecture/marketData";
 import {
+  requestExecutionApi,
+  updateOrderIntentStateApi,
+} from "../architecture/executionGateway";
+import type { OrderIntentPayload, OrderLifecycleState } from "../architecture/orderIntent";
+import {
   loadUserNotifications,
   syncNotificationsFromHostSnapshot,
   countUnreadNotifications,
@@ -36,6 +41,7 @@ import {
 } from "../architecture/userAuth";
 
 export function App() {
+  const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -43,6 +49,7 @@ export function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState("XAUUSD");
   const [selectedTimeframe, setSelectedTimeframe] = useState("1h");
+  const [stagedIntents, setStagedIntents] = useState<OrderIntentPayload[]>([]);
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -107,7 +114,7 @@ export function App() {
         lastFetchedAt: null,
       };
 
-  const snapshot = isConnected
+  const baseSnapshot = isConnected
     ? createHostSnapshotFromProject1(
         SAMPLE_CONNECTED_PORT,
         SAMPLE_REAL_PROJECT1_SIGNAL,
@@ -116,6 +123,18 @@ export function App() {
         marketState
       )
     : createDisconnectedHostSnapshot(selectedSymbol, selectedTimeframe);
+
+  const snapshot = {
+    ...baseSnapshot,
+    orderIntents: stagedIntents.length > 0
+      ? [
+          ...stagedIntents,
+          ...(baseSnapshot.orderIntents || []).filter(
+            (b) => !stagedIntents.some((s) => s.order_intent_id === b.order_intent_id)
+          ),
+        ]
+      : baseSnapshot.orderIntents,
+  };
 
   // Apply authenticated security state override if user is logged in
   if (authState.isLoggedIn && authState.userAccount) {
@@ -149,6 +168,84 @@ export function App() {
 
   const handleSelectSymbol = (symbol: string) => {
     setSelectedSymbol(symbol);
+  };
+
+  const handleStageOrderIntent = () => {
+    const sig = snapshot.signal;
+    const isBuy = (sig.action || "BUY").toUpperCase() === "BUY";
+    const intentId = `ord_intent_${sig.signalId || "staged_" + Date.now()}`;
+    const newIntent: OrderIntentPayload = {
+      order_intent_id: intentId,
+      authorization_id: `auth_${Date.now()}_${sig.strategyName || "Project1"}`,
+      user_id: snapshot.security?.userId || "guest_user",
+      symbol: selectedSymbol,
+      direction: isBuy ? "buy" : "sell",
+      order_type: "market",
+      requested_price: snapshot.risk.entry ?? null,
+      requested_quantity: 1.0,
+      stop_loss: snapshot.risk.stopLoss ?? null,
+      take_profit_1: snapshot.risk.takeProfits[0] ?? null,
+      take_profit_2: snapshot.risk.takeProfits[1] ?? null,
+      take_profit_3: snapshot.risk.takeProfits[2] ?? null,
+      time_in_force: "GTC",
+      idempotency_key: `idemp_${selectedSymbol.toLowerCase()}_${Date.now()}`,
+      creation_timestamp: Math.floor(Date.now() / 1000),
+      lifecycle_state: "STAGED",
+      is_staged: true,
+      is_terminal: false,
+    };
+
+    setStagedIntents((prev) => {
+      const exists = prev.some((i) => i.order_intent_id === newIntent.order_intent_id);
+      if (exists) return prev;
+      return [newIntent, ...prev];
+    });
+
+    navigate("/intents");
+  };
+
+  const handleTransitionIntent = async (
+    intentId: string,
+    targetState: OrderLifecycleState,
+    reason?: string
+  ) => {
+    const token = authState.sessionToken;
+    if (token) {
+      await updateOrderIntentStateApi(intentId, targetState, reason, token);
+    }
+    setStagedIntents((prev) =>
+      prev.map((i) =>
+        i.order_intent_id === intentId
+          ? {
+              ...i,
+              lifecycle_state: targetState,
+              is_staged: false,
+              is_terminal: true,
+              rejection_reason: reason || i.rejection_reason,
+            }
+          : i
+      )
+    );
+  };
+
+  const handleRequestExecution = async (intentId: string) => {
+    const token = authState.sessionToken;
+    const res = await requestExecutionApi(intentId, token);
+    if (res && res.attempt) {
+      setStagedIntents((prev) =>
+        prev.map((i) => {
+          if (i.order_intent_id === intentId) {
+            const attempts = i.execution_attempts ? [...i.execution_attempts] : [];
+            attempts.unshift(res.attempt!);
+            return {
+              ...i,
+              execution_attempts: attempts,
+            };
+          }
+          return i;
+        })
+      );
+    }
   };
 
   const handleSelectTimeframe = (tf: string) => {
@@ -208,6 +305,9 @@ export function App() {
                   onToggleConnection={handleToggleConnection}
                   onSelectSymbol={handleSelectSymbol}
                   onSelectTimeframe={handleSelectTimeframe}
+                  onStageOrderIntent={handleStageOrderIntent}
+                  onTransitionIntent={handleTransitionIntent}
+                  onRequestExecution={handleRequestExecution}
                 />
               }
             />
@@ -223,6 +323,9 @@ export function App() {
                 onToggleConnection={handleToggleConnection}
                 onSelectSymbol={handleSelectSymbol}
                 onSelectTimeframe={handleSelectTimeframe}
+                onStageOrderIntent={handleStageOrderIntent}
+                onTransitionIntent={handleTransitionIntent}
+                onRequestExecution={handleRequestExecution}
               />
             }
           />
@@ -236,6 +339,9 @@ export function App() {
                 onToggleConnection={handleToggleConnection}
                 onSelectSymbol={handleSelectSymbol}
                 onSelectTimeframe={handleSelectTimeframe}
+                onStageOrderIntent={handleStageOrderIntent}
+                onTransitionIntent={handleTransitionIntent}
+                onRequestExecution={handleRequestExecution}
               />
             }
           />
@@ -249,6 +355,9 @@ export function App() {
                 onToggleConnection={handleToggleConnection}
                 onSelectSymbol={handleSelectSymbol}
                 onSelectTimeframe={handleSelectTimeframe}
+                onStageOrderIntent={handleStageOrderIntent}
+                onTransitionIntent={handleTransitionIntent}
+                onRequestExecution={handleRequestExecution}
               />
             }
           />
@@ -262,6 +371,9 @@ export function App() {
                 onToggleConnection={handleToggleConnection}
                 onSelectSymbol={handleSelectSymbol}
                 onSelectTimeframe={handleSelectTimeframe}
+                onStageOrderIntent={handleStageOrderIntent}
+                onTransitionIntent={handleTransitionIntent}
+                onRequestExecution={handleRequestExecution}
               />
             }
           />

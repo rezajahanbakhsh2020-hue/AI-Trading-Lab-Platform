@@ -47,14 +47,17 @@ class ExecutionGatewayService:
         reconciliation_port: Optional[ExecutionReconciliationPort] = None,
         security_boundary: Optional[SecurityBoundaryService] = None,
         audit_control: Optional[PlatformAuditControlService] = None,
+        notification_service: Optional[Any] = None,
     ) -> None:
         self.security_boundary = security_boundary or SecurityBoundaryService()
         self.audit_control = audit_control or PlatformAuditControlService(
             security_boundary=self.security_boundary
         )
+        self.notification_service = notification_service
         self.order_intent_service = order_intent_service or OrderIntentService(
             security_boundary=self.security_boundary,
             audit_control=self.audit_control,
+            notification_service=self.notification_service,
         )
         self.execution_port = execution_port or UnavailableExecutionAdapter()
         self.reconciliation_port = reconciliation_port or UnavailableExecutionReconciliationAdapter()
@@ -279,6 +282,35 @@ class ExecutionGatewayService:
                 "order_type": cmd.order_type,
             },
         )
+
+        # 8. Dispatch canonical notification event
+        if self.notification_service is not None:
+            try:
+                from src.platform.domain.notification import (
+                    NotificationCategory,
+                    NotificationEvent,
+                    NotificationSeverity,
+                )
+                evt = NotificationEvent(
+                    event_id=f"evt_exec_req_{order_intent_id}_{int(ts)}",
+                    event_type=f"EXECUTION_BOUNDARY_{result.status.value}",
+                    category=NotificationCategory.SIGNAL_LIFECYCLE,
+                    severity=NotificationSeverity.INFO if result.success else NotificationSeverity.WARNING,
+                    title=f"Execution Request ({intent.symbol})",
+                    message=f"Submitted execution request for order intent '{order_intent_id}'. Boundary status: {result.status.value}.",
+                    timestamp=ts,
+                    target_user_id=user.user_id,
+                    payload={
+                        "order_intent_id": order_intent_id,
+                        "symbol": intent.symbol,
+                        "status": result.status.value,
+                        "reason": result.reason,
+                        "externally_executed": result.externally_executed,
+                    },
+                )
+                self.notification_service.create_notification_from_event(evt)
+            except Exception:
+                pass
 
         return result
 

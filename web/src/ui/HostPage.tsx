@@ -39,6 +39,13 @@ type HostPageProps = {
   onToggleConnection?: () => void;
   onSelectSymbol?: (symbol: string) => void;
   onSelectTimeframe?: (tf: string) => void;
+  onStageOrderIntent?: () => void;
+  onTransitionIntent?: (
+    intentId: string,
+    targetState: any,
+    reason?: string
+  ) => void;
+  onRequestExecution?: (intentId: string) => void;
 };
 
 function MetricCard({
@@ -73,6 +80,9 @@ export function HostPage({
   onToggleConnection,
   onSelectSymbol,
   onSelectTimeframe,
+  onStageOrderIntent,
+  onTransitionIntent,
+  onRequestExecution,
 }: HostPageProps) {
   const { t } = useI18n();
 
@@ -132,6 +142,7 @@ export function HostPage({
           onSync={onSync}
           onSelectSymbol={onSelectSymbol}
           onSelectTimeframe={onSelectTimeframe}
+          onStageOrderIntent={onStageOrderIntent}
         />
       )}
       {normalizedPageId === "timeline" && (
@@ -141,6 +152,7 @@ export function HostPage({
         <IntelligenceWorkspace
           snapshot={snapshot}
           onSelectSymbol={onSelectSymbol}
+          onStageOrderIntent={onStageOrderIntent}
         />
       )}
       {(normalizedPageId === "markets" || pageId === "market") && (
@@ -154,7 +166,13 @@ export function HostPage({
       {normalizedPageId === "watchlist" && (
         <WatchlistPage snapshot={snapshot} onSelectSymbol={onSelectSymbol} />
       )}
-      {normalizedPageId === "signals" && <SignalsPage snapshot={snapshot} onSync={onSync} />}
+      {normalizedPageId === "signals" && (
+        <SignalsPage
+          snapshot={snapshot}
+          onSync={onSync}
+          onStageOrderIntent={onStageOrderIntent}
+        />
+      )}
       {(normalizedPageId === "strategies" || pageId === "strategy") && (
         <StrategiesPage snapshot={snapshot} />
       )}
@@ -162,7 +180,13 @@ export function HostPage({
       {normalizedPageId === "performance" && <PerformancePage snapshot={snapshot} />}
       {normalizedPageId === "risk" && <RiskPage snapshot={snapshot} />}
       {normalizedPageId === "audit" && <OperationalControlCenter snapshot={snapshot} />}
-      {normalizedPageId === "intents" && <OrderIntentViewer snapshot={snapshot} />}
+      {normalizedPageId === "intents" && (
+        <OrderIntentViewer
+          snapshot={snapshot}
+          onTransitionIntent={onTransitionIntent}
+          onRequestExecution={onRequestExecution}
+        />
+      )}
       {normalizedPageId === "users" && <UserManagementCenter snapshot={snapshot} />}
       {normalizedPageId === "health" && <HealthCenter snapshot={snapshot} onRefresh={onSync} />}
       {normalizedPageId === "monitoring" && <MonitoringPage snapshot={snapshot} />}
@@ -198,11 +222,13 @@ function DashboardPage({
   onSync,
   onSelectSymbol,
   onSelectTimeframe,
+  onStageOrderIntent,
 }: {
   snapshot: HostSnapshot;
   onSync?: () => void;
   onSelectSymbol?: (symbol: string) => void;
   onSelectTimeframe?: (tf: string) => void;
+  onStageOrderIntent?: () => void;
 }) {
   const { t } = useI18n();
   const quote = snapshot.market.quote;
@@ -255,7 +281,7 @@ function DashboardPage({
           onRefresh={onSync}
         />
 
-        <SignalCard snapshot={snapshot} onSync={onSync} />
+        <SignalCard snapshot={snapshot} onSync={onSync} onStageOrderIntent={onStageOrderIntent} />
       </div>
 
       <div className="grid cols-2" style={{ marginTop: 16 }}>
@@ -419,10 +445,18 @@ function WatchlistPage({
   );
 }
 
-function SignalsPage({ snapshot, onSync }: { snapshot: HostSnapshot; onSync?: () => void }) {
+function SignalsPage({
+  snapshot,
+  onSync,
+  onStageOrderIntent,
+}: {
+  snapshot: HostSnapshot;
+  onSync?: () => void;
+  onStageOrderIntent?: () => void;
+}) {
   return (
     <div className="signals-view space-y-6">
-      <SignalCard snapshot={snapshot} onSync={onSync} />
+      <SignalCard snapshot={snapshot} onSync={onSync} onStageOrderIntent={onStageOrderIntent} />
       <SignalDeliveryCenter snapshot={snapshot} />
     </div>
   );

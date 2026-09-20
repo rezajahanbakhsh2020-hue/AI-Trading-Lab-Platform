@@ -1525,11 +1525,13 @@ def create_server(
         security_boundary=security_service,
         audit_control=audit_control_service,
         repository=order_intent_repo,
+        notification_service=notification_service,
     )
     execution_gateway_service = ExecutionGatewayService(
         order_intent_service=order_intent_service,
         security_boundary=security_service,
         audit_control=audit_control_service,
+        notification_service=notification_service,
     )
 
     # Initialize Provider Infrastructure

@@ -124,12 +124,12 @@ export function HostPage({
           <h2>{copyTitle}</h2>
           <p className="lede">{copySummary}</p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {onToggleConnection && (
             <button
               className={`btn ${snapshot.project1.connected ? "btn-secondary" : "btn-primary"}`}
               onClick={onToggleConnection}
-              style={{ fontSize: 13, padding: "6px 12px" }}
+              style={{ fontSize: 12, padding: "6px 10px", minHeight: 38 }}
             >
               {snapshot.project1.connected
                 ? t("buttons.useDisconnectedAdapter")

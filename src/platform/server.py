@@ -44,6 +44,7 @@ from src.platform.providers.biquote import BiQuoteProvider
 from src.platform.providers.biquote_quote import BiQuoteQuoteProvider
 from src.platform.services.provider_registry import ProviderRegistry
 from src.platform.services.provider_access import ProviderAccess
+from src.platform.services.provider_inspection import ProviderInspectionService
 from src.platform.services.provider_operations import ProviderOperations, InvalidOperationError, ProviderOperationFailure
 from src.platform.services.market_overview import MarketOverviewService
 
@@ -69,6 +70,7 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
     persistence_recovery_engine: PersistenceRecoveryEngine
     provider_registry: ProviderRegistry
     provider_access: ProviderAccess
+    provider_inspection_service: ProviderInspectionService
     provider_operations: ProviderOperations
     market_overview_service: MarketOverviewService
     static_dir: str
@@ -363,11 +365,57 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                 )
                 return
 
-            if path == "/api/v1/providers":
+            if path in ("/api/v1/providers", "/api/v1/providers/inspect"):
                 token = self._extract_bearer_token()
                 user = None
                 if token:
                     _, user = self.server_user_auth_service.validate_session_token(token)
+
+                if path == "/api/v1/providers/inspect":
+                    if not user:
+                        self._send_error_response(
+                            401,
+                            "Unauthorized Access",
+                            "Provider inspection requires authenticated user session token.",
+                            "Provide a valid bearer token in Authorization header.",
+                            origin=origin,
+                        )
+                        return
+
+                    query_params = urllib.parse.parse_qs(parsed_url.query)
+                    category = query_params.get("category", [None])[0]
+                    provider_id = query_params.get("provider_id", [None])[0]
+
+                    try:
+                        if category and provider_id:
+                            inspection = self.provider_inspection_service.inspect(category, provider_id)
+                            inspections_payload = [inspection.to_dict()]
+                        else:
+                            all_inspections = self.provider_inspection_service.inspect_all()
+                            if category:
+                                inspections_payload = [ins.to_dict() for ins in all_inspections if ins.category == category]
+                            else:
+                                inspections_payload = [ins.to_dict() for ins in all_inspections]
+
+                        sanitized_inspections = SecretSanitizer.sanitize_data(inspections_payload)
+                        self._send_json_response(
+                            200,
+                            {
+                                "success": True,
+                                "inspections": sanitized_inspections,
+                            },
+                            origin=origin,
+                        )
+                        return
+                    except Exception as err:
+                        self._send_error_response(
+                            400,
+                            "Provider Inspection Failed",
+                            str(err),
+                            "Verify provider category and provider_id parameters.",
+                            origin=origin,
+                        )
+                        return
 
                 records = self.provider_access.list_providers()
                 self._send_json_response(
@@ -1469,6 +1517,7 @@ def create_server(
     provider_registry.register(provider_id="biquote", category="quote", provider=biquote_quote)
 
     provider_access = ProviderAccess(registry=provider_registry)
+    provider_inspection_service = ProviderInspectionService(access=provider_access)
     provider_operations = ProviderOperations(access=provider_access)
     market_overview_service = MarketOverviewService(operations=provider_operations)
 
@@ -1514,6 +1563,7 @@ def create_server(
     CustomHandler.persistence_recovery_engine = persistence_recovery_engine
     CustomHandler.provider_registry = provider_registry
     CustomHandler.provider_access = provider_access
+    CustomHandler.provider_inspection_service = provider_inspection_service
     CustomHandler.provider_operations = provider_operations
     CustomHandler.market_overview_service = market_overview_service
     CustomHandler.static_dir = resolved_static_dir

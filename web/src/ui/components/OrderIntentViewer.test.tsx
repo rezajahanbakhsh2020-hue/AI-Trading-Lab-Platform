@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { describe, expect, it, vi, afterEach } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { OrderIntentViewer } from "./OrderIntentViewer";
 import { createHostSnapshotFromProject1, SAMPLE_CONNECTED_PORT, SAMPLE_REAL_PROJECT1_SIGNAL } from "../../architecture/hostView";
 import { I18nProvider } from "../../i18n";
@@ -18,9 +19,11 @@ describe("OrderIntentViewer component", () => {
 
   it("renders non-execution disclosure banner and staged intent cards", () => {
     render(
-      <I18nProvider>
-        <OrderIntentViewer snapshot={snapshot} />
-      </I18nProvider>
+      <MemoryRouter>
+        <I18nProvider>
+          <OrderIntentViewer snapshot={snapshot} />
+        </I18nProvider>
+      </MemoryRouter>
     );
 
     expect(screen.getByText(/Non-Execution Disclosure/i)).not.toBeNull();
@@ -31,9 +34,11 @@ describe("OrderIntentViewer component", () => {
 
   it("filters order intents by symbol query", () => {
     render(
-      <I18nProvider>
-        <OrderIntentViewer snapshot={snapshot} />
-      </I18nProvider>
+      <MemoryRouter>
+        <I18nProvider>
+          <OrderIntentViewer snapshot={snapshot} />
+        </I18nProvider>
+      </MemoryRouter>
     );
 
     const searchInput = screen.getByPlaceholderText(/Search intents by symbol/i);
@@ -47,9 +52,11 @@ describe("OrderIntentViewer component", () => {
     window.prompt = vi.fn().mockReturnValue("User requested cancellation");
 
     render(
-      <I18nProvider>
-        <OrderIntentViewer snapshot={snapshot} onTransitionIntent={handleTransition} />
-      </I18nProvider>
+      <MemoryRouter>
+        <I18nProvider>
+          <OrderIntentViewer snapshot={snapshot} onTransitionIntent={handleTransition} />
+        </I18nProvider>
+      </MemoryRouter>
     );
 
     const cancelButtons = screen.getAllByText("Cancel Intent");
@@ -86,9 +93,11 @@ describe("OrderIntentViewer component", () => {
     };
 
     render(
-      <I18nProvider>
-        <OrderIntentViewer snapshot={snapWithRec} onRequestExecution={handleRequestExecution} />
-      </I18nProvider>
+      <MemoryRouter>
+        <I18nProvider>
+          <OrderIntentViewer snapshot={snapWithRec} onRequestExecution={handleRequestExecution} />
+        </I18nProvider>
+      </MemoryRouter>
     );
 
     expect(screen.getByText(/Operational Execution Reconciliation/i)).not.toBeNull();

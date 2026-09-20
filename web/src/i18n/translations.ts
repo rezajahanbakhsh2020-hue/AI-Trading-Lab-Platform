@@ -128,6 +128,7 @@ export const enTranslations = {
     port: "Port",
     actionState: "Action State",
     inactiveMessage: "Inactive until Project 1 evaluates strategy conditions.",
+    stageOrderIntentAction: "Stage Order Intent",
   },
   risk: {
     tradeRiskBreakdown: "Trade Risk Breakdown",
@@ -429,6 +430,9 @@ export const enTranslations = {
     monitoredIntents: "Monitored Intents",
     filterReconciliation: "Filter Reconciliation",
     allReconciliations: "All Reconciliation States",
+    navToRisk: "View Risk & Performance",
+    navToNotifications: "View Notification Logs",
+    navToHealth: "System Health & Providers",
   },
   settings: {
     title: "Settings & Profile",
@@ -714,6 +718,7 @@ export const faTranslations: TranslationKeys = {
     port: "پورت",
     actionState: "وضعیت اقدام",
     inactiveMessage: "غیرفعال تا زمانی که پروژه ۱ شرایط استراتژی را ارزیابی کند.",
+    stageOrderIntentAction: "مرحله‌بندی سفارش",
   },
   risk: {
     tradeRiskBreakdown: "جزئیات ریسک معامله",
@@ -1015,6 +1020,9 @@ export const faTranslations: TranslationKeys = {
     monitoredIntents: "قصد سفارش پایش شده",
     filterReconciliation: "فیلتر تطبیق",
     allReconciliations: "همه وضعیت‌های تطبیق",
+    navToRisk: "مشاهده مدیریت ریسک و عملکرد",
+    navToNotifications: "مشاهده اعلان‌ها و لاگ‌ها",
+    navToHealth: "سلامت سیستم و تامین‌کنندگان",
   },
   settings: {
     title: "تنظیمات و پروفایل",
@@ -1298,6 +1306,7 @@ export const arTranslations: TranslationKeys = {
     port: "المنفذ",
     actionState: "حالة الإجراء",
     inactiveMessage: "غير نشط حتى يقوم المشروع 1 بتقييم شروط الاستراتيجية.",
+    stageOrderIntentAction: "مرحلة نية الأمر",
   },
   risk: {
     tradeRiskBreakdown: "تفاصيل مخاطر الصفقة",
@@ -1599,6 +1608,9 @@ export const arTranslations: TranslationKeys = {
     monitoredIntents: "أوامر النية المراقبة",
     filterReconciliation: "تصفية المطابقة",
     allReconciliations: "جميع حالات المطابقة",
+    navToRisk: "عرض إدارة المخاطر والأداء",
+    navToNotifications: "عرض الإشعارات والسجلات",
+    navToHealth: "صحة النظام والمزودين",
   },
   settings: {
     title: "الإعدادات والملف الشخصي",
@@ -1882,6 +1894,7 @@ export const trTranslations: TranslationKeys = {
     port: "Port",
     actionState: "Eylem Durumu",
     inactiveMessage: "Proje 1 strateji koşullarını değerlendirene kadar pasif.",
+    stageOrderIntentAction: "Emir Niyeti Aşamalandır",
   },
   risk: {
     tradeRiskBreakdown: "İşlem Risk Dağılımı",
@@ -2183,6 +2196,9 @@ export const trTranslations: TranslationKeys = {
     monitoredIntents: "İzlenen Emir Niyetleri",
     filterReconciliation: "Mutabakat Filtresi",
     allReconciliations: "Tüm Mutabakat Durumları",
+    navToRisk: "Risk ve Performansı Görüntüle",
+    navToNotifications: "Bildirim Günlüklerini Görüntüle",
+    navToHealth: "Sistem Sağlığı ve Sağlayıcılar",
   },
   settings: {
     title: "Ayarlar & Profil",

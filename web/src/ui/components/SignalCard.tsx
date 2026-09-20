@@ -4,9 +4,10 @@ import { useI18n } from "../../i18n";
 type SignalCardProps = {
   snapshot: HostSnapshot;
   onSync?: () => void;
+  onStageOrderIntent?: () => void;
 };
 
-export function SignalCard({ snapshot, onSync }: SignalCardProps) {
+export function SignalCard({ snapshot, onSync, onStageOrderIntent }: SignalCardProps) {
   const signal = snapshot.signal;
   const isConnected = snapshot.project1.connected;
   const { t, formatPercent, formatDate } = useI18n();
@@ -145,8 +146,19 @@ export function SignalCard({ snapshot, onSync }: SignalCardProps) {
               </div>
             </div>
 
-            <div className="hint" style={{ marginTop: 12, fontSize: 11 }}>
-              {t("signal.adapter")}: {snapshot.project1.adapterName} | {t("signal.port")}: {snapshot.project1.port}
+            <div style={{ marginTop: 16, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span className="hint" style={{ fontSize: 11 }}>
+                {t("signal.adapter")}: {snapshot.project1.adapterName} | {t("signal.port")}: {snapshot.project1.port}
+              </span>
+              {onStageOrderIntent && (
+                <button
+                  className="btn btn-primary"
+                  onClick={onStageOrderIntent}
+                  style={{ fontSize: 13, padding: "8px 14px", display: "flex", alignItems: "center", gap: 6 }}
+                >
+                  📋 {t("signal.stageOrderIntentAction")}
+                </button>
+              )}
             </div>
           </div>
         )}

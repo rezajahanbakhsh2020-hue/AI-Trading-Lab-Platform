@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import type { HostSnapshot } from "../../architecture/hostView";
 import {
   filterOrderIntentsByState,
@@ -117,6 +118,19 @@ export function OrderIntentViewer({
               </span>
             </div>
           </div>
+
+            {/* Workflow Navigation Action Bridges */}
+            <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap", borderTop: "1px solid var(--border-color, rgba(255,255,255,0.1))", paddingTop: 12 }}>
+              <Link to="/risk" className="btn btn-secondary" style={{ fontSize: 12, padding: "6px 12px", textDecoration: "none" }}>
+                📊 {t("orderIntent.navToRisk")}
+              </Link>
+              <Link to="/notifications" className="btn btn-secondary" style={{ fontSize: 12, padding: "6px 12px", textDecoration: "none" }}>
+                🔔 {t("orderIntent.navToNotifications")}
+              </Link>
+              <Link to="/health" className="btn btn-secondary" style={{ fontSize: 12, padding: "6px 12px", textDecoration: "none" }}>
+                🛡️ {t("orderIntent.navToHealth")}
+              </Link>
+            </div>
         </div>
       </section>
 

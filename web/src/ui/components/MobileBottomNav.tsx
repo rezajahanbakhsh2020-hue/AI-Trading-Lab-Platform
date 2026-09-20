@@ -59,22 +59,87 @@ export function MobileBottomNav({
               </div>
             </div>
 
-            <div className="mobile-drawer-grid">
-              {NAV_ITEMS.map((item) => (
-                <NavLink
-                  key={item.id}
-                  to={item.path}
-                  end={item.path === "/"}
-                  className={({ isActive }) =>
-                    isActive
-                      ? "mobile-drawer-item active"
-                      : "mobile-drawer-item"
-                  }
-                  onClick={onCloseMenu}
-                >
-                  <span className="drawer-item-label">{t(`nav.${item.id}`)}</span>
-                </NavLink>
-              ))}
+            <div className="mobile-drawer-sections space-y-4" style={{ marginTop: 8 }}>
+              <div>
+                <p className="nav-label" style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", marginBottom: 6 }}>
+                  {t("nav.workspaceGroup")}
+                </p>
+                <div className="mobile-drawer-grid">
+                  {NAV_ITEMS.filter(i => ["dashboard", "screener", "markets", "watchlist"].includes(i.id)).map((item) => (
+                    <NavLink
+                      key={item.id}
+                      to={item.path}
+                      end={item.path === "/"}
+                      className={({ isActive }) =>
+                        isActive ? "mobile-drawer-item active" : "mobile-drawer-item"
+                      }
+                      onClick={onCloseMenu}
+                    >
+                      <span className="drawer-item-label">{t(`nav.${item.id}`)}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="nav-label" style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", marginBottom: 6 }}>
+                  {t("nav.intelligenceGroup")}
+                </p>
+                <div className="mobile-drawer-grid">
+                  {NAV_ITEMS.filter(i => ["signals", "strategies", "ai", "backtest", "performance"].includes(i.id)).map((item) => (
+                    <NavLink
+                      key={item.id}
+                      to={item.path}
+                      className={({ isActive }) =>
+                        isActive ? "mobile-drawer-item active" : "mobile-drawer-item"
+                      }
+                      onClick={onCloseMenu}
+                    >
+                      <span className="drawer-item-label">{t(`nav.${item.id}`)}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="nav-label" style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", marginBottom: 6 }}>
+                  {t("nav.systemGroup")}
+                </p>
+                <div className="mobile-drawer-grid">
+                  {NAV_ITEMS.filter(i => ["risk", "intents", "monitoring", "providers", "notifications", "alerts", "audit", "health", "users"].includes(i.id)).map((item) => (
+                    <NavLink
+                      key={item.id}
+                      to={item.path}
+                      className={({ isActive }) =>
+                        isActive ? "mobile-drawer-item active" : "mobile-drawer-item"
+                      }
+                      onClick={onCloseMenu}
+                    >
+                      <span className="drawer-item-label">{t(`nav.${item.id}`)}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="nav-label" style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", marginBottom: 6 }}>
+                  {t("nav.configGroup")}
+                </p>
+                <div className="mobile-drawer-grid">
+                  {NAV_ITEMS.filter(i => ["academy", "settings", "help"].includes(i.id)).map((item) => (
+                    <NavLink
+                      key={item.id}
+                      to={item.path}
+                      className={({ isActive }) =>
+                        isActive ? "mobile-drawer-item active" : "mobile-drawer-item"
+                      }
+                      onClick={onCloseMenu}
+                    >
+                      <span className="drawer-item-label">{t(`nav.${item.id}`)}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>

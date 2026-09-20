@@ -2415,14 +2415,7 @@ video {
 /* Spacing & Gap Utilities */
 .space-y-1 > * + *,
 
-
-.space-y-3 > * + *,
-.space-v-3 > * + * { margin-top: clamp(0.5rem, 1.5vw, 0.75rem); }
-
 .space-y-4 > * + *,
-
-.space-y-6 > * + *,
-.space-v-6 > * + * { margin-top: clamp(1rem, 3vw, 1.5rem); }
 
 .gap-1 { gap: 0.25rem; }
 .gap-2 { gap: 0.5rem; }
@@ -2645,36 +2638,3 @@ video {
 .notice-box { padding: 10px 14px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--line); font-size: 12px; }
 .warn-notice { border-color: rgba(245, 158, 11, 0.4); background: var(--amber-soft); color: var(--amber); }
 .empty-state-box { text-align: center; padding: 24px 16px; border: 1px dashed var(--line); border-radius: 10px; background: var(--bg-2); }
-
-
-/* Mobile Landscape Optimization */
-@media (max-width: 60rem) and (orientation: landscape) {
-  .top-search-trigger {
-    display: none;
-  }
-
-  .top-meta .market-chip {
-    display: none;
-  }
-}
-
-@media (max-height: 31.25rem) and (orientation: landscape) {
-  :root {
-    --topbar-height: 48px;
-    --bottom-dock-height: 0px;
-  }
-
-  .topbar {
-    min-height: calc(48px + var(--sat));
-    height: auto;
-  }
-
-  .workspace,
-  [dir="rtl"] .workspace {
-    padding-bottom: 16px;
-  }
-
-  .mobile-bottom-dock {
-    display: none;
-  }
-}

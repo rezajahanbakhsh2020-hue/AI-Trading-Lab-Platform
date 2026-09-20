@@ -164,4 +164,27 @@ describe("InteractiveChart Component", () => {
       fireEvent.click(lineBtn);
     }
   });
+
+  it("safely filters out malformed/NaN candles without crashing", () => {
+    const malformedCandles: any[] = [
+      { timestamp: 1710000000, open: NaN, high: 2638.5, low: 2628.0, close: 2635.4 },
+      { timestamp: null, open: 2630.0, high: 2638.5, low: 2628.0, close: 2635.4 },
+      { timestamp: 1710003600, open: 2635.4, high: 2642.0, low: 2633.2, close: 2640.8 },
+    ];
+
+    const { container } = render(
+      <I18nProvider>
+        <InteractiveChart
+          symbol="XAUUSD"
+          timeframe="1h"
+          candles={malformedCandles}
+          status="connected"
+          provider={sampleProvider}
+          isProviderConnected={true}
+        />
+      </I18nProvider>
+    );
+
+    expect(container.querySelector(".chart-symbol-tag")?.textContent).toBe("XAUUSD");
+  });
 });

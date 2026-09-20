@@ -46,7 +46,26 @@ export interface InteractiveChartProps {
 function normalizeCandles(candles: readonly Candle[]) {
   if (!candles || candles.length === 0) return [];
 
-  const sorted = [...candles].sort((a, b) => a.timestamp - b.timestamp);
+  // Filter out invalid/malformed candles
+  const valid = candles.filter((c) => {
+    return (
+      c &&
+      typeof c.timestamp === "number" &&
+      Number.isFinite(c.timestamp) &&
+      typeof c.open === "number" &&
+      Number.isFinite(c.open) &&
+      typeof c.high === "number" &&
+      Number.isFinite(c.high) &&
+      typeof c.low === "number" &&
+      Number.isFinite(c.low) &&
+      typeof c.close === "number" &&
+      Number.isFinite(c.close)
+    );
+  });
+
+  if (valid.length === 0) return [];
+
+  const sorted = [...valid].sort((a, b) => a.timestamp - b.timestamp);
   const result: Candle[] = [];
   const seenTimestamps = new Set<number>();
 
@@ -93,6 +112,7 @@ export function InteractiveChart({
   const mainSeriesRef = useRef<ISeriesApi<any> | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const volumeSeriesRef = useRef<ISeriesApi<any> | null>(null);
+  const [renderError, setRenderError] = useState<string | null>(null);
 
   const timeframes: Timeframe[] = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"];
   const chartTypes: ChartType[] = ["Candles", "Line", "Area"];
@@ -116,69 +136,92 @@ export function InteractiveChart({
     if (!containerRef.current) return;
 
     if (chartApiRef.current) {
-      chartApiRef.current.remove();
+      try {
+        chartApiRef.current.remove();
+      } catch {
+        // ignore removal errors on stale instances
+      }
       chartApiRef.current = null;
       mainSeriesRef.current = null;
       volumeSeriesRef.current = null;
     }
 
     const container = containerRef.current;
-    const width = container.clientWidth || 800;
+    const width = container.clientWidth;
     const height = Math.max(300, container.clientHeight || 340);
 
-    const chart = createChart(container, {
-      width,
-      height,
-      layout: {
-        background: { type: ColorType.Solid, color: "#0F172A" },
-        textColor: "#94A3B8",
-        fontSize: 11,
-        fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-      },
-      grid: {
-        vertLines: { color: "rgba(255, 255, 255, 0.05)" },
-        horzLines: { color: "rgba(255, 255, 255, 0.05)" },
-      },
-      crosshair: {
-        mode: CrosshairMode.Normal,
-        vertLine: {
-          color: "rgba(255, 255, 255, 0.3)",
-          width: 1,
-          style: LineStyle.Dashed,
-          labelBackgroundColor: "#1E293B",
-        },
-        horzLine: {
-          color: "rgba(255, 255, 255, 0.3)",
-          width: 1,
-          style: LineStyle.Dashed,
-          labelBackgroundColor: "#1E293B",
-        },
-      },
-      rightPriceScale: {
-        borderColor: "rgba(255, 255, 255, 0.1)",
-        autoScale: true,
-        alignLabels: true,
-        borderVisible: true,
-        scaleMargins: {
-          top: 0.1,
-          bottom: 0.2,
-        },
-      },
-      timeScale: {
-        borderColor: "rgba(255, 255, 255, 0.1)",
-        timeVisible: true,
-        secondsVisible: false,
-        borderVisible: true,
-        barSpacing: 8,
-        minBarSpacing: 3,
-        rightOffset: 5,
-      },
-    });
+    // If container has 0 width (e.g., hidden tab or before layout mount), defer chart creation
+    if (width <= 0) {
+      const observer = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (entry && entry.contentRect.width > 0 && !chartApiRef.current && containerRef.current) {
+          observer.disconnect();
+          setRenderError(null);
+        }
+      });
+      observer.observe(container);
+      return () => observer.disconnect();
+    }
 
-    chartApiRef.current = chart;
+    let chart: IChartApi | null = null;
+    try {
+      chart = createChart(container, {
+        width,
+        height,
+        layout: {
+          background: { type: ColorType.Solid, color: "#0F172A" },
+          textColor: "#94A3B8",
+          fontSize: 11,
+          fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+        },
+        grid: {
+          vertLines: { color: "rgba(255, 255, 255, 0.05)" },
+          horzLines: { color: "rgba(255, 255, 255, 0.05)" },
+        },
+        crosshair: {
+          mode: CrosshairMode.Normal,
+          vertLine: {
+            color: "rgba(255, 255, 255, 0.3)",
+            width: 1,
+            style: LineStyle.Dashed,
+            labelBackgroundColor: "#1E293B",
+          },
+          horzLine: {
+            color: "rgba(255, 255, 255, 0.3)",
+            width: 1,
+            style: LineStyle.Dashed,
+            labelBackgroundColor: "#1E293B",
+          },
+        },
+        rightPriceScale: {
+          borderColor: "rgba(255, 255, 255, 0.1)",
+          autoScale: true,
+          alignLabels: true,
+          borderVisible: true,
+          scaleMargins: {
+            top: 0.1,
+            bottom: 0.2,
+          },
+        },
+        timeScale: {
+          borderColor: "rgba(255, 255, 255, 0.1)",
+          timeVisible: true,
+          secondsVisible: false,
+          borderVisible: true,
+          barSpacing: 8,
+          minBarSpacing: 3,
+          rightOffset: 5,
+        },
+      });
+      chartApiRef.current = chart;
+      setRenderError(null);
+    } catch (err: any) {
+      setRenderError(err?.message || "Failed to initialize financial chart canvas.");
+      return;
+    }
 
     const handleResize = () => {
-      if (chartApiRef.current && containerRef.current) {
+      if (chartApiRef.current && containerRef.current && containerRef.current.clientWidth > 0) {
         chartApiRef.current.applyOptions({
           width: containerRef.current.clientWidth,
           height: Math.max(300, containerRef.current.clientHeight || 340),
@@ -192,7 +235,11 @@ export function InteractiveChart({
     return () => {
       resizeObserver.disconnect();
       if (chartApiRef.current) {
-        chartApiRef.current.remove();
+        try {
+          chartApiRef.current.remove();
+        } catch {
+          // ignore removal errors
+        }
         chartApiRef.current = null;
         mainSeriesRef.current = null;
         volumeSeriesRef.current = null;
@@ -205,186 +252,197 @@ export function InteractiveChart({
     const chart = chartApiRef.current;
     if (!chart) return;
 
-    if (mainSeriesRef.current) {
-      chart.removeSeries(mainSeriesRef.current);
-      mainSeriesRef.current = null;
-    }
-    if (volumeSeriesRef.current) {
-      chart.removeSeries(volumeSeriesRef.current);
-      volumeSeriesRef.current = null;
-    }
+    try {
+      if (mainSeriesRef.current) {
+        try {
+          chart.removeSeries(mainSeriesRef.current);
+        } catch {
+          // ignore series removal failure
+        }
+        mainSeriesRef.current = null;
+      }
+      if (volumeSeriesRef.current) {
+        try {
+          chart.removeSeries(volumeSeriesRef.current);
+        } catch {
+          // ignore series removal failure
+        }
+        volumeSeriesRef.current = null;
+      }
 
-    if (!isDataAvailable) return;
+      if (!isDataAvailable) return;
 
-    // 1. Add Main Price Series (Candles, Line, or Area)
-    if (chartType === "Candles") {
-      const series = chart.addSeries(CandlestickSeries, {
-        upColor: "#10B981",
-        downColor: "#EF4444",
-        borderVisible: false,
-        wickUpColor: "#10B981",
-        wickDownColor: "#EF4444",
-      });
+      // 1. Add Main Price Series (Candles, Line, or Area)
+      if (chartType === "Candles") {
+        const series = chart.addSeries(CandlestickSeries, {
+          upColor: "#10B981",
+          downColor: "#EF4444",
+          borderVisible: false,
+          wickUpColor: "#10B981",
+          wickDownColor: "#EF4444",
+        });
 
-      const formattedCandles: CandlestickData[] = cleanCandles.map((c) => ({
-        time: c.timestamp as Time,
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
-      }));
+        const formattedCandles: CandlestickData[] = cleanCandles.map((c) => ({
+          time: c.timestamp as Time,
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+        }));
 
-      series.setData(formattedCandles);
-      mainSeriesRef.current = series;
-    } else if (chartType === "Line") {
-      const series = chart.addSeries(LineSeries, {
-        color: "#3B82F6",
-        lineWidth: 2,
-      });
-
-      const formattedLine: SingleValueData[] = cleanCandles.map((c) => ({
-        time: c.timestamp as Time,
-        value: c.close,
-      }));
-
-      series.setData(formattedLine);
-      mainSeriesRef.current = series;
-    } else if (chartType === "Area") {
-      const series = chart.addSeries(AreaSeries, {
-        topColor: "rgba(59, 130, 246, 0.4)",
-        bottomColor: "rgba(59, 130, 246, 0.0)",
-        lineColor: "#3B82F6",
-        lineWidth: 2,
-      });
-
-      const formattedArea: SingleValueData[] = cleanCandles.map((c) => ({
-        time: c.timestamp as Time,
-        value: c.close,
-      }));
-
-      series.setData(formattedArea);
-      mainSeriesRef.current = series;
-    }
-
-    // 2. Add Volume Histogram Pane if volume exists
-    const hasVolume = cleanCandles.some((c) => c.volume != null && c.volume > 0);
-    if (hasVolume) {
-      chart.priceScale("right").applyOptions({
-        scaleMargins: {
-          top: 0.08,
-          bottom: 0.22,
-        },
-      });
-
-      const volumeSeries = chart.addSeries(HistogramSeries, {
-        priceFormat: { type: "volume" },
-        priceScaleId: "volume_scale",
-      });
-
-      chart.priceScale("volume_scale").applyOptions({
-        scaleMargins: {
-          top: 0.8,
-          bottom: 0,
-        },
-      });
-
-      const volumeData = cleanCandles.map((c) => ({
-        time: c.timestamp as Time,
-        value: c.volume ?? 0,
-        color: c.close >= c.open ? "rgba(16, 185, 129, 0.3)" : "rgba(239, 68, 68, 0.3)",
-      }));
-
-      volumeSeries.setData(volumeData);
-      volumeSeriesRef.current = volumeSeries;
-    } else {
-      chart.priceScale("right").applyOptions({
-        scaleMargins: {
-          top: 0.08,
-          bottom: 0.08,
-        },
-      });
-    }
-
-    // 3. Project 1 Price Level Overlays (Entry, SL, TP1..TP3)
-    // Enforce read-only presentation: Only render values explicitly provided by authorized backend contracts.
-    const mainSeries = mainSeriesRef.current;
-    if (mainSeries) {
-      if (entryPrice != null) {
-        mainSeries.createPriceLine({
-          price: entryPrice,
+        series.setData(formattedCandles);
+        mainSeriesRef.current = series;
+      } else if (chartType === "Line") {
+        const series = chart.addSeries(LineSeries, {
           color: "#3B82F6",
-          lineWidth: 1,
-          lineStyle: LineStyle.Dashed,
-          axisLabelVisible: true,
-          title: `Project 1 Entry: ${entryPrice.toFixed(2)}`,
+          lineWidth: 2,
+        });
+
+        const formattedLine: SingleValueData[] = cleanCandles.map((c) => ({
+          time: c.timestamp as Time,
+          value: c.close,
+        }));
+
+        series.setData(formattedLine);
+        mainSeriesRef.current = series;
+      } else if (chartType === "Area") {
+        const series = chart.addSeries(AreaSeries, {
+          topColor: "rgba(59, 130, 246, 0.4)",
+          bottomColor: "rgba(59, 130, 246, 0.0)",
+          lineColor: "#3B82F6",
+          lineWidth: 2,
+        });
+
+        const formattedArea: SingleValueData[] = cleanCandles.map((c) => ({
+          time: c.timestamp as Time,
+          value: c.close,
+        }));
+
+        series.setData(formattedArea);
+        mainSeriesRef.current = series;
+      }
+
+      // 2. Add Volume Histogram Pane if volume exists
+      const hasVolume = cleanCandles.some((c) => c.volume != null && c.volume > 0);
+      if (hasVolume) {
+        chart.priceScale("right").applyOptions({
+          scaleMargins: {
+            top: 0.08,
+            bottom: 0.22,
+          },
+        });
+
+        const volumeSeries = chart.addSeries(HistogramSeries, {
+          priceFormat: { type: "volume" },
+          priceScaleId: "volume_scale",
+        });
+
+        chart.priceScale("volume_scale").applyOptions({
+          scaleMargins: {
+            top: 0.8,
+            bottom: 0,
+          },
+        });
+
+        const volumeData = cleanCandles.map((c) => ({
+          time: c.timestamp as Time,
+          value: c.volume ?? 0,
+          color: c.close >= c.open ? "rgba(16, 185, 129, 0.3)" : "rgba(239, 68, 68, 0.3)",
+        }));
+
+        volumeSeries.setData(volumeData);
+        volumeSeriesRef.current = volumeSeries;
+      } else {
+        chart.priceScale("right").applyOptions({
+          scaleMargins: {
+            top: 0.08,
+            bottom: 0.08,
+          },
         });
       }
 
-      if (stopLossPrice != null) {
-        mainSeries.createPriceLine({
-          price: stopLossPrice,
-          color: "#EF4444",
-          lineWidth: 1,
-          lineStyle: LineStyle.Dashed,
-          axisLabelVisible: true,
-          title: `Project 1 SL: ${stopLossPrice.toFixed(2)}`,
-        });
-      }
-
-      takeProfits.forEach((tp, idx) => {
-        if (tp != null) {
+      // 3. Project 1 Price Level Overlays (Entry, SL, TP1..TP3)
+      const mainSeries = mainSeriesRef.current;
+      if (mainSeries) {
+        if (entryPrice != null && Number.isFinite(entryPrice)) {
           mainSeries.createPriceLine({
-            price: tp,
-            color: "#10B981",
+            price: entryPrice,
+            color: "#3B82F6",
             lineWidth: 1,
             lineStyle: LineStyle.Dashed,
             axisLabelVisible: true,
-            title: `Project 1 TP${idx + 1}: ${tp.toFixed(2)}`,
+            title: `Project 1 Entry: ${entryPrice.toFixed(2)}`,
+          });
+        }
+
+        if (stopLossPrice != null && Number.isFinite(stopLossPrice)) {
+          mainSeries.createPriceLine({
+            price: stopLossPrice,
+            color: "#EF4444",
+            lineWidth: 1,
+            lineStyle: LineStyle.Dashed,
+            axisLabelVisible: true,
+            title: `Project 1 SL: ${stopLossPrice.toFixed(2)}`,
+          });
+        }
+
+        takeProfits.forEach((tp, idx) => {
+          if (tp != null && Number.isFinite(tp)) {
+            mainSeries.createPriceLine({
+              price: tp,
+              color: "#10B981",
+              lineWidth: 1,
+              lineStyle: LineStyle.Dashed,
+              axisLabelVisible: true,
+              title: `Project 1 TP${idx + 1}: ${tp.toFixed(2)}`,
+            });
+          }
+        });
+
+        // 4. Project 1 Signal Event Markers
+        if (signalAction && cleanCandles.length > 0) {
+          const lastCandleTime = signalTime && Number.isFinite(signalTime)
+            ? (signalTime as Time)
+            : (cleanCandles[cleanCandles.length - 1].timestamp as Time);
+
+          const isBuy = signalAction.toUpperCase().includes("BUY") || signalAction.toUpperCase().includes("LONG");
+
+          const markers: SeriesMarker<Time>[] = [
+            {
+              time: lastCandleTime,
+              position: isBuy ? "belowBar" : "aboveBar",
+              color: isBuy ? "#10B981" : "#EF4444",
+              shape: isBuy ? "arrowUp" : "arrowDown",
+              text: `P1 Signal: ${signalAction}`,
+            },
+          ];
+
+          createSeriesMarkers(mainSeries, markers);
+        }
+      }
+
+      // 5. Crosshair listener for Legend / Tooltip
+      chart.subscribeCrosshairMove((param) => {
+        if (!param.time || param.point === undefined || param.point.x < 0 || param.point.y < 0) {
+          setHoverData(null);
+          return;
+        }
+
+        const candleMatch = cleanCandles.find((c) => c.timestamp === (param.time as number));
+        if (candleMatch) {
+          const volText = candleMatch.volume != null ? `Vol: ${candleMatch.volume.toLocaleString()}` : "Vol: N/A";
+          setHoverData({
+            timeStr: new Date(candleMatch.timestamp * 1000).toUTCString().slice(5, 22),
+            ohlcStr: `O: ${candleMatch.open.toFixed(2)} H: ${candleMatch.high.toFixed(2)} L: ${candleMatch.low.toFixed(2)} C: ${candleMatch.close.toFixed(2)}`,
+            volStr: volText,
           });
         }
       });
 
-      // 4. Project 1 Signal Event Markers
-      if (signalAction && cleanCandles.length > 0) {
-        const lastCandleTime = signalTime
-          ? (signalTime as Time)
-          : (cleanCandles[cleanCandles.length - 1].timestamp as Time);
-
-        const isBuy = signalAction.toUpperCase().includes("BUY") || signalAction.toUpperCase().includes("LONG");
-
-        const markers: SeriesMarker<Time>[] = [
-          {
-            time: lastCandleTime,
-            position: isBuy ? "belowBar" : "aboveBar",
-            color: isBuy ? "#10B981" : "#EF4444",
-            shape: isBuy ? "arrowUp" : "arrowDown",
-            text: `P1 Signal: ${signalAction}`,
-          },
-        ];
-
-        createSeriesMarkers(mainSeries, markers);
-      }
+      chart.timeScale().fitContent();
+    } catch (err: any) {
+      setRenderError(err?.message || "Error rendering financial data on chart.");
     }
-
-    // 5. Crosshair listener for Legend / Tooltip
-    chart.subscribeCrosshairMove((param) => {
-      if (!param.time || param.point === undefined || param.point.x < 0 || param.point.y < 0) {
-        setHoverData(null);
-        return;
-      }
-
-      const candleMatch = cleanCandles.find((c) => c.timestamp === (param.time as number));
-      if (candleMatch) {
-        const volText = candleMatch.volume != null ? `Vol: ${candleMatch.volume.toLocaleString()}` : "Vol: N/A";
-        setHoverData({
-          timeStr: new Date(candleMatch.timestamp * 1000).toUTCString().slice(5, 22),
-          ohlcStr: `O: ${candleMatch.open.toFixed(2)} H: ${candleMatch.high.toFixed(2)} L: ${candleMatch.low.toFixed(2)} C: ${candleMatch.close.toFixed(2)}`,
-          volStr: volText,
-        });
-      }
-    });
-
-    chart.timeScale().fitContent();
   }, [cleanCandles, chartType, isDataAvailable, entryPrice, stopLossPrice, takeProfits, signalAction, signalTime]);
 
   const showOverlay = !isProviderConnected || status !== "connected" || !hasCandles;
@@ -437,9 +495,14 @@ export function InteractiveChart({
 
       {/* Lightweight Chart Canvas Stage */}
       <div className="chart-stage" style={{ position: "relative", minHeight: 340 }}>
-        {showOverlay && (
+        {(showOverlay || renderError != null) && (
           <div className="chart-disconnected-overlay">
-            {status === "loading" ? (
+            {renderError != null ? (
+              <>
+                <p className="overlay-title" style={{ color: "#EF4444" }}>Chart Rendering Failure</p>
+                <p className="overlay-sub">{renderError}</p>
+              </>
+            ) : status === "loading" ? (
               <>
                 <p className="overlay-title">{t("chart.streamingData")}...</p>
                 <p className="overlay-sub">Connecting to ProviderRegistry to stream {symbol} candles.</p>

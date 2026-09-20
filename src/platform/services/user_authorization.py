@@ -31,6 +31,7 @@ class UserAuthorizationService:
         audit_logger: Optional[AuditLogger] = None,
         repository: Optional[UserRepositoryPort] = None,
         config: Optional[Any] = None,
+        email_service: Optional[Any] = None,
     ) -> None:
         self._users_by_id: Dict[str, UserAuthorization] = {}
         self._users_by_code: Dict[str, UserAuthorization] = {}
@@ -38,6 +39,7 @@ class UserAuthorizationService:
         self._audit_logger = audit_logger or AuditLogger()
         self._repository = repository
         self._config = config
+        self._email_service = email_service
         self._load_from_repository()
         self._initialize_default_users(config=config)
 
@@ -60,8 +62,10 @@ class UserAuthorizationService:
         """
         app_env = getattr(config, "app_env", "development") if config else os.getenv("APP_ENV", "development").lower()
         init_pwd = getattr(config, "initial_admin_password", None) or os.getenv("INITIAL_ADMIN_PASSWORD")
+        owner_id = getattr(config, "owner_user_id", None) or os.getenv("OWNER_USER_ID", "admin_owner")
+        owner_email = getattr(config, "owner_email", None) or os.getenv("OWNER_EMAIL") or os.getenv("RECOVERY_EMAIL")
 
-        if "admin_owner" not in self._users_by_id:
+        if owner_id not in self._users_by_id and "admin_owner" not in self._users_by_id:
             if app_env == "production":
                 if not init_pwd:
                     raise RuntimeError("Production startup failed: Owner/Admin account not provisioned and INITIAL_ADMIN_PASSWORD is not set.")
@@ -71,15 +75,42 @@ class UserAuthorizationService:
 
             admin_hash, admin_salt = hash_password(pwd_to_use)
             admin_user = UserAuthorization(
-                user_id="admin_owner",
+                user_id=owner_id,
                 auth_code="AUTH_ADMIN_PROVISIONED",
                 role=UserRole.OWNER,
                 password_hash=admin_hash,
                 salt=admin_salt,
                 is_permanent_admin=True,
+                recovery_email=owner_email,
                 detail="Permanent protected Owner account",
             )
             self.register_user(admin_user)
+        else:
+            # If owner account already exists in repository, update recovery email if configured
+            existing_owner_id = owner_id if owner_id in self._users_by_id else "admin_owner"
+            existing_owner = self._users_by_id[existing_owner_id]
+            if owner_email and existing_owner.recovery_email != owner_email:
+                updated_owner = UserAuthorization(
+                    user_id=existing_owner.user_id,
+                    auth_code=existing_owner.auth_code,
+                    telegram_chat_id=existing_owner.telegram_chat_id,
+                    delivery_enabled=existing_owner.delivery_enabled,
+                    allowed_symbols=existing_owner.allowed_symbols,
+                    allowed_strategies=existing_owner.allowed_strategies,
+                    role=UserRole.OWNER,
+                    permissions=existing_owner.permissions,
+                    detail=existing_owner.detail,
+                    password_hash=existing_owner.password_hash,
+                    salt=existing_owner.salt,
+                    is_active=existing_owner.is_active,
+                    activation_timestamp=existing_owner.activation_timestamp,
+                    expiration_timestamp=existing_owner.expiration_timestamp,
+                    is_permanent_admin=True,
+                    recovery_email=owner_email,
+                    recovery_token_hash=existing_owner.recovery_token_hash,
+                    recovery_token_expiration=existing_owner.recovery_token_expiration,
+                )
+                self.register_user(updated_owner)
 
         if "demo_user" not in self._users_by_id and app_env != "production":
             user_hash, user_salt = hash_password("DevCustomerPass2026!")
@@ -238,12 +269,12 @@ class UserAuthorizationService:
     def request_password_recovery(
         self, user_id: str, recovery_email: str
     ) -> Dict[str, Any]:
-        """Initiate password recovery flow. Generates a token contract without emailing external third parties.
+        """Initiate password recovery flow. Generates a token contract and dispatches via EmailDeliveryService if configured.
 
-        Exposes honest delivery state ('NOT_CONFIGURED') and supports user enumeration defense.
+        Exposes honest delivery state ('SENT', 'NOT_CONFIGURED', 'DELIVERY_FAILED') and supports user enumeration defense.
 
         Returns:
-            Dict containing success, message, delivery_status, and recovery_token if generated.
+            Dict containing success, message, delivery_status, and recovery_token (omitted/None if email is sent externally).
         """
         user = self.get_user_authorization(user_id)
         generic_msg = "If the user account and recovery email match our records, a recovery token contract has been created."
@@ -318,12 +349,29 @@ class UserAuthorizationService:
             details="Password recovery token generated for user",
         )
 
+        delivery_status = "NOT_CONFIGURED"
+        delivery_detail = "External email delivery is Not Configured. Recovery token is available for immediate presentation."
+        returned_token: Optional[str] = recovery_token
+
+        if self._email_service is not None:
+            email_res = self._email_service.send_recovery_email(
+                to_email=recovery_email.strip().lower(),
+                user_id=user.user_id,
+                recovery_token=recovery_token,
+            )
+            delivery_status = email_res.status_code
+            delivery_detail = email_res.reason or email_res.detail or ""
+            if email_res.success and email_res.externally_delivered:
+                # Omit recovery token from public response when delivered via real external email
+                returned_token = None
+                delivery_detail = "Recovery instructions dispatched to user email."
+
         return {
             "success": True,
             "message": generic_msg,
-            "delivery_status": "NOT_CONFIGURED",
-            "delivery_detail": "External email delivery is Not Configured. Recovery token is available for immediate presentation.",
-            "recovery_token": recovery_token,
+            "delivery_status": delivery_status,
+            "delivery_detail": delivery_detail,
+            "recovery_token": returned_token,
         }
 
     def reset_password_with_recovery_token(
@@ -580,6 +628,20 @@ class UserAuthorizationService:
             outcome="ALLOW",
             details=f"Set is_active={is_active}",
         )
+
+        # Notify user via email if email service and recovery email exist
+        if self._email_service is not None and target.recovery_email:
+            action_str = "Reactivated" if is_active else "Deactivated"
+            try:
+                self._email_service.send_security_notification(
+                    to_email=target.recovery_email,
+                    title=f"Account {action_str}",
+                    message=f"Your account status was changed to active={is_active} by administrator {actor_user.user_id}.",
+                    details={"target_user_id": target.user_id, "is_active": is_active, "actor_user_id": actor_user.user_id},
+                )
+            except Exception:
+                pass
+
         return updated_user
 
     def deactivate_user_account(
@@ -662,6 +724,19 @@ class UserAuthorizationService:
             outcome="ALLOW",
             details=f"Updated role of {target_user_id} from {target.role.value} to {clean_new_role.value}",
         )
+
+        # Notify user via email if email service and recovery email exist
+        if self._email_service is not None and target.recovery_email:
+            try:
+                self._email_service.send_security_notification(
+                    to_email=target.recovery_email,
+                    title="Account Role Updated",
+                    message=f"Your account role was updated to '{clean_new_role.value}' by administrator {actor_user.user_id}.",
+                    details={"target_user_id": target.user_id, "new_role": clean_new_role.value, "actor_user_id": actor_user.user_id},
+                )
+            except Exception:
+                pass
+
         return updated_user
 
     def update_user_profile(

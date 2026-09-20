@@ -40,38 +40,74 @@ export interface InteractiveChartProps {
 }
 
 /**
+ * Parses timestamp value into Unix seconds (number).
+ * Supports numeric seconds, numeric milliseconds, ISO-8601 strings, or numeric strings.
+ */
+function parseTimestampToUnixSeconds(ts: number | string | unknown): number {
+  if (typeof ts === "number") {
+    if (!Number.isFinite(ts)) return NaN;
+    return ts > 1e11 ? Math.floor(ts / 1000) : ts;
+  }
+  if (typeof ts === "string") {
+    const trimmed = ts.trim();
+    if (!trimmed) return NaN;
+    const parsedDate = Date.parse(trimmed);
+    if (!Number.isNaN(parsedDate)) {
+      return Math.floor(parsedDate / 1000);
+    }
+    const num = Number(trimmed);
+    if (Number.isFinite(num)) {
+      return num > 1e11 ? Math.floor(num / 1000) : num;
+    }
+  }
+  return NaN;
+}
+
+/**
  * Normalizes candle timestamps to strictly ascending Time values.
  * Lightweight Charts requires sorted unique timestamps.
  */
 function normalizeCandles(candles: readonly Candle[]) {
   if (!candles || candles.length === 0) return [];
 
-  // Filter out invalid/malformed candles
-  const valid = candles.filter((c) => {
-    return (
-      c &&
-      typeof c.timestamp === "number" &&
-      Number.isFinite(c.timestamp) &&
-      typeof c.open === "number" &&
-      Number.isFinite(c.open) &&
-      typeof c.high === "number" &&
-      Number.isFinite(c.high) &&
-      typeof c.low === "number" &&
-      Number.isFinite(c.low) &&
-      typeof c.close === "number" &&
-      Number.isFinite(c.close)
-    );
-  });
+  const parsed: Candle[] = [];
 
-  if (valid.length === 0) return [];
+  for (const c of candles) {
+    if (
+      !c ||
+      typeof c.open !== "number" ||
+      !Number.isFinite(c.open) ||
+      typeof c.high !== "number" ||
+      !Number.isFinite(c.high) ||
+      typeof c.low !== "number" ||
+      !Number.isFinite(c.low) ||
+      typeof c.close !== "number" ||
+      !Number.isFinite(c.close)
+    ) {
+      continue;
+    }
 
-  const sorted = [...valid].sort((a, b) => a.timestamp - b.timestamp);
+    const unixSec = parseTimestampToUnixSeconds(c.timestamp);
+    if (Number.isNaN(unixSec) || !Number.isFinite(unixSec)) {
+      continue;
+    }
+
+    parsed.push({
+      ...c,
+      timestamp: unixSec,
+    });
+  }
+
+  if (parsed.length === 0) return [];
+
+  const sorted = [...parsed].sort((a, b) => (a.timestamp as number) - (b.timestamp as number));
   const result: Candle[] = [];
   const seenTimestamps = new Set<number>();
 
   for (const c of sorted) {
-    if (!seenTimestamps.has(c.timestamp)) {
-      seenTimestamps.add(c.timestamp);
+    const ts = c.timestamp as number;
+    if (!seenTimestamps.has(ts)) {
+      seenTimestamps.add(ts);
       result.push(c);
     }
   }
@@ -99,6 +135,12 @@ export function InteractiveChart({
   const [selectedTimeframe, setSelectedTimeframe] = useState<Timeframe>(
     (timeframe as Timeframe) || "1h"
   );
+
+  useEffect(() => {
+    if (timeframe && timeframe !== selectedTimeframe) {
+      setSelectedTimeframe(timeframe as Timeframe);
+    }
+  }, [timeframe]);
   const [chartType, setChartType] = useState<ChartType>("Candles");
   const [hoverData, setHoverData] = useState<{
     timeStr: string;

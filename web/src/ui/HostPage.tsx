@@ -48,6 +48,15 @@ type HostPageProps = {
   onRequestExecution?: (intentId: string) => void;
 };
 
+
+function getLocalizedSnapshotMessage(msg: string | undefined, t: (key: string) => string): string {
+  if (!msg) return "";
+  if (msg.includes("No Project 1 data connected")) return t("empty.noBacktestTitle");
+  if (msg.includes("Host application for AI-Trading-Lab")) return t("topbar.platformRole");
+  if (msg.includes("Market data provider is disconnected")) return t("chart.disconnectedOverlaySub");
+  return msg;
+}
+
 function MetricCard({
   title,
   value,
@@ -59,14 +68,17 @@ function MetricCard({
   status: string;
   message: string;
 }) {
+  const { t } = useI18n();
+  const displayStatus = status === "ready" || status === "HEALTHY" ? t("status.ready") : status === "disconnected" || status === "UNAVAILABLE" ? t("status.disconnected") : status;
+
   return (
     <section className="card">
       <div className="card-head">
         <h3>{title}</h3>
-        <span className={`status ${status}`}>{status}</span>
+        <span className={`status ${status}`}>{displayStatus}</span>
       </div>
       <div className="card-body">
-        <div className="metric muted">{value}</div>
+        <div className="metric muted" dir="ltr">{value}</div>
         <p className="hint">{message}</p>
       </div>
     </section>
@@ -243,25 +255,25 @@ function DashboardPage({
           title={t("dashboard.platformCard")}
           value={t("status.ready")}
           status={snapshot.platform.status}
-          message={snapshot.platform.role}
+          message={getLocalizedSnapshotMessage(snapshot.platform.role, t)}
         />
         <MetricCard
           title={t("dashboard.project1Card")}
           value={snapshot.project1.connected ? t("status.connected") : t("status.disconnected")}
           status={snapshot.project1.status}
-          message={snapshot.project1.message}
+          message={getLocalizedSnapshotMessage(snapshot.project1.message, t)}
         />
         <MetricCard
           title={t("dashboard.primaryMarketCard")}
           value={snapshot.market.symbol}
           status={snapshot.market.status === "connected" ? "ready" : snapshot.market.status}
-          message={snapshot.market.message}
+          message={getLocalizedSnapshotMessage(snapshot.market.message, t)}
         />
         <MetricCard
           title={t("signal.latestSignal")}
           value={snapshot.signal.action || t("signal.noSignal")}
           status={snapshot.signal.status}
-          message={snapshot.signal.message}
+          message={getLocalizedSnapshotMessage(snapshot.signal.message, t)}
         />
       </div>
 

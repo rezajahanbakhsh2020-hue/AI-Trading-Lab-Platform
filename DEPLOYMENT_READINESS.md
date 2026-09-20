@@ -3,7 +3,7 @@
 ## Overview
 
 Project 2 operates as the presentation, application, and integration host for Project 1.
-This document outlines the repository-side deployment contract, security guarantees, configuration requirements, and operational readiness criteria for future real HTTPS web deployment.
+This document outlines the repository-side deployment contract, security guarantees, configuration requirements, operational readiness criteria, and automated release validation for production runtime deployment.
 
 > **Deployment Disclosure:** This repository is fully pre-configured and hardened for containerized or bare-metal HTTPS deployment using `src/platform/server.py` or `Dockerfile`. Real public HTTPS deployment requires infrastructure deployment (e.g. cloud provider instance, domain DNS pointing, reverse proxy / SSL certificate).
 
@@ -51,7 +51,32 @@ In production (`APP_ENV=production`), missing critical secrets or unprovisioned 
 
 ---
 
-## 3. Security Boundaries & Fail-Closed Behavior
+## 3. Automated Release Verification & End-to-End Validation
+
+The platform includes an end-to-end Release Validation Harness (`tests/test_release_validation_harness.py`) and CI workflow integration (`.github/workflows/main.yml`) that verifies the assembled application before release.
+
+### Command to Execute Release Verification Harness
+```bash
+PYTHONPATH=. pytest tests/test_release_validation_harness.py -v
+```
+
+### Automated Release Validation Scope (Categories A–L)
+- **A. Application Startup:** Environment variable requirements, fail-closed behavior on missing production secrets, persistence directory binding, security headers (`X-Frame-Options`, `X-Content-Type-Options`, HSTS).
+- **B. Health & Readiness:** Liveness (`/health/liveness`) and deep readiness (`/health/readiness`) probing, subsystem health classifications (`HEALTHY`, `DEGRADED`, `UNAVAILABLE`, `NOT_CONFIGURED`).
+- **C. Authentication & Account Lifecycle:** Salted PBKDF2 password authentication, SHA-256 hashed session token issuance, active session validation, session logout revocation, account activation/expiration lifecycle enforcement.
+- **D. RBAC & IDOR Defense:** Permanent Owner immunity, Admin customer management, Customer workspace isolation, IDOR attempt rejections, privilege escalation resistance.
+- **E. Persistence & Restart Integrity:** State persistence across server process restarts using atomic JSON writes.
+- **F. Project 1 Integration Gateway:** Versioned contract validation (`1.0`, `v1.0` accepted; `2.0` rejected with status 422), non-calculation guarantees, user-isolated integration records.
+- **G. Execution Gateway Boundary:** Fail-closed non-execution policy (`externally_executed=False`), Order Intent lifecycle tracking, idempotency/replay protection.
+- **H. Notification System:** Canonical event creation, user preferences persistence, delivery state reporting (`EXTERNAL_NOT_CONFIGURED` when credentials are unprovisioned).
+- **I. AI Gateway & Provider Boundary:** Truthful provider status reporting (`not_configured`, `available`), URL validation / SSRF protection, secret sanitization.
+- **J. Observability & Correlation:** Unique request correlation ID generation (`req_<hex>`) and propagation.
+- **K. Frontend SPA Serving:** Production Vite bundle serving (`web/dist`), SPA route fallback (`/intents`, `/health`, etc.), directory traversal attack defense (`/../../../../etc/passwd`).
+- **L. Persistence Backup & Recovery:** Atomic JSON snapshot creation, SHA-256 manifest verification, non-destructive restore, post-recovery readiness stability.
+
+---
+
+## 4. Security Boundaries & Fail-Closed Behavior
 
 - **Zero Hardcoded Credentials:** Plaintext production passwords and reusable Owner keys are strictly prohibited in production code paths.
 - **Session Token Hashing:** Active session tokens are hashed using SHA-256 before storage or file persistence. Raw tokens are never written to disk or logs.
@@ -67,7 +92,7 @@ In production (`APP_ENV=production`), missing critical secrets or unprovisioned 
 
 ---
 
-## 4. Structured User-Facing Error Experience & Help Center
+## 5. Structured User-Facing Error Experience & Help Center
 
 - **Structured Operational Error Banner:** Every user-facing operational error displays WHAT happened, WHY it happened, WHAT the user can do now, WHAT to do if it continues, and a safe Reference Correlation ID.
 - **In-App Help & Onboarding Center:** Full contextual documentation, getting started guides, subsystem explanations, status badge references, and troubleshooting paths available under route `/help`.
@@ -75,7 +100,7 @@ In production (`APP_ENV=production`), missing critical secrets or unprovisioned 
 
 ---
 
-## 5. Operational Health, Readiness States & Diagnostics
+## 6. Operational Health, Readiness States & Diagnostics
 
 Distinct liveness and readiness probes are exposed via `src/platform/server.py`:
 
@@ -91,26 +116,7 @@ Distinct liveness and readiness probes are exposed via `src/platform/server.py`:
 
 ---
 
-## 5.1 Real Smoke & End-to-End Verification
-
-Automated production smoke verification can be executed at any time using:
-
-```bash
-PYTHONPATH=. pytest tests/test_smoke_runtime_verification.py
-```
-
-The smoke test suite verifies:
-1. Application startup under `APP_ENV=production`.
-2. Liveness (`/health/liveness`) and HSTS/Security headers.
-3. Deep readiness probe (`/health/readiness`) and subsystem health state classification.
-4. Operational diagnostics (`/api/v1/diagnostics`) secret redaction.
-5. Production SPA static asset serving (`web/dist`) and directory traversal attack defense (`/../../../../etc/passwd`).
-6. End-to-end authentication, RBAC authorization, customer workspace persistence (`/api/v1/workspace`), and recovery diagnostics (`/api/v1/operational/recovery`).
-7. Signal-handled graceful server shutdown (`SIGTERM` / `SIGINT`).
-
----
-
-## 6. Project 1 ↔ Project 2 Integration Gateway Contract & Security Architecture
+## 7. Project 1 ↔ Project 2 Integration Gateway Contract & Security Architecture
 
 The platform provides a versioned, authenticated, auditable Hexagonal Integration Gateway (`src/platform/services/project1_gateway.py` and `src/platform/domain/project1_contract.py`) for Project 1 signal output ingestion and lifecycle management.
 
@@ -125,15 +131,9 @@ The platform provides a versioned, authenticated, auditable Hexagonal Integratio
 - **Lifecycle Transition Command (`POST /api/v1/integration/project1/lifecycle`):** Updates signal lifecycle states (`STAGED`, `ACTIVE`, `UPDATED`, `CANCELLED`, `EXPIRED`, `REJECTED`, `EXECUTED`) with audit control logging.
 - **User-Isolated Integration Records (`GET /api/v1/integration/project1/records`):** Retrieves user-scoped integration records. Non-admin users are strictly isolated to their own records.
 
-### Security, Customer Isolation, & Idempotency
-- **IDOR Protection:** Cross-tenant or cross-user payload injections are rejected (`FORBIDDEN_USER_MISMATCH`) and recorded as security audit events.
-- **Replay Protection / Idempotency:** Duplicate signal submissions with the same `(user_id, signal_id)` return an idempotent acceptance response (`DUPLICATE_ACCEPTED`) without duplicating records or audit events.
-- **File-Backed Persistence:** Integration records persist across restarts in `data/project1_integration_records.json` using atomic temporary file replacements (`FileBackedProject1IntegrationRepository`).
-- **Audit Logging:** Every capability discovery, signal ingestion, schema rejection, IDOR attempt, and lifecycle update is logged to `PlatformAuditControlService` with secret sanitization.
-
 ---
 
-## 7. Notification & Event Delivery Layer Architecture
+## 8. Notification & Event Delivery Layer Architecture
 
 The notification layer provides canonical, user-scoped event processing and multi-channel delivery support.
 
@@ -150,61 +150,23 @@ The notification layer provides canonical, user-scoped event processing and mult
 - **Honest Delivery Statuses:** Explicitly distinguishes `IN_APP_AVAILABLE`, `EXTERNAL_CONFIGURED`, `EXTERNAL_NOT_CONFIGURED`, `DELIVERY_FAILED`, and `DELIVERY_UNAVAILABLE`.
 - **Zero Fake Delivery Claims:** Telegram delivery reports `UNCONFIGURED_CREDENTIALS` and `externally_delivered=False` when bot tokens are not configured in the environment.
 
-### Security, Isolation, & Audit
-- **Strict Server-Side Isolation:** Users cannot access or trigger notifications for other users (raises IDOR / `PermissionError`).
-- **Secret Sanitization:** Protected strategy parameters and secrets are automatically redacted before inbox storage or delivery.
-- **Audit Logging:** Ingestion, delivery attempts, and preference updates generate `PlatformAuditControlService` records.
-
 ---
 
-## 8. Public HTTPS Deployment Requirements
+## 9. Public HTTPS Deployment Requirements & External Boundaries
 
-To perform a live public HTTPS deployment to remote cloud infrastructure, the following external items are required:
+To perform a live public HTTPS deployment to remote cloud infrastructure, the following external items remain intentionally external:
 
 1. **Cloud Compute / Host Provisioning** (e.g. AWS EC2, GCP Compute Engine, DigitalOcean Droplet, Render, Fly.io, or Kubernetes cluster).
 2. **Domain Name & DNS A/AAAA Records** pointing to host IP.
 3. **TLS/SSL Certificate Termination** (e.g. Nginx/Caddy reverse proxy with Let's Encrypt or Cloudflare TLS).
 4. **Environment Secrets Provisioning** (`SESSION_SECRET`, `INITIAL_ADMIN_PASSWORD`, `ALLOWED_ORIGINS`).
-
----
-
-## 9. Professional Financial Charting & Visual Boundary Architecture
-
-The platform embeds TradingView Lightweight Charts (`lightweight-charts` v5.2.1, Apache-2.0 open-source license) as its primary financial visualization foundation (`web/src/ui/components/InteractiveChart.tsx`).
-
-### Architectural Principles & Licensing Rationale
-- **Apache-2.0 License Compatibility:** Lightweight Charts is an open-source, high-performance HTML5 Canvas chart engine designed for financial applications.
-- **Zero Proprietary/Paid Dependencies:** No proprietary TradingView widgets or paid external market data APIs are introduced.
-- **Mobile-First Responsive Layout:** Fluid `ResizeObserver` auto-scaling supports viewports from 360px, 390px, 430px portrait to full-screen desktop without horizontal overflow or clipped controls.
-
-### Chart Capabilities & Data Flow
-- **Multi-Series Support:** Dynamic switching between Candlestick, Line, and Area chart views.
-- **Volume Histogram Pane:** Dedicated histogram volume pane synchronized with the price time scale.
-- **Crosshair Legend & Tooltip:** Real-time crosshair inspection feeding OHLCV status indicators.
-- **Data Truthfulness Overlays:** Explicit visual state indicators for `connected`, `disconnected`, `loading`, `stale`, and `error` states without fake candles or fabricated price feeds.
-
-### Project 1 Visualization Boundary
-- **Read-Only Level Rendering:** Entry, Stop Loss (SL), and Take Profit (TP1, TP2, TP3) levels from authorized Project 1 contracts are rendered as styled price lines (`createPriceLine`).
-- **Signal Event Markers:** Project 1 signal actions are rendered as explicit arrow markers (`createSeriesMarkers`).
-- **Strict Non-Calculation Contract:** Project 2 NEVER calculates, alters, infers, or replaces Project 1 strategy outputs or price levels.
+5. **Real Exchange / Broker Accounts & Credentials** (Order execution remains non-external and fail-closed by design).
 
 ---
 
 ## 10. Execution Gateway & Order Intent Persistence Layer
 
 The platform provides persistent storage and authenticated REST endpoints for managing Order Intents and Execution Gateway operations.
-
-### Order Intent Persistence Architecture
-- **Persistent Storage Adapter (`FileBackedOrderIntentRepository`):** OrderIntents are stored on disk (`data/order_intents.json`) across process restarts with schema versioning (`1.0`), corrupt backup recovery (`.corrupt`), user/tenant isolation, and idempotency key mapping.
-- **Atomic File Writes:** Writes use temporary file staging and atomic OS replacements to prevent data corruption during unexpected server shutdowns.
-
-### Execution Gateway REST API Endpoints
-- **List Order Intents (`GET /api/v1/execution/intents`):** Authenticates the requester and returns user-isolated OrderIntents with execution attempt history and reconciliation status.
-- **Update Intent Lifecycle (`POST /api/v1/execution/intent/update`):** Transitions order intent lifecycle state (`CANCELLED`, `EXPIRED`, `REJECTED`) with audit control logging and legal state transition enforcement.
-- **Request Execution (`POST /api/v1/execution/request`):** Submits staged order intents to the execution boundary adapter with idempotency guarantees.
-- **Reconcile Execution (`POST /api/v1/execution/reconcile`):** Evaluates operational reconciliation between internal order intent evidence and external evidence ports.
-- **Execution Attempts History (`GET /api/v1/execution/attempts`):** Retrieves execution attempt history for a specific order intent ID.
-- **Boundary Capabilities & Status (`GET /api/v1/execution/boundary`):** Exposes boundary configuration, capability status, and monitoring summary.
 
 ### Operational Safety & Non-Execution Contract
 - **Fail-Closed Execution Boundary:** `externally_executed=False` is permanently enforced across all execution attempts and reconciliation records.

@@ -1,26 +1,59 @@
-name: Platform Tests
+name: Production Release Verification & Platform Tests
 
 on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
-  test:
+  validate-release:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install pytest
-        run: python -m pip install --upgrade pip pytest
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
 
-      - name: Run tests
-        run: python -m pytest -q
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "web/package-lock.json"
+
+      - name: Install Frontend dependencies
+        run: |
+          cd web
+          npm ci
+
+      - name: Frontend TypeScript Typecheck
+        run: |
+          cd web
+          npm run typecheck
+
+      - name: Frontend Vitest Test Suite
+        run: |
+          cd web
+          npm test
+
+      - name: Build Frontend SPA Production Assets
+        run: |
+          cd web
+          npm run build
+
+      - name: Backend & Release Validation Test Suite
+        run: |
+          PYTHONPATH=. pytest -v

@@ -17,6 +17,8 @@ import { HealthCenter } from "./components/HealthCenter";
 import { IntelligenceTimeline } from "./components/IntelligenceTimeline";
 import { AIAssistant } from "./components/AIAssistant";
 import { BacktestViewer } from "./components/BacktestViewer";
+import { PerformanceViewer } from "./components/PerformanceViewer";
+import { RiskViewer } from "./components/RiskViewer";
 import { IntelligenceWorkspace } from "./components/IntelligenceWorkspace";
 import { SignalDeliveryCenter } from "./components/SignalDeliveryCenter";
 import { OperationalControlCenter } from "./components/OperationalControlCenter";
@@ -463,86 +465,11 @@ function BacktestPage({ snapshot }: { snapshot: HostSnapshot }) {
 }
 
 function PerformancePage({ snapshot }: { snapshot: HostSnapshot }) {
-  const { t } = useI18n();
-  return (
-    <div className="performance-view">
-      <div className="card">
-        <div className="card-head">
-          <h3>{t("nav.performance")}</h3>
-          <span className="status unavailable">{t("status.unavailable")}</span>
-        </div>
-        <div className="card-body">
-          <EmptyState
-            title={t("empty.noPerfTitle")}
-            message={snapshot.performance.message}
-          />
-        </div>
-      </div>
-    </div>
-  );
+  return <PerformanceViewer snapshot={snapshot} />;
 }
 
 function RiskPage({ snapshot }: { snapshot: HostSnapshot }) {
-  const { t } = useI18n();
-  const levels = [
-    [t("risk.entryLevel"), snapshot.risk.entry],
-    [t("risk.stopLoss"), snapshot.risk.stopLoss],
-    [t("risk.targetTp1"), snapshot.risk.takeProfits[0] ?? null],
-    [t("risk.targetTp2"), snapshot.risk.takeProfits[1] ?? null],
-    [t("risk.targetTp3"), snapshot.risk.takeProfits[2] ?? null],
-  ] as const;
-
-  return (
-    <div className="risk-view">
-      <div className="grid cols-2">
-        <section className="card">
-          <div className="card-head">
-            <h3>{t("risk.tradeRiskBreakdown")}</h3>
-            <span className={`status ${snapshot.risk.status === "available" ? "ready" : "unavailable"}`}>
-              {snapshot.risk.status === "available" ? t("status.activeSetup") : t("status.unavailable")}
-            </span>
-          </div>
-          <div className="card-body">
-            <div className="levels">
-              {levels.map(([label, value]) => (
-                <div className="level" key={label}>
-                  <span>{label}</span>
-                  <b className={label.includes("Stop") || label.includes("ضرر") || label.includes("خسارة") || label.includes("Durdur") ? "text-red" : label.includes("Take") || label.includes("تارگت") || label.includes("هدف") || label.includes("Hedef") ? "text-green" : ""}>
-                    {value == null ? t("status.unavailable") : value}
-                  </b>
-                </div>
-              ))}
-            </div>
-            <p className="hint" style={{ marginTop: 12 }}>
-              {snapshot.risk.message}
-            </p>
-          </div>
-        </section>
-
-        <section className="card">
-          <div className="card-head">
-            <h3>{t("risk.riskRewardCalculator")}</h3>
-            <span className="status ready">{t("risk.ratio")}</span>
-          </div>
-          <div className="card-body">
-            <p className="hint">
-              {t("risk.riskDesc")}
-            </p>
-            <div className="calc-preview-box" style={{ marginTop: 14 }}>
-              <div className="calc-row">
-                <span>{t("risk.accountRiskLimit")}:</span>
-                <b>{t("risk.perTrade")}</b>
-              </div>
-              <div className="calc-row">
-                <span>{t("risk.minTargetRatio")}:</span>
-                <b>{t("risk.ratio")}</b>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-    </div>
-  );
+  return <RiskViewer snapshot={snapshot} />;
 }
 
 function MonitoringPage({ snapshot }: { snapshot: HostSnapshot }) {

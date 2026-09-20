@@ -365,6 +365,32 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                 )
                 return
 
+            if path in ("/api/v1/performance/summary", "/api/v1/performance/risk"):
+                valid, user = self._authenticate_request_user()
+                if not valid or not user:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to view performance analytics.", origin=origin)
+                    return
+
+                query_params = urllib.parse.parse_qs(parsed_url.query)
+                strategy_name = query_params.get("strategy_name", ["Project 1 Strategy"])[0]
+                symbol = query_params.get("symbol", ["XAUUSD"])[0]
+                timeframe = query_params.get("timeframe", ["1h"])[0]
+
+                snapshot = self.presenter.build_host_snapshot(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    strategy_name=strategy_name,
+                    user=user,
+                )
+                perf_payload = snapshot.get("performance", {})
+                risk_payload = snapshot.get("risk", {})
+
+                if path == "/api/v1/performance/summary":
+                    self._send_json_response(200, {"success": True, "performance": perf_payload}, origin=origin)
+                else:
+                    self._send_json_response(200, {"success": True, "risk": risk_payload, "performance": perf_payload}, origin=origin)
+                return
+
             if path in ("/api/v1/providers", "/api/v1/providers/inspect"):
                 token = self._extract_bearer_token()
                 user = None

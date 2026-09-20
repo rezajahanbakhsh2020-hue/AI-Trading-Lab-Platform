@@ -23,10 +23,22 @@ class PlatformConfig:
     )
     session_secret: str = "dev_session_secret_key_change_in_production_2026"
     recovery_email: Optional[str] = None
+    owner_user_id: str = "admin_owner"
+    owner_email: Optional[str] = None
     persistence_dir: str = ".data"
     session_max_age_seconds: int = 86400
     enable_https_redirect: bool = False
     initial_admin_password: Optional[str] = None
+
+    # Transactional Email Delivery configuration
+    email_provider: str = "none"
+    email_host: str = "localhost"
+    email_port: int = 587
+    email_username: Optional[str] = None
+    email_password: Optional[str] = None
+    email_from: Optional[str] = None
+    email_use_tls: bool = True
+    public_base_url: str = "http://localhost:3000"
 
     def __post_init__(self) -> None:
         clean_env = self.app_env.strip().lower()
@@ -58,6 +70,33 @@ class PlatformConfig:
             if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", clean_email):
                 raise ValueError(f"Invalid recovery_email format: '{self.recovery_email}'")
             object.__setattr__(self, "recovery_email", clean_email)
+
+        if self.owner_email is not None:
+            clean_o_email = self.owner_email.strip().lower()
+            if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", clean_o_email):
+                raise ValueError(f"Invalid owner_email format: '{self.owner_email}'")
+            object.__setattr__(self, "owner_email", clean_o_email)
+        elif self.recovery_email is not None:
+            object.__setattr__(self, "owner_email", self.recovery_email)
+
+        if not isinstance(self.owner_user_id, str) or not self.owner_user_id.strip():
+            object.__setattr__(self, "owner_user_id", "admin_owner")
+        else:
+            object.__setattr__(self, "owner_user_id", self.owner_user_id.strip())
+
+        clean_provider = self.email_provider.strip().lower() if isinstance(self.email_provider, str) else "none"
+        object.__setattr__(self, "email_provider", clean_provider)
+
+        if self.email_from is not None:
+            clean_from = self.email_from.strip().lower()
+            if clean_from and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", clean_from):
+                raise ValueError(f"Invalid email_from format: '{self.email_from}'")
+            object.__setattr__(self, "email_from", clean_from if clean_from else None)
+
+        if not isinstance(self.public_base_url, str) or not self.public_base_url.strip():
+            object.__setattr__(self, "public_base_url", "http://localhost:3000")
+        else:
+            object.__setattr__(self, "public_base_url", self.public_base_url.strip().rstrip("/"))
 
         if not isinstance(self.persistence_dir, str) or not self.persistence_dir.strip():
             raise ValueError("persistence_dir must be a non-empty string")
@@ -108,6 +147,16 @@ class PlatformConfig:
             "session_secret": "[REDACTED]",
             "initial_admin_password": "[REDACTED]" if self.initial_admin_password else None,
             "recovery_email": self.recovery_email,
+            "owner_user_id": self.owner_user_id,
+            "owner_email": self.owner_email,
+            "email_provider": self.email_provider,
+            "email_host": self.email_host,
+            "email_port": self.email_port,
+            "email_username": self.email_username,
+            "email_password": "[REDACTED]" if self.email_password else None,
+            "email_from": self.email_from,
+            "email_use_tls": self.email_use_tls,
+            "public_base_url": self.public_base_url,
             "persistence_dir": self.persistence_dir,
             "session_max_age_seconds": self.session_max_age_seconds,
             "enable_https_redirect": self.enable_https_redirect,
@@ -132,6 +181,8 @@ class PlatformConfig:
 
         secret = os.getenv("SESSION_SECRET", "dev_session_secret_key_change_in_production_2026")
         email = os.getenv("RECOVERY_EMAIL", None)
+        o_user_id = os.getenv("OWNER_USER_ID", "admin_owner")
+        o_email = os.getenv("OWNER_EMAIL", email)
         p_dir = os.getenv("PERSISTENCE_DIR", ".data")
         max_age_str = os.getenv("SESSION_MAX_AGE_SECONDS", "86400")
         try:
@@ -142,13 +193,35 @@ class PlatformConfig:
         https_redirect = os.getenv("ENABLE_HTTPS_REDIRECT", "false").lower() in ("true", "1", "yes")
         admin_pwd = os.getenv("INITIAL_ADMIN_PASSWORD", None)
 
+        e_provider = os.getenv("EMAIL_PROVIDER", "none")
+        e_host = os.getenv("EMAIL_HOST", "localhost")
+        try:
+            e_port = int(os.getenv("EMAIL_PORT", "587"))
+        except ValueError:
+            e_port = 587
+        e_username = os.getenv("EMAIL_USERNAME", None)
+        e_password = os.getenv("EMAIL_PASSWORD", None)
+        e_from = os.getenv("EMAIL_FROM", None)
+        e_use_tls = os.getenv("EMAIL_USE_TLS", "true").lower() in ("true", "1", "yes")
+        public_url = os.getenv("PUBLIC_BASE_URL", "http://localhost:3000")
+
         return cls(
             app_env=env_name,
             allowed_origins=origins,
             session_secret=secret,
             recovery_email=email,
+            owner_user_id=o_user_id,
+            owner_email=o_email,
             persistence_dir=p_dir,
             session_max_age_seconds=max_age,
             enable_https_redirect=https_redirect,
             initial_admin_password=admin_pwd,
+            email_provider=e_provider,
+            email_host=e_host,
+            email_port=e_port,
+            email_username=e_username,
+            email_password=e_password,
+            email_from=e_from,
+            email_use_tls=e_use_tls,
+            public_base_url=public_url,
         )

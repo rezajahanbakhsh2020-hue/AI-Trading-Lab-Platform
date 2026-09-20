@@ -31,12 +31,14 @@ class NotificationDeliveryService:
         delivery_port: NotificationDeliveryPort,
         user_auth_service: Optional[UserAuthorizationService] = None,
         security_service: Optional[SecurityBoundaryService] = None,
+        email_service: Optional[Any] = None,
     ) -> None:
         if delivery_port is None or not isinstance(delivery_port, NotificationDeliveryPort):
             raise ValueError("delivery_port must be a NotificationDeliveryPort instance")
         self._port = delivery_port
         self._auth_service = user_auth_service
         self._security = security_service or SecurityBoundaryService()
+        self._email_service = email_service
 
     def _evaluate_delivery_permission(
         self,
@@ -142,11 +144,33 @@ class NotificationDeliveryService:
             payload=sanitized_payload,
         )
 
-        return self._port.deliver_event(
+        attempt = self._port.deliver_event(
             user_id=clean_uid,
             event=sanitized_event,
             channel=channel,
         )
+
+        # Forward security/account lifecycle/high-severity events to email delivery if available
+        if self._email_service is not None and user_auth is not None and user_auth.recovery_email:
+            cat_val = sanitized_event.category.value if hasattr(sanitized_event.category, "value") else str(sanitized_event.category)
+            sev_val = sanitized_event.severity.value if hasattr(sanitized_event.severity, "value") else str(sanitized_event.severity)
+
+            is_sec_category = cat_val.lower() in ("security", "account_session", "admin")
+            is_error_severity = sev_val.lower() in ("error", "critical")
+            is_email_channel = (channel or "").strip().lower() == "email"
+
+            if is_sec_category or is_error_severity or is_email_channel:
+                try:
+                    self._email_service.send_security_notification(
+                        to_email=user_auth.recovery_email,
+                        title=sanitized_event.title,
+                        message=sanitized_event.message,
+                        details=sanitized_event.payload,
+                    )
+                except Exception:
+                    pass
+
+        return attempt
 
     def deliver_alert_to_user(
         self,

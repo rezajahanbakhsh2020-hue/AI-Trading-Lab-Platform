@@ -156,15 +156,22 @@ export function InteractiveChart({
       },
       rightPriceScale: {
         borderColor: "rgba(255, 255, 255, 0.1)",
+        autoScale: true,
+        alignLabels: true,
+        borderVisible: true,
         scaleMargins: {
           top: 0.1,
-          bottom: 0.25,
+          bottom: 0.2,
         },
       },
       timeScale: {
         borderColor: "rgba(255, 255, 255, 0.1)",
         timeVisible: true,
         secondsVisible: false,
+        borderVisible: true,
+        barSpacing: 8,
+        minBarSpacing: 3,
+        rightOffset: 5,
       },
     });
 
@@ -262,6 +269,13 @@ export function InteractiveChart({
     // 2. Add Volume Histogram Pane if volume exists
     const hasVolume = cleanCandles.some((c) => c.volume != null && c.volume > 0);
     if (hasVolume) {
+      chart.priceScale("right").applyOptions({
+        scaleMargins: {
+          top: 0.08,
+          bottom: 0.22,
+        },
+      });
+
       const volumeSeries = chart.addSeries(HistogramSeries, {
         priceFormat: { type: "volume" },
         priceScaleId: "volume_scale",
@@ -277,11 +291,18 @@ export function InteractiveChart({
       const volumeData = cleanCandles.map((c) => ({
         time: c.timestamp as Time,
         value: c.volume ?? 0,
-        color: c.close >= c.open ? "rgba(16, 185, 129, 0.25)" : "rgba(239, 68, 68, 0.25)",
+        color: c.close >= c.open ? "rgba(16, 185, 129, 0.3)" : "rgba(239, 68, 68, 0.3)",
       }));
 
       volumeSeries.setData(volumeData);
       volumeSeriesRef.current = volumeSeries;
+    } else {
+      chart.priceScale("right").applyOptions({
+        scaleMargins: {
+          top: 0.08,
+          bottom: 0.08,
+        },
+      });
     }
 
     // 3. Project 1 Price Level Overlays (Entry, SL, TP1..TP3)

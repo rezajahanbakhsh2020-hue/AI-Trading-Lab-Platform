@@ -264,8 +264,8 @@ select {
 /* Notification Button */
 .notification-icon-btn {
   position: relative;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 10px;
   background: var(--bg-2);
   border: 1px solid var(--line);
@@ -1028,13 +1028,13 @@ select {
 }
 
 .seg-btn {
-  padding: 6px 12px;
+  padding: 8px 12px;
   border-radius: 6px;
   font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);
   cursor: pointer;
-  min-height: 36px;
+  min-height: 44px;
 }
 
 .seg-btn.active {
@@ -2088,6 +2088,12 @@ select {
   .grid.cols-2,
   .flow {
     grid-template-columns: 1fr;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
   }
 
   .page-header h2 {

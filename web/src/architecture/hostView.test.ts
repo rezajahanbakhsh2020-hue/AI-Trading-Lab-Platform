@@ -73,7 +73,7 @@ describe("connected Project 1 host snapshot", () => {
     expect(snapshot.market.status).toBe("connected");
     expect(snapshot.market.provider?.name).toBe("BiQuoteProvider");
     expect(snapshot.market.quote?.last).toBe(2663.0);
-    expect(snapshot.market.candles.length).toBe(8);
+    expect(snapshot.market.candles.length).toBe(SAMPLE_BIQUOTE_CANDLES_XAUUSD.length);
 
     expect(snapshot.signal.action).toBe("BUY");
     expect(snapshot.signal.signalId).toBe("p1_xauusd_1h_1700000000");

@@ -62,23 +62,41 @@ export function App() {
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, []);
 
-  const [liveCandles, setLiveCandles] = useState(SAMPLE_BIQUOTE_CANDLES_XAUUSD);
+  const [liveCandles, setLiveCandles] = useState<typeof SAMPLE_BIQUOTE_CANDLES_XAUUSD>([]);
   const [liveQuote, setLiveQuote] = useState(SAMPLE_BIQUOTE_QUOTE_XAUUSD);
 
   useEffect(() => {
-    if (!isConnected) return;
+    // When disconnected, only provide sample dataset for default XAUUSD 1h demo view.
+    // Clear candles for any other timeframe or symbol so wrong timeframe data is never shown.
+    if (!isConnected) {
+      if (selectedSymbol === "XAUUSD" && selectedTimeframe === "1h") {
+        setLiveCandles(SAMPLE_BIQUOTE_CANDLES_XAUUSD);
+      } else {
+        setLiveCandles([]);
+      }
+      return;
+    }
+
+    // Immediately invalidate/clear candles upon timeframe or symbol selection change
+    setLiveCandles([]);
+
     let isMounted = true;
+    const reqSymbol = selectedSymbol;
+    const reqTimeframe = selectedTimeframe;
 
     async function loadMarketData() {
       const token = authState.sessionToken;
       const [candlesRes, quoteRes] = await Promise.all([
-        fetchMarketCandles(token, selectedSymbol, selectedTimeframe, "biquote"),
-        fetchMarketQuote(token, selectedSymbol, "biquote"),
+        fetchMarketCandles(token, reqSymbol, reqTimeframe, "biquote"),
+        fetchMarketQuote(token, reqSymbol, "biquote"),
       ]);
 
+      // Protect against out-of-order stale async responses
       if (isMounted) {
         if (candlesRes.success && candlesRes.candles && candlesRes.candles.length > 0) {
           setLiveCandles(candlesRes.candles);
+        } else {
+          setLiveCandles([]);
         }
         if (quoteRes.success && quoteRes.quote) {
           setLiveQuote(quoteRes.quote);

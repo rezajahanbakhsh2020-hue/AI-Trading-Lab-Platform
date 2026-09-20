@@ -187,4 +187,44 @@ describe("InteractiveChart Component", () => {
 
     expect(container.querySelector(".chart-symbol-tag")?.textContent).toBe("XAUUSD");
   });
+
+  it("handles ISO-8601 string timestamps from BiQuote provider cleanly", () => {
+    const isoCandles: any[] = [
+      { timestamp: "2026-09-17T00:00:00Z", open: 4271.7, high: 4381.3, low: 4266.1, close: 4346.5, volume: 100 },
+      { timestamp: "2026-09-18T00:00:00Z", open: 4346.1, high: 4399.8, low: 4334.3, close: 4378.1, volume: 150 },
+    ];
+
+    const { container } = render(
+      <I18nProvider>
+        <InteractiveChart
+          symbol="XAUUSD"
+          timeframe="1d"
+          candles={isoCandles}
+          status="connected"
+          provider={sampleProvider}
+          isProviderConnected={true}
+        />
+      </I18nProvider>
+    );
+
+    expect(container.querySelector(".overlay-title")).toBeNull();
+    expect(container.querySelector(".chart-symbol-tag")?.textContent).toBe("XAUUSD");
+  });
+
+  it("renders overlay when connected provider returns empty dataset", () => {
+    const { container } = render(
+      <I18nProvider>
+        <InteractiveChart
+          symbol="XAUUSD"
+          timeframe="1d"
+          candles={[]}
+          status="connected"
+          provider={sampleProvider}
+          isProviderConnected={true}
+        />
+      </I18nProvider>
+    );
+
+    expect(container.querySelector(".overlay-title")?.textContent).toBe("No Candles Available");
+  });
 });

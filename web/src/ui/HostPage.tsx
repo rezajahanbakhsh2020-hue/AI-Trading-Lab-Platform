@@ -117,14 +117,14 @@ export function HostPage({
     : (PAGE_COPY[normalizedPageId] ?? PAGE_COPY[pageId] ?? PAGE_COPY.dashboard).summary;
 
   return (
-    <div className="page-workspace">
+    <div className="page page-workspace">
       <div className="page-header">
         <div>
           <p className="kicker">{copyKicker}</p>
           <h2>{copyTitle}</h2>
           <p className="lede">{copySummary}</p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <div className="flex-container page-header-actions">
           {onToggleConnection && (
             <button
               className={`btn ${snapshot.project1.connected ? "btn-secondary" : "btn-primary"}`}

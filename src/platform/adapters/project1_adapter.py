@@ -126,7 +126,12 @@ class Project1LabArtifactAdapter(Project1IntegrationPort):
             confidence=signal.confidence,
             strategy_name=signal.strategy_name,
             timeframe=timeframe,
-            metadata={"source": "Project1", "adapter": "Project1LabArtifactAdapter"},
+            metadata={
+                "source": "Project1",
+                "adapter": "Project1LabArtifactAdapter",
+                "provenance_type": "lab_artifact",
+                "is_historical": True,
+            },
         )
 
     def describe(self) -> Dict[str, Any]:

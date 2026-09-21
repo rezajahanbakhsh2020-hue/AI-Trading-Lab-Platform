@@ -33,6 +33,34 @@ from src.platform.services.provider_operations import ProviderOperations
 from src.platform.services.market_overview import MarketOverviewService
 from src.platform.services.security import SecretSanitizer, SecurityBoundaryService
 
+LIVE_SIGNAL_MAX_AGE_SECONDS = 300.0  # 5 minutes currentness threshold for live signals
+
+
+def _evaluate_signal_live_status(sig_dict: Dict[str, Any]) -> Tuple[bool, str]:
+    """Evaluate whether a signal artifact is a genuinely current LIVE signal versus historical/stale."""
+    if not sig_dict:
+        return False, "No signal data available."
+
+    sig_ts = float(sig_dict.get("timestamp") or 0.0)
+    now_ts = time.time()
+    age_sec = max(0.0, now_ts - sig_ts) if sig_ts > 0 else float("inf")
+
+    meta = sig_dict.get("metadata") if isinstance(sig_dict.get("metadata"), dict) else {}
+    prov = meta.get("provenance_type") or meta.get("source") or ""
+
+    # Lab artifacts, backtest records, or historical snapshots are historical by provenance
+    if prov in ("lab_artifact", "historical_snapshot", "backtest_record") or meta.get("is_historical"):
+        return False, f"Signal is a historical artifact ({prov or 'historical'}, emitted at timestamp {sig_ts}). Current live signal is unavailable."
+
+    # Timestamp currentness check (must be within 5 minutes / 300s of current time)
+    if age_sec > LIVE_SIGNAL_MAX_AGE_SECONDS:
+        return False, f"Signal timestamp {sig_ts} is stale (age {int(age_sec)}s > {int(LIVE_SIGNAL_MAX_AGE_SECONDS)}s live threshold). Live signal unavailable."
+
+    if "is_live" in meta and not meta["is_live"]:
+        return False, "Signal metadata explicitly marks signal as non-live."
+
+    return True, f"Verified current live signal (emitted {int(age_sec)}s ago)."
+
 
 class Project1SignalPresenter:
     """Application service presenting Project 1 outputs to Project 2 application/UI layers."""
@@ -223,12 +251,28 @@ class Project1SignalPresenter:
             sig_dict["stop_loss"] = None
             sig_dict["take_profits"] = []
 
+        # Evaluate signal live provenance and currentness
+        is_live, live_reason = _evaluate_signal_live_status(sig_dict)
+        sig_dict["is_live"] = is_live
+        sig_dict["live_reason"] = live_reason
+
         # Sanitize metadata for all roles and filter protected payloads for non-admins
         raw_meta = sig_dict.get("metadata", {})
         if user is not None:
             sig_dict["metadata"] = self._security_service.filter_protected_payload(user, raw_meta)
         else:
             sig_dict["metadata"] = SecretSanitizer.sanitize_data(raw_meta)
+
+        if not is_live:
+            return {
+                "port": desc,
+                "connected": True,
+                "status": "stale",
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "signal": sig_dict,
+                "message": f"Historical/stale Project 1 signal for {symbol} ({timeframe}). Live signal data is unavailable.",
+            }
 
         return {
             "port": desc,
@@ -534,6 +578,10 @@ class Project1SignalPresenter:
         tps = list(signal_dict.get("take_profits") or [])
         sig_ts = float(signal_dict.get("timestamp") or 0.0)
 
+        is_live, live_reason = _evaluate_signal_live_status(signal_dict)
+        signal_dict["is_live"] = is_live
+        signal_dict["live_reason"] = live_reason
+
         # Mask strategy details for normal users if strategy info is protected
         strat_msg = f"Strategy '{strat_name}' owned and evaluated by Project 1."
         if user is not None and not user.is_admin and not user.has_permission(Permission.READ_STRATEGY_PARAMETERS):
@@ -553,8 +601,19 @@ class Project1SignalPresenter:
             user=user,
         )
 
-        # Stage OrderIntent if authorized and user is provided
-        if auth_obj.is_authorized and user is not None:
+        if not is_live:
+            auth_payload["status"] = "SIGNAL_STALE"
+            auth_payload["isAuthorized"] = False
+            auth_payload["reason"] = f"Signal for {symbol} is historical/stale: {live_reason}"
+            auth_payload["checks"].append({
+                "id": "signal_freshness",
+                "label": "Signal Live Currentness & Provenance Gate",
+                "passed": False,
+                "reason": live_reason,
+            })
+
+        # Stage OrderIntent if authorized, genuinely live, and user is provided
+        if is_live and auth_obj.is_authorized and user is not None:
             sig_id = signal_dict.get("signal_id") or f"sig_{int(sig_ts)}"
             idemp_key = f"snap_idemp_{user.user_id}_{symbol.lower()}_{sig_id}"
             self._order_intent_service.create_order_intent(
@@ -677,29 +736,29 @@ class Project1SignalPresenter:
             },
             "signal": {
                 "signalId": signal_dict.get("signal_id"),
-                "action": action_str,
+                "action": action_str if is_live else "STALE SIGNAL",
                 "timestamp": str(signal_dict.get("timestamp")),
                 "confidence": conf,
                 "strategyName": strat_name,
                 "timeframe": signal_dict.get("timeframe") or timeframe,
-                "status": "active",
-                "message": f"Validated {action_str} signal emitted by Project 1.",
+                "status": "active" if is_live else "stale",
+                "message": f"Validated {action_str} signal emitted by Project 1." if is_live else f"Historical/stale Project 1 signal for {symbol} (emitted at {signal_dict.get('timestamp')}). Current live signal is unavailable.",
                 "metadata": signal_dict.get("metadata", {}),
             },
             "authorization": auth_payload,
             "performance": perf_payload,
             "risk": {
-                "entry": entry,
-                "stopLoss": sl,
-                "takeProfits": tps,
-                "status": "available" if entry is not None else "unavailable",
-                "message": "Real trade setup levels provided by Project 1." if entry is not None else "Trade setup omitted or restricted.",
+                "entry": entry if is_live else None,
+                "stopLoss": sl if is_live else None,
+                "takeProfits": tps if is_live else [],
+                "status": ("available" if entry is not None else "unavailable") if is_live else "stale",
+                "message": ("Real trade setup levels provided by Project 1." if entry is not None else "Trade setup omitted or restricted.") if is_live else "Trade setup levels held because signal is historical/stale.",
             },
             "monitoring": {
-                "freshness": "fresh",
-                "health": "healthy",
-                "status": "available",
-                "message": "Project 1 signal active and fresh.",
+                "freshness": "fresh" if is_live else "stale",
+                "health": "healthy" if is_live else "stale",
+                "status": "available" if is_live else "stale",
+                "message": "Project 1 signal active and fresh." if is_live else f"Project 1 signal for {symbol} is historical/stale. Live signal data is unavailable.",
             },
             "providers": {
                 "marketData": "unconnected",

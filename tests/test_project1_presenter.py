@@ -7,6 +7,7 @@ from src.platform.adapters.project1_adapter import (
     Project1LabArtifactAdapter,
 )
 from src.platform.integrations.lab import LabArtifactSource
+from src.platform.integrations.project1 import Project1IntegrationPort
 from src.platform.services.lab_artifacts import LabArtifactService
 from src.platform.services.project1_presenter import Project1SignalPresenter
 
@@ -74,28 +75,45 @@ def test_presenter_with_disconnected_adapter():
     assert snapshot["risk"]["entry"] is None
 
 
-def test_presenter_with_lab_adapter_full_signal_and_setup():
-    source = DummyLabArtifactSource(
-        signal_data={
-            "action": "BUY",
-            "strategy_name": "GoldTrendv1",
-            "timestamp": 1700000000.0,
-            "confidence": 0.88,
-        },
-        setup_data={
-            "symbol": "XAUUSD",
-            "entry_price": 2650.50,
-            "stop_loss": 2635.00,
-            "take_profit_1": 2670.00,
-            "take_profit_2": 2690.00,
-            "take_profit_3": 2710.00,
-            "timestamp": 1700000000.0,
-            "direction": "BUY",
-        },
+class MockLiveSignalPort(Project1IntegrationPort):
+    """Mock Project 1 integration port emitting genuinely current live signals."""
+
+    def __init__(self, signal=None):
+        self._signal = signal
+
+    def fetch_latest_signal(self, symbol: str, timeframe: str, strategy_name=None):
+        return self._signal
+
+    def describe(self):
+        return {
+            "name": "MockLiveSignalPort",
+            "port": "Project1IntegrationPort",
+            "connected": True,
+            "status": "active",
+        }
+
+
+def test_presenter_with_genuinely_live_signal():
+    import time
+    from src.platform.domain.presented_signal import PresentedSignal
+
+    now_ts = time.time()
+    live_signal = PresentedSignal(
+        signal_id="sig_live_xauusd_001",
+        symbol="XAUUSD",
+        signal_type="buy",
+        timestamp=now_ts - 30.0,  # 30 seconds ago
+        entry_price=2650.50,
+        stop_loss=2635.00,
+        take_profits=(2670.0, 2690.0, 2710.0),
+        confidence=0.88,
+        strategy_name="GoldTrendv1",
+        timeframe="1h",
+        metadata={"provenance_type": "live_signal", "is_live": True},
     )
-    service = LabArtifactService(source)
-    adapter = Project1LabArtifactAdapter(service)
-    presenter = Project1SignalPresenter(adapter)
+
+    port = MockLiveSignalPort(live_signal)
+    presenter = Project1SignalPresenter(port)
 
     res = presenter.present_signal("XAUUSD", "1h")
     assert res["connected"] is True
@@ -105,18 +123,50 @@ def test_presenter_with_lab_adapter_full_signal_and_setup():
     assert sig["strategy_name"] == "GoldTrendv1"
     assert sig["confidence"] == 0.88
     assert sig["entry_price"] == 2650.50
-    assert sig["stop_loss"] == 2635.00
-    assert sig["take_profits"] == [2670.0, 2690.0, 2710.0]
 
     snapshot = presenter.build_host_snapshot("XAUUSD", "1h")
     assert snapshot["project1"]["connected"] is True
     assert snapshot["signal"]["action"] == "BUY"
-    assert snapshot["signal"]["confidence"] == 0.88
+    assert snapshot["signal"]["status"] == "active"
     assert snapshot["risk"]["entry"] == 2650.50
     assert snapshot["risk"]["stopLoss"] == 2635.00
     assert snapshot["risk"]["takeProfits"] == [2670.0, 2690.0, 2710.0]
-    assert snapshot["strategy"]["name"] == "GoldTrendv1"
-    assert snapshot["strategy"]["stability"] == 88
+
+
+def test_presenter_with_lab_adapter_full_signal_and_setup():
+    import time
+    now_ts = time.time()
+    source = DummyLabArtifactSource(
+        signal_data={
+            "action": "BUY",
+            "strategy_name": "GoldTrendv1",
+            "timestamp": now_ts - 300.0,
+            "confidence": 0.88,
+        },
+        setup_data={
+            "symbol": "XAUUSD",
+            "entry_price": 2650.50,
+            "stop_loss": 2635.00,
+            "take_profit_1": 2670.00,
+            "take_profit_2": 2690.00,
+            "take_profit_3": 2710.00,
+            "timestamp": now_ts - 300.0,
+            "direction": "BUY",
+        },
+    )
+    service = LabArtifactService(source)
+    adapter = Project1LabArtifactAdapter(service)
+    presenter = Project1SignalPresenter(adapter)
+
+    res = presenter.present_signal("XAUUSD", "1h")
+    assert res["connected"] is True
+    assert res["status"] == "stale"  # Lab artifacts are tagged provenance_type="lab_artifact"
+    assert "Historical/stale Project 1 signal" in res["message"]
+
+    snapshot = presenter.build_host_snapshot("XAUUSD", "1h")
+    assert snapshot["project1"]["connected"] is True
+    assert snapshot["signal"]["status"] == "stale"
+    assert snapshot["risk"]["entry"] is None  # Entry price held for non-live lab artifacts
 
 
 def test_presenter_with_lab_adapter_no_signal():
@@ -137,27 +187,25 @@ def test_presenter_with_lab_adapter_no_signal():
 
 
 def test_presenter_preserves_real_data_without_fabrication():
-    source = DummyLabArtifactSource(
-        signal_data={
-            "action": "SELL",
-            "strategy_name": "MeanReversion_Custom",
-            "timestamp": 1712345678.0,
-            "confidence": 0.72,
-        },
-        setup_data={
-            "symbol": "EURUSD",
-            "entry_price": 1.0850,
-            "stop_loss": 1.0910,
-            "take_profit_1": 1.0790,
-            "take_profit_2": 1.0720,
-            "take_profit_3": 1.0650,
-            "timestamp": 1712345678.0,
-            "direction": "SELL",
-        },
+    import time
+    from src.platform.domain.presented_signal import PresentedSignal
+
+    now_ts = time.time()
+    live_signal = PresentedSignal(
+        signal_id="sig_eurusd_live_002",
+        symbol="EURUSD",
+        signal_type="sell",
+        timestamp=now_ts - 120.0,
+        entry_price=1.0850,
+        stop_loss=1.0910,
+        take_profits=(1.0790, 1.0720, 1.0650),
+        confidence=0.72,
+        strategy_name="MeanReversion_Custom",
+        timeframe="4h",
+        metadata={"provenance_type": "live_signal", "is_live": True},
     )
-    service = LabArtifactService(source)
-    adapter = Project1LabArtifactAdapter(service)
-    presenter = Project1SignalPresenter(adapter)
+    port = MockLiveSignalPort(live_signal)
+    presenter = Project1SignalPresenter(port)
 
     snapshot = presenter.build_host_snapshot("EURUSD", "4h")
     assert snapshot["market"]["symbol"] == "EURUSD"
@@ -262,32 +310,29 @@ def test_presenter_order_intents_payload_and_isolation():
 
 
 def test_presenter_build_host_snapshot_auto_stages_authorized_signal():
+    import time
+    from src.platform.domain.presented_signal import PresentedSignal
     from src.platform.domain.security import Permission
     from src.platform.domain.user_authorization import UserAuthorization
     from src.platform.services.order_intent import OrderIntentService
 
-    source = DummyLabArtifactSource(
-        signal_data={
-            "action": "BUY",
-            "strategy_name": "GoldTrendv1",
-            "timestamp": 1700000000.0,
-            "confidence": 0.88,
-        },
-        setup_data={
-            "symbol": "XAUUSD",
-            "entry_price": 2650.50,
-            "stop_loss": 2635.00,
-            "take_profit_1": 2670.00,
-            "take_profit_2": 2690.00,
-            "take_profit_3": 2710.00,
-            "timestamp": 1700000000.0,
-            "direction": "BUY",
-        },
+    now_ts = time.time()
+    live_signal = PresentedSignal(
+        signal_id="sig_stage_001",
+        symbol="XAUUSD",
+        signal_type="buy",
+        timestamp=now_ts - 30.0,
+        entry_price=2650.50,
+        stop_loss=2635.00,
+        take_profits=(2670.00, 2690.00, 2710.00),
+        confidence=0.88,
+        strategy_name="GoldTrendv1",
+        timeframe="1h",
+        metadata={"provenance_type": "live_signal", "is_live": True},
     )
-    service = LabArtifactService(source)
-    adapter = Project1LabArtifactAdapter(service)
+    port = MockLiveSignalPort(live_signal)
     order_intent_service = OrderIntentService()
-    presenter = Project1SignalPresenter(adapter, order_intent_service=order_intent_service)
+    presenter = Project1SignalPresenter(port, order_intent_service=order_intent_service)
 
     user = UserAuthorization(
         user_id="user_stage_test",

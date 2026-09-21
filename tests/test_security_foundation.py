@@ -85,18 +85,24 @@ class MockProject1Port(Project1IntegrationPort):
         }
 
     def fetch_latest_signal(self, symbol: str, timeframe: str, strategy_name=None):
+        import time
         return PresentedSignal(
             signal_id="sig_001",
             symbol=symbol,
             signal_type="buy",
-            timestamp=1700000000,
+            timestamp=time.time() - 30.0,
             entry_price=2700.0,
             stop_loss=2680.0,
             take_profits=(2730.0, 2750.0, 2780.0),
             confidence=0.95,
             strategy_name="ProprietaryGoldAlpha",
             timeframe=timeframe,
-            metadata={"secret_token": "api_key=xyz123", "normal_field": "public_data"},
+            metadata={
+                "secret_token": "api_key=xyz123",
+                "normal_field": "public_data",
+                "provenance_type": "live_signal",
+                "is_live": True,
+            },
         )
 
 
@@ -248,7 +254,8 @@ def test_project1_presenter_alternate_path_cannot_bypass_authorization():
     assert sig_res["signal"]["entry_price"] is None
     assert sig_res["signal"]["stop_loss"] is None
     assert sig_res["signal"]["take_profits"] == []
-    assert sig_res["signal"]["metadata"] == {"secret_token": "[REDACTED]", "normal_field": "public_data"}
+    assert sig_res["signal"]["metadata"]["secret_token"] == "[REDACTED]"
+    assert sig_res["signal"]["metadata"]["normal_field"] == "public_data"
 
     # Admin receives complete details and sanitized secrets
     admin_res = presenter.present_signal("XAUUSD", "1h", user=admin)

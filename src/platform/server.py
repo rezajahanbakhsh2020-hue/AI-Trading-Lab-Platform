@@ -22,7 +22,7 @@ from src.platform.config import PlatformConfig
 from src.platform.adapters.user_repository import FileBackedUserRepository
 from src.platform.adapters.workspace_repository import FileBackedWorkspaceRepository
 from src.platform.adapters.order_intent_repository import FileBackedOrderIntentRepository
-from src.platform.adapters.project1_adapter import DisconnectedProject1Adapter
+from src.platform.adapters.project1_adapter import DisconnectedProject1Adapter, Project1GatewayAdapter
 from src.platform.adapters.project1_repository import FileBackedProject1IntegrationRepository
 from src.platform.services.user_authorization import UserAuthorizationService
 from src.platform.services.workspace import WorkspaceService
@@ -1549,7 +1549,7 @@ def create_server(
     provider_operations = ProviderOperations(access=provider_access)
     market_overview_service = MarketOverviewService(operations=provider_operations)
 
-    port_adapter = DisconnectedProject1Adapter()
+    port_adapter = Project1GatewayAdapter(gateway_service=gateway_service)
     presenter = Project1SignalPresenter(
         port=port_adapter,
         security_service=security_service,

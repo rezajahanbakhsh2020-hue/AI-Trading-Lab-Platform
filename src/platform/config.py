@@ -65,6 +65,10 @@ class PlatformConfig:
             ) or len(self.session_secret) < 32:
                 raise ValueError("SESSION_SECRET must be explicitly set to a strong key (at least 32 chars) in production.")
 
+            clean_pub_url = self.public_base_url.lower()
+            if any(local in clean_pub_url for local in ("localhost", "127.0.0.1", "0.0.0.0", "::1")):
+                raise ValueError("PUBLIC_BASE_URL must be explicitly set to a valid non-localhost external public URL in production.")
+
         if self.recovery_email is not None:
             clean_email = self.recovery_email.strip().lower()
             if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", clean_email):

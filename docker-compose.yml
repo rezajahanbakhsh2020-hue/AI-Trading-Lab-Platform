@@ -11,9 +11,10 @@ services:
       - APP_ENV=production
       - PORT=8000
       - HOST=0.0.0.0
+      - PUBLIC_BASE_URL=https://trade.yourdomain.com
       - SESSION_SECRET=production_super_secret_session_key_32_chars_min_2026!
       - INITIAL_ADMIN_PASSWORD=ProductionAdminPassword2026!
-      - ALLOWED_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
+      - ALLOWED_ORIGINS=https://trade.yourdomain.com,http://localhost:8000,http://127.0.0.1:8000
     volumes:
       - platform_data:/app/.data
     restart: unless-stopped

@@ -41,6 +41,7 @@ In production (`APP_ENV=production`), missing critical secrets or unprovisioned 
 | Environment Variable | Required in Prod | Description & Example |
 |---|---|---|
 | `APP_ENV` | Yes | Set to `production` (or `development` / `testing`). |
+| `PUBLIC_BASE_URL` | **YES** | Explicit public HTTPS/HTTP base URL of the Project 2 deployment reachable by external Project 1 producers (e.g., `https://trade.yourdomain.com`). Rejects `localhost` in production. |
 | `SESSION_SECRET` | **YES** | Strong random secret string (min 32 characters). Default dev secret is rejected in production. |
 | `INITIAL_ADMIN_PASSWORD` | **YES** | Operator-supplied bootstrap password for initial Owner account (`admin_owner`). Production fails startup if unprovisioned and this is missing. |
 | `ALLOWED_ORIGINS` | **YES** | Comma-separated trusted origin URLs (e.g., `https://trade.yourdomain.com`). |

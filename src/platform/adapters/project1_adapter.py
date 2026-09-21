@@ -159,3 +159,83 @@ class DisconnectedProject1Adapter(Project1IntegrationPort):
             "status": "disconnected",
             "message": "No Project 1 data connected yet.",
         }
+
+
+class Project1GatewayAdapter(Project1IntegrationPort):
+    """Adapter bridging Project1IntegrationGatewayService / Project1IntegrationRepositoryPort to Project1IntegrationPort."""
+
+    def __init__(self, gateway_service: Any) -> None:
+        if gateway_service is None:
+            raise ValueError("gateway_service must be provided")
+        self._gateway_service = gateway_service
+
+    def fetch_latest_signal(
+        self, symbol: str, timeframe: str, strategy_name: Optional[str] = None
+    ) -> Optional[PresentedSignal]:
+        import time
+        repo = getattr(self._gateway_service, "_repo", None)
+        if repo is None:
+            return None
+
+        records = repo.list_records_for_user(
+            user_id=None,
+            symbol=symbol,
+            lifecycle_state=None,
+            limit=100,
+        )
+
+        if not records:
+            return None
+
+        target_rec = None
+        for rec in records:
+            if timeframe and rec.get("timeframe") and rec.get("timeframe") != timeframe:
+                continue
+            if strategy_name and rec.get("strategy_name") and rec.get("strategy_name") != strategy_name:
+                continue
+            target_rec = rec
+            break
+
+        if target_rec is None:
+            return None
+
+        tps = []
+        if target_rec.get("take_profit_1") is not None:
+            tps.append(float(target_rec["take_profit_1"]))
+        if target_rec.get("take_profit_2") is not None:
+            tps.append(float(target_rec["take_profit_2"]))
+        if target_rec.get("take_profit_3") is not None:
+            tps.append(float(target_rec["take_profit_3"]))
+
+        raw_meta = target_rec.get("metadata")
+        meta = dict(raw_meta) if isinstance(raw_meta, dict) else {}
+        if "provenance_type" not in meta:
+            meta["provenance_type"] = "live_signal"
+        meta["adapter"] = "Project1GatewayAdapter"
+        meta["source"] = "Project1"
+
+        return PresentedSignal(
+            signal_id=str(target_rec.get("signal_id") or f"p1_{symbol.lower()}_{int(time.time())}"),
+            symbol=symbol,
+            signal_type=str(target_rec.get("signal_type", "no-signal")).lower(),
+            timestamp=float(target_rec.get("timestamp") or time.time()),
+            entry_price=float(target_rec["entry_price"]) if target_rec.get("entry_price") is not None else None,
+            stop_loss=float(target_rec["stop_loss"]) if target_rec.get("stop_loss") is not None else None,
+            take_profits=tuple(tps),
+            confidence=float(target_rec["confidence"]) if target_rec.get("confidence") is not None else None,
+            strategy_name=target_rec.get("strategy_name"),
+            timeframe=timeframe,
+            metadata=meta,
+        )
+
+    def describe(self) -> Dict[str, Any]:
+        repo = getattr(self._gateway_service, "_repo", None)
+        recs = repo.list_records_for_user(user_id=None, limit=1) if repo else []
+        has_records = len(recs) > 0
+        return {
+            "name": "Project1GatewayAdapter",
+            "port": "Project1IntegrationPort",
+            "connected": has_records,
+            "status": "active" if has_records else "disconnected",
+            "message": "Connected to Project 1 Integration Gateway." if has_records else "No Project 1 integration records received yet via gateway.",
+        }

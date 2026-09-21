@@ -111,4 +111,34 @@ describe("connected Project 1 host snapshot", () => {
     expect(snapshot.project1.status).toBe("disconnected");
     expect(snapshot.signal.action).toBeNull();
   });
+
+  it("flags historical/stale XAUUSD signals (>300s old or lab_artifact) as stale status and holds risk setup levels", () => {
+    const staleSignal = {
+      signal_id: "p1_xauusd_1h_1700000000",
+      symbol: "XAUUSD",
+      signal_type: "buy",
+      timestamp: 1700000000, // Nov 2023
+      entry_price: 2650.5,
+      stop_loss: 2635.0,
+      take_profits: [2670.0, 2690.0, 2710.0],
+      confidence: 0.88,
+      strategy_name: "GoldTrendv1",
+      timeframe: "1h",
+      metadata: { provenance_type: "lab_artifact" },
+    };
+
+    const snapshot = createHostSnapshotFromProject1(
+      SAMPLE_CONNECTED_PORT,
+      staleSignal,
+      "XAUUSD",
+      "1h"
+    );
+
+    expect(snapshot.signal.status).toBe("stale");
+    expect(snapshot.signal.action).toBe("STALE SIGNAL");
+    expect(snapshot.monitoring.freshness).toBe("stale");
+    expect(snapshot.risk.status).toBe("stale");
+    expect(snapshot.risk.entry).toBeNull();
+    expect(snapshot.orderIntents).toEqual([]);
+  });
 });

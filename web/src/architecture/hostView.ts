@@ -465,6 +465,20 @@ export function createHostSnapshotFromProject1(
     };
   }
 
+  const LIVE_SIGNAL_MAX_AGE_SECONDS = 300;
+  const nowSec = Date.now() / 1000;
+  const ageSec = signal.timestamp ? Math.max(0, nowSec - signal.timestamp) : Infinity;
+  const meta = signal.metadata || {};
+  const provenance = (meta.provenance_type as string) || (meta.source as string) || "";
+  const isHistorical = meta.is_historical === true || ["lab_artifact", "historical_snapshot", "backtest_record"].includes(provenance);
+
+  const isLive = Boolean(
+    signal.timestamp &&
+    ageSec <= LIVE_SIGNAL_MAX_AGE_SECONDS &&
+    !isHistorical &&
+    meta.is_live !== false
+  );
+
   const actionUpper = (signal.signal_type || "NO SIGNAL").toUpperCase();
   const entry = signal.entry_price ?? null;
   const sl = signal.stop_loss ?? null;
@@ -497,13 +511,15 @@ export function createHostSnapshotFromProject1(
     },
     signal: {
       signalId: signal.signal_id,
-      action: actionUpper,
+      action: isLive ? actionUpper : "STALE SIGNAL",
       timestamp: formattedTime,
       confidence: conf,
       strategyName: stratName,
       timeframe: signal.timeframe || timeframe,
-      status: "active",
-      message: `Validated ${actionUpper} signal emitted by Project 1.`,
+      status: isLive ? "active" : "stale",
+      message: isLive
+        ? `Validated ${actionUpper} signal emitted by Project 1.`
+        : `Historical/stale Project 1 signal for ${signal.symbol || symbol} (emitted at ${formattedTime}). Current live signal is unavailable.`,
       metadata: signal.metadata || {},
     },
     performance: {
@@ -511,17 +527,21 @@ export function createHostSnapshotFromProject1(
       message: "Performance metrics are unavailable until Project 1 backtest outputs are connected.",
     },
     risk: {
-      entry,
-      stopLoss: sl,
-      takeProfits: tps,
-      status: entry != null ? "available" : "unavailable",
-      message: entry != null ? "Real trade setup levels provided by Project 1." : "Trade setup omitted.",
+      entry: isLive ? entry : null,
+      stopLoss: isLive ? sl : null,
+      takeProfits: isLive ? tps : [],
+      status: isLive ? (entry != null ? "available" : "unavailable") : "stale",
+      message: isLive
+        ? (entry != null ? "Real trade setup levels provided by Project 1." : "Trade setup omitted.")
+        : "Trade setup levels held because signal is historical/stale.",
     },
     monitoring: {
-      freshness: "fresh",
-      health: "healthy",
-      status: "available",
-      message: "Project 1 signal active and fresh.",
+      freshness: isLive ? "fresh" : "stale",
+      health: isLive ? "healthy" : "stale",
+      status: isLive ? "available" : "stale",
+      message: isLive
+        ? "Project 1 signal active and fresh."
+        : `Project 1 signal for ${signal.symbol || symbol} is historical/stale. Live signal data is unavailable.`,
     },
     providers: {
       marketData: defaultMarketState.provider ? defaultMarketState.provider.status : "disconnected",
@@ -539,28 +559,30 @@ export function createHostSnapshotFromProject1(
     ],
     orderIntents: orderIntentsOverride
       ? [...orderIntentsOverride]
-      : [
-          {
-            order_intent_id: `ord_intent_${signal.signal_id || "sample_100"}`,
-            authorization_id: `auth_${signal.timestamp}_${stratName}`,
-            user_id: sec.userId,
-            symbol: signal.symbol || symbol,
-            direction: (signal.signal_type?.toLowerCase() === "sell" ? "sell" : "buy") as "buy" | "sell",
-            order_type: "market",
-            requested_price: entry,
-            requested_quantity: 1.0,
-            stop_loss: sl,
-            take_profit_1: tps[0] ?? null,
-            take_profit_2: tps[1] ?? null,
-            take_profit_3: tps[2] ?? null,
-            time_in_force: "GTC",
-            idempotency_key: `snap_idemp_${sec.userId}_${(signal.symbol || symbol).toLowerCase()}_${signal.signal_id || "sample_100"}`,
-            creation_timestamp: signal.timestamp,
-            lifecycle_state: "STAGED",
-            is_staged: true,
-            is_terminal: false,
-          },
-        ],
+      : (isLive
+          ? [
+              {
+                order_intent_id: `ord_intent_${signal.signal_id || "sample_100"}`,
+                authorization_id: `auth_${signal.timestamp}_${stratName}`,
+                user_id: sec.userId,
+                symbol: signal.symbol || symbol,
+                direction: (signal.signal_type?.toLowerCase() === "sell" ? "sell" : "buy") as "buy" | "sell",
+                order_type: "market",
+                requested_price: entry,
+                requested_quantity: 1.0,
+                stop_loss: sl,
+                take_profit_1: tps[0] ?? null,
+                take_profit_2: tps[1] ?? null,
+                take_profit_3: tps[2] ?? null,
+                time_in_force: "GTC",
+                idempotency_key: `snap_idemp_${sec.userId}_${(signal.symbol || symbol).toLowerCase()}_${signal.signal_id || "sample_100"}`,
+                creation_timestamp: signal.timestamp,
+                lifecycle_state: "STAGED",
+                is_staged: true,
+                is_terminal: false,
+              },
+            ]
+          : []),
       auditControl: {
         status: "available",
         summary: {
@@ -621,14 +643,14 @@ export const SAMPLE_REAL_PROJECT1_SIGNAL: PresentedSignalPayload = {
   signal_id: "p1_xauusd_1h_1700000000",
   symbol: "XAUUSD",
   signal_type: "buy",
-  timestamp: 1700000000,
+  timestamp: Math.floor(Date.now() / 1000) - 100,
   entry_price: 2650.5,
   stop_loss: 2635.0,
   take_profits: [2670.0, 2690.0, 2710.0],
   confidence: 0.88,
   strategy_name: "GoldTrendv1",
   timeframe: "1h",
-  metadata: { source: "Project1", adapter: "Project1LabArtifactAdapter" },
+  metadata: { source: "Project1", adapter: "Project1IntegrationGateway", provenance_type: "live_signal", is_live: true },
 };
 
 export const PAGE_COPY: Record<

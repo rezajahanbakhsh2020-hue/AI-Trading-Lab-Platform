@@ -100,26 +100,28 @@ export function RiskViewer({ snapshot }: { snapshot: HostSnapshot }) {
             <p className="hint" style={{ marginBottom: 12 }}>
               {t("risk.riskDesc")}
             </p>
-            <table className="table">
-              <tbody>
-                <tr>
-                  <th>{t("risk.accountRiskLimit")}</th>
-                  <td><strong>{t("risk.perTrade")}</strong></td>
-                </tr>
-                <tr>
-                  <th>Min Target Ratio Expectancy</th>
-                  <td><strong>{r?.reward_to_risk_expectancy != null ? `${r.reward_to_risk_expectancy.toFixed(2)}:1` : t("risk.ratio")}</strong></td>
-                </tr>
-                <tr>
-                  <th>Win / Loss Ratio</th>
-                  <td><strong>{r?.win_loss_ratio != null ? r.win_loss_ratio.toFixed(2) : "N/A"}</strong></td>
-                </tr>
-                <tr>
-                  <th>Drawdown Classification</th>
-                  <td><span className="chip ready-chip">{(r?.risk_level || "low").toUpperCase()}</span></td>
-                </tr>
-              </tbody>
-            </table>
+            <div className="table-responsive">
+              <table className="table">
+                <tbody>
+                  <tr>
+                    <th>{t("risk.accountRiskLimit")}</th>
+                    <td><strong>{t("risk.perTrade")}</strong></td>
+                  </tr>
+                  <tr>
+                    <th>Min Target Ratio Expectancy</th>
+                    <td><strong>{r?.reward_to_risk_expectancy != null ? `${r.reward_to_risk_expectancy.toFixed(2)}:1` : t("risk.ratio")}</strong></td>
+                  </tr>
+                  <tr>
+                    <th>Win / Loss Ratio</th>
+                    <td><strong>{r?.win_loss_ratio != null ? r.win_loss_ratio.toFixed(2) : "N/A"}</strong></td>
+                  </tr>
+                  <tr>
+                    <th>Drawdown Classification</th>
+                    <td><span className="chip ready-chip">{(r?.risk_level || "low").toUpperCase()}</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
       </div>

@@ -186,8 +186,10 @@ export function UserManagementCenter({ currentAccount, snapshot }: UserManagemen
       </div>
 
       {/* Account List Grid / Cards */}
-      <div className="card" style={{ padding: "1rem", overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", textWrap: "nowrap" }}>
+      <div className="card">
+        <div className="card-body" style={{ padding: "0.5rem" }}>
+          <div className="table-responsive">
+            <table className="table">
           <thead>
             <tr style={{ borderBottom: "1px solid #334155", textAlign: "left", fontSize: "0.75rem", color: "#94a3b8", textTransform: "uppercase" }}>
               <th style={{ padding: "0.75rem 0.5rem" }}>{t("userMgmt.username")}</th>
@@ -314,6 +316,8 @@ export function UserManagementCenter({ currentAccount, snapshot }: UserManagemen
           </tbody>
         </table>
       </div>
+    </div>
+  </div>
 
       {/* User Details & Administrative Control Modal */}
       {selectedUserDetail && (

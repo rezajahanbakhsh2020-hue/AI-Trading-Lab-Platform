@@ -114,24 +114,26 @@ export function BacktestViewer({ snapshot }: BacktestViewerProps) {
               <div className="grid cols-2" style={{ gap: 16 }}>
                 <div className="card" style={{ padding: 16 }}>
                   <h4>{t("backtest.summaryTitle")}</h4>
-                  <table className="table" style={{ marginTop: 12 }}>
-                    <tbody>
-                      <tr>
-                        <th>{t("backtest.strategy")}</th>
-                        <td><strong>{backtestData.strategyName}</strong></td>
-                      </tr>
-                      <tr>
-                        <th>{t("backtest.symbol")}</th>
-                        <td>{backtestData.symbol} ({backtestData.timeframe})</td>
-                      </tr>
-                      <tr>
-                        <th>{t("backtest.netProfit")}</th>
-                        <td className={backtestData.netProfit >= 0 ? "text-green" : "text-red"}>
-                          <strong>{formatCurrency(backtestData.netProfit)}</strong>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
+                  <div className="table-responsive" style={{ marginTop: 12 }}>
+                    <table className="table">
+                      <tbody>
+                        <tr>
+                          <th>{t("backtest.strategy")}</th>
+                          <td><strong>{backtestData.strategyName}</strong></td>
+                        </tr>
+                        <tr>
+                          <th>{t("backtest.symbol")}</th>
+                          <td>{backtestData.symbol} ({backtestData.timeframe})</td>
+                        </tr>
+                        <tr>
+                          <th>{t("backtest.netProfit")}</th>
+                          <td className={backtestData.netProfit >= 0 ? "text-green" : "text-red"}>
+                            <strong>{formatCurrency(backtestData.netProfit)}</strong>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
 
                 <div className="card" style={{ padding: 16 }}>
@@ -197,8 +199,8 @@ export function BacktestViewer({ snapshot }: BacktestViewerProps) {
                   </div>
 
                   {backtestData.walkForward.windows.length > 0 && (
-                    <div style={{ overflowX: "auto" }}>
-                      <table className="table" style={{ width: "100%", fontSize: 13 }}>
+                    <div className="table-responsive">
+                      <table className="table" style={{ fontSize: 13 }}>
                         <thead>
                           <tr>
                             <th>#</th>

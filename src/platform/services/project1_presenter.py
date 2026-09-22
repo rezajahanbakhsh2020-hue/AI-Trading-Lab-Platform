@@ -51,8 +51,15 @@ def _evaluate_signal_live_status(
     current_date = clk.get_current_date()
 
     sig_symbol = str(sig_dict.get("symbol") or "").strip().upper()
-    if requested_symbol and sig_symbol and sig_symbol != requested_symbol.strip().upper():
-        return False, f"Signal symbol '{sig_symbol}' does not match requested market symbol '{requested_symbol}'."
+    if not sig_symbol:
+        return False, "Signal missing authoritative instrument identity (symbol)."
+
+    if requested_symbol:
+        req_sym = str(requested_symbol).strip().upper()
+        if not req_sym:
+            return False, "Requested market symbol is empty."
+        if sig_symbol != req_sym:
+            return False, f"Signal symbol '{sig_symbol}' does not match requested market symbol '{req_sym}'."
 
     sig_ts = float(sig_dict.get("timestamp") or 0.0)
     if sig_ts <= 0:
@@ -153,6 +160,10 @@ class Project1SignalPresenter:
                 )
                 candles_dicts = [c.to_dict() for c in ov.candles]
                 quote_dict = ov.quote.to_dict() if ov.quote else None
+                if quote_dict and quote_dict.get("symbol"):
+                    q_sym = str(quote_dict["symbol"]).strip().upper()
+                    if q_sym != symbol.strip().upper():
+                        quote_dict = None
                 q_avail = quote_dict.get("availability") if quote_dict else None
                 status = "connected"
                 if q_avail and isinstance(q_avail, dict) and q_avail.get("status") in ("stale", "delayed", "unavailable"):

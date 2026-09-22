@@ -9,18 +9,21 @@ from src.platform.services.telegram_delivery import TelegramDeliveryService
 from src.platform.services.user_authorization import UserAuthorizationService
 
 
+import time
+
 def _signal():
     return PresentedSignal(
         signal_id="sig_999",
         symbol="XAUUSD",
         signal_type="buy",
-        timestamp=1000.0,
+        timestamp=time.time(),
         entry_price=2000.0,
         stop_loss=1990.0,
         take_profits=(2020.0, 2030.0, 2040.0),
         confidence=0.90,
         strategy_name="Momentum",
         timeframe="1h",
+        metadata={"provenance_type": "live_signal"},
     )
 
 

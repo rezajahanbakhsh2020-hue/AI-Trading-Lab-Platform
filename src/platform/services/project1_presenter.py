@@ -23,6 +23,7 @@ from src.platform.domain.trade_setup import TradeSetup
 from src.platform.domain.trade_signal import TradeSignal
 from src.platform.domain.user_authorization import UserAuthorization
 from src.platform.integrations.project1 import Project1IntegrationPort
+from src.platform.services.clock import SystemClock, default_clock
 from src.platform.services.autonomous_authorization import AutonomousAuthorizationService
 from src.platform.services.audit_control import PlatformAuditControlService
 from src.platform.services.execution_gateway import ExecutionGatewayService
@@ -36,25 +37,41 @@ from src.platform.services.security import SecretSanitizer, SecurityBoundaryServ
 LIVE_SIGNAL_MAX_AGE_SECONDS = 300.0  # 5 minutes currentness threshold for live signals
 
 
-def _evaluate_signal_live_status(sig_dict: Dict[str, Any]) -> Tuple[bool, str]:
-    """Evaluate whether a signal artifact is a genuinely current LIVE signal versus historical/stale."""
+def _evaluate_signal_live_status(
+    sig_dict: Dict[str, Any], clock: Optional[SystemClock] = None
+) -> Tuple[bool, str]:
+    """Evaluate whether a signal record satisfies all Current Signal eligibility requirements."""
     if not sig_dict:
         return False, "No signal data available."
 
+    clk = clock or default_clock
+    now_ts = clk.get_current_timestamp()
+    current_date = clk.get_current_date()
+
     sig_ts = float(sig_dict.get("timestamp") or 0.0)
-    now_ts = time.time()
-    age_sec = max(0.0, now_ts - sig_ts) if sig_ts > 0 else float("inf")
+    if sig_ts <= 0:
+        return False, "Signal missing valid event timestamp."
+
+    if sig_ts > now_ts + 5.0:
+        return False, f"Signal timestamp {sig_ts} is in the future relative to system clock {now_ts}."
+
+    age_sec = max(0.0, now_ts - sig_ts)
 
     meta = sig_dict.get("metadata") if isinstance(sig_dict.get("metadata"), dict) else {}
     prov = meta.get("provenance_type") or meta.get("source") or ""
 
-    # Lab artifacts, backtest records, or historical snapshots are historical by provenance
     if prov in ("lab_artifact", "historical_snapshot", "backtest_record") or meta.get("is_historical"):
-        return False, f"Signal is a historical artifact ({prov or 'historical'}, emitted at timestamp {sig_ts}). Current live signal is unavailable."
+        return False, f"Signal is a historical artifact ({prov or 'historical'}, emitted at timestamp {sig_ts})."
 
-    # Timestamp currentness check (must be within 5 minutes / 300s of current time)
+    if prov != "live_signal":
+        return False, f"Signal provenance '{prov}' is not an authorized live signal."
+
+    sig_date = clk.get_date_for_timestamp(sig_ts)
+    if sig_date != current_date:
+        return False, f"Signal date '{sig_date}' does not match current application date '{current_date}'."
+
     if age_sec > LIVE_SIGNAL_MAX_AGE_SECONDS:
-        return False, f"Signal timestamp {sig_ts} is stale (age {int(age_sec)}s > {int(LIVE_SIGNAL_MAX_AGE_SECONDS)}s live threshold). Live signal unavailable."
+        return False, f"Signal timestamp {sig_ts} is stale (age {int(age_sec)}s > {int(LIVE_SIGNAL_MAX_AGE_SECONDS)}s live threshold)."
 
     if "is_live" in meta and not meta["is_live"]:
         return False, "Signal metadata explicitly marks signal as non-live."
@@ -89,6 +106,7 @@ class Project1SignalPresenter:
         ):
             raise ValueError("authorization_service must be an AutonomousAuthorizationService instance")
 
+        self._clock = default_clock
         self._port = port
         self._security_service = security_service or SecurityBoundaryService()
         self._backtest_service = backtest_service
@@ -251,8 +269,8 @@ class Project1SignalPresenter:
             sig_dict["stop_loss"] = None
             sig_dict["take_profits"] = []
 
-        # Evaluate signal live provenance and currentness
-        is_live, live_reason = _evaluate_signal_live_status(sig_dict)
+        # Evaluate signal live provenance and currentness against system clock
+        is_live, live_reason = _evaluate_signal_live_status(sig_dict, clock=self._clock)
         sig_dict["is_live"] = is_live
         sig_dict["live_reason"] = live_reason
 
@@ -264,14 +282,15 @@ class Project1SignalPresenter:
             sig_dict["metadata"] = SecretSanitizer.sanitize_data(raw_meta)
 
         if not is_live:
+            # HARD BOUNDARY: Historical or stale records MUST NOT masquerade or populate as current signal
             return {
                 "port": desc,
                 "connected": True,
-                "status": "stale",
+                "status": "no-signal",
                 "symbol": symbol,
                 "timeframe": timeframe,
-                "signal": sig_dict,
-                "message": f"Historical/stale Project 1 signal for {symbol} ({timeframe}). Live signal data is unavailable.",
+                "signal": None,
+                "message": f"No active current Project 1 signal for {symbol} ({timeframe}). {live_reason}",
             }
 
         return {

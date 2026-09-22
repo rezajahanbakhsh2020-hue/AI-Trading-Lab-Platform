@@ -45,7 +45,7 @@ describe("Timeline & Explainability Architecture", () => {
 
     const explain = generateExplainabilityPayload(sigItem, snapshot);
     expect(explain.itemId).toBe(sigItem.itemId);
-    expect(explain.source).toBe("Project1LabArtifactAdapter");
+    expect(explain.source).toBe("Project1GatewayAdapter");
     expect(explain.permittedMarketContext.symbol).toBe("XAUUSD");
     expect(explain.permittedRiskContext.entryPrice).toBe(2650.5);
     expect(explain.explainabilityNotes.length).toBeGreaterThan(0);

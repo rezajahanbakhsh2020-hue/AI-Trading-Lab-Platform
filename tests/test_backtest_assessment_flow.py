@@ -186,12 +186,26 @@ def test_authorization_failure_backtest_assessment_flow(provider_operations):
 
 
 def test_presenter_snapshot_backtest_integration_user_isolation(provider_operations):
-    lab_source = MockLabArtifactSource(
-        signal_data={"action": "BUY", "strategy_name": "GoldTrendv1", "timestamp": 1700000000.0, "confidence": 0.85},
-        setup_data={"symbol": "XAUUSD", "entry_price": 2000.0, "stop_loss": 1980.0, "take_profit_1": 2040.0, "take_profit_2": 2060.0, "take_profit_3": 2080.0, "timestamp": 1700000000.0, "direction": "BUY"},
-    )
-    lab_service = LabArtifactService(lab_source)
-    adapter = Project1LabArtifactAdapter(lab_service)
+    from src.platform.integrations.project1 import Project1IntegrationPort
+    from src.platform.domain.presented_signal import PresentedSignal
+    import time
+
+    class MockConnectedPort(Project1IntegrationPort):
+        def fetch_latest_signal(self, symbol, timeframe, strategy_name=None):
+            return PresentedSignal(
+                signal_id="sig_test_bt",
+                symbol=symbol,
+                signal_type="buy",
+                timestamp=time.time(),
+                confidence=0.85,
+                strategy_name="GoldTrendv1",
+                timeframe=timeframe,
+                metadata={"provenance_type": "live_signal"},
+            )
+        def describe(self):
+            return {"name": "MockConnectedPort", "port": "Project1IntegrationPort", "connected": True}
+
+    adapter = MockConnectedPort()
 
     bt_source = MockBacktestSource(
         return_data={

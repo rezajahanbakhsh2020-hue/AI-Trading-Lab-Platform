@@ -77,17 +77,25 @@ class LabArtifactBacktestAdapter(BacktestSource):
         }
 
 
-class Project1LabArtifactAdapter(Project1IntegrationPort):
-    """Adapter bridging LabArtifactService to Project1IntegrationPort."""
+class Project1LabArtifactAdapter:
+    """Historical artifact inspection adapter for LabArtifactService.
+
+    ARCHITECTURAL BOUNDARY MANDATE:
+    This adapter accesses historical laboratory artifacts, fixtures, and backtest datasets.
+    It DOES NOT implement Project1IntegrationPort and MUST NEVER satisfy the production
+    Current Live Signal Feed port. It is strictly available for historical research, backtest,
+    and development inspection.
+    """
 
     def __init__(self, service: LabArtifactService) -> None:
         if service is None or not isinstance(service, LabArtifactService):
             raise ValueError("service must be a valid LabArtifactService")
         self._service = service
 
-    def fetch_latest_signal(
+    def fetch_historical_artifact(
         self, symbol: str, timeframe: str, strategy_name: Optional[str] = None
     ) -> Optional[PresentedSignal]:
+        """Fetch historical artifact record for laboratory inspection / backtest context."""
         signal = self._service.get_signal(symbol=symbol, timeframe=timeframe)
         if signal is None:
             return None
@@ -137,7 +145,7 @@ class Project1LabArtifactAdapter(Project1IntegrationPort):
     def describe(self) -> Dict[str, Any]:
         return {
             "name": "Project1LabArtifactAdapter",
-            "port": "Project1IntegrationPort",
+            "port": "HistoricalLabArtifactPort",
             "connected": True,
             "source": self._service._source.describe(),
         }
@@ -214,11 +222,16 @@ class Project1GatewayAdapter(Project1IntegrationPort):
         meta["adapter"] = "Project1GatewayAdapter"
         meta["source"] = "Project1"
 
+        sig_event_ts = float(target_rec.get("timestamp") or time.time())
+        ingested_ts = float(target_rec.get("created_at") or time.time())
+        meta["signal_timestamp"] = sig_event_ts
+        meta["ingested_at"] = ingested_ts
+
         return PresentedSignal(
-            signal_id=str(target_rec.get("signal_id") or f"p1_{symbol.lower()}_{int(time.time())}"),
+            signal_id=str(target_rec.get("signal_id") or f"p1_{symbol.lower()}_{int(sig_event_ts)}"),
             symbol=symbol,
             signal_type=str(target_rec.get("signal_type", "no-signal")).lower(),
-            timestamp=float(target_rec.get("timestamp") or time.time()),
+            timestamp=sig_event_ts,
             entry_price=float(target_rec["entry_price"]) if target_rec.get("entry_price") is not None else None,
             stop_loss=float(target_rec["stop_loss"]) if target_rec.get("stop_loss") is not None else None,
             take_profits=tuple(tps),

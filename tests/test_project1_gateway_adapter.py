@@ -6,6 +6,7 @@ import pytest
 sys.path.insert(0, ".")
 
 from src.platform.adapters.project1_adapter import Project1GatewayAdapter, Project1LabArtifactAdapter
+from src.platform.integrations.project1 import Project1IntegrationPort
 from src.platform.adapters.project1_repository import FileBackedProject1IntegrationRepository
 from src.platform.domain.security import UserRole, Permission
 from src.platform.domain.user_authorization import UserAuthorization
@@ -124,7 +125,7 @@ def test_gateway_adapter_presenter_scenarios(gateway_svc, admin_user):
     assert pres_live["signal"]["entry_price"] == 2765.50
     assert pres_live["signal"]["is_live"] is True
 
-    # 3. Stale Gateway Record (> 300s) -> Stale / Blocked
+    # 3. Stale Gateway Record (> 300s) -> Rejected from Current Signal Feed
     stale_ts = time.time() - 600
     payload_stale = {
         "contract_version": "1.0",
@@ -146,8 +147,8 @@ def test_gateway_adapter_presenter_scenarios(gateway_svc, admin_user):
 
     pres_stale = presenter.present_signal(symbol="EURUSD", timeframe="1h", user=admin_user)
     assert pres_stale["connected"] is True
-    assert pres_stale["status"] == "stale"
-    assert pres_stale["signal"]["is_live"] is False
+    assert pres_stale["status"] == "no-signal"
+    assert pres_stale["signal"] is None
 
 def test_historical_lab_artifact_blocked_from_live(gateway_svc, admin_user):
     class DummyLabSource(LabArtifactSource):
@@ -167,14 +168,9 @@ def test_historical_lab_artifact_blocked_from_live(gateway_svc, admin_user):
             return None
 
     lab_adapter = Project1LabArtifactAdapter(service=LabArtifactService(source=DummyLabSource()))
-    presenter_lab = Project1SignalPresenter(port=lab_adapter, gateway_service=gateway_svc)
+    assert not isinstance(lab_adapter, Project1IntegrationPort)
 
-    pres_hist = presenter_lab.present_signal(symbol="XAUUSD", timeframe="1h", user=admin_user)
-    assert pres_hist["connected"] is True
-    assert pres_hist["status"] == "stale"
-    assert pres_hist["signal"]["is_live"] is False
-    assert pres_hist["signal"]["metadata"]["is_historical"] is True
-
-    snap_hist = presenter_lab.build_host_snapshot(symbol="XAUUSD", timeframe="1h", user=admin_user)
-    assert snap_hist["signal"]["action"] == "STALE SIGNAL"
-    assert snap_hist["risk"]["entry"] is None
+    historical_artifact = lab_adapter.fetch_historical_artifact("XAUUSD", "1h")
+    assert historical_artifact is not None
+    assert historical_artifact.metadata["provenance_type"] == "lab_artifact"
+    assert historical_artifact.metadata["is_historical"] is True

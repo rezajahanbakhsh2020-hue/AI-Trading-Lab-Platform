@@ -39,6 +39,6 @@ describe("HealthCenter UI Component", () => {
 
     expect(container.querySelector('[data-testid="health-center-component"]')).not.toBeNull();
     expect(screen.getByText("ONLINE")).not.toBeNull();
-    expect(container.textContent).toContain("Project1LabArtifactAdapter");
+    expect(container.textContent).toContain("Project1GatewayAdapter");
   });
 });

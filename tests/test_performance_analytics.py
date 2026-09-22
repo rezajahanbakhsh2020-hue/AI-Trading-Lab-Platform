@@ -36,8 +36,8 @@ class DummyLabSource(LabArtifactSource):
     def fetch_trade_setup(self, symbol: str, timeframe: str) -> dict:
         return {"entry_price": 2650.0, "stop_loss": 2630.0, "take_profit_1": 2680.0, "take_profit_2": 2700.0, "take_profit_3": 2720.0}
 
-    def fetch_stability(self, symbol: str, timeframe: str) -> dict:
-        return {"score": 0.85, "risk_level": "low"}
+    def fetch_stability(self, strategy_name: str) -> dict:
+        return {"score": 0.85, "risk_level": "low", "metrics": {"total_trades": 20, "win_rate": 0.6, "profit_factor": 1.5, "max_drawdown": 0.1, "net_profit": 5000.0}}
 
 
 @pytest.fixture
@@ -52,9 +52,28 @@ def test_user() -> UserAuthorization:
 
 @pytest.fixture
 def performance_service() -> PerformanceAnalyticsService:
+    import time
+    from src.platform.integrations.project1 import Project1IntegrationPort
+    from src.platform.domain.presented_signal import PresentedSignal
+
+    class MockConnectedPort(Project1IntegrationPort):
+        def fetch_latest_signal(self, symbol, timeframe, strategy_name=None):
+            return PresentedSignal(
+                signal_id="sig_perf_test",
+                symbol=symbol,
+                signal_type="buy",
+                timestamp=time.time(),
+                confidence=0.85,
+                strategy_name="GoldTrendv1",
+                timeframe=timeframe,
+                metadata={"provenance_type": "live_signal"},
+            )
+        def describe(self):
+            return {"name": "MockConnectedPort", "port": "Project1IntegrationPort", "connected": True}
+
     src = DummyLabSource()
     lab_service = LabArtifactService(source=src)
-    port = Project1LabArtifactAdapter(service=lab_service)
+    port = MockConnectedPort()
     bt_source = LabArtifactBacktestAdapter(service=lab_service)
 
     reg = ProviderRegistry()

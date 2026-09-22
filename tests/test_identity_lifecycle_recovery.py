@@ -201,3 +201,41 @@ def test_persistence_restart_recovery_and_lifecycle(tmp_path):
     assert loaded_user is not None
     assert loaded_user.recovery_email == "persist@example.com"
     assert loaded_user.recovery_token_hash is not None
+
+
+def test_count_active_sessions_lifecycle(tmp_path):
+    storage_dir = str(tmp_path / "data")
+    repo = FileBackedUserRepository(storage_dir=storage_dir)
+    service = UserAuthorizationService(repository=repo)
+
+    admin = service.get_user_authorization("admin_owner")
+    assert admin is not None
+
+    # Initially 0 active sessions
+    assert service.count_active_sessions() == 0
+
+    # Create session for admin
+    token1 = service.create_session_token("admin_owner")
+    assert token1 is not None
+    assert service.count_active_sessions() == 1
+
+    # Create session for another user
+    now_ts = time.time()
+    service.create_customer_account(
+        actor_user=admin,
+        target_user_id="active_sess_user",
+        plaintext_password="Password123!",
+        activation_timestamp=now_ts - 10,
+        expiration_timestamp=now_ts + 3600,
+    )
+    token2 = service.create_session_token("active_sess_user")
+    assert token2 is not None
+    assert service.count_active_sessions() == 2
+
+    # Revoke session for active_sess_user
+    service.revoke_session_token(token2)
+    assert service.count_active_sessions() == 1
+
+    # Revoke remaining session
+    service.revoke_session_token(token1)
+    assert service.count_active_sessions() == 0

@@ -208,7 +208,7 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
             if path in ("/api/v1/operational/observability", "/api/v1/operational/status"):
                 valid, actor = self._authenticate_request_user()
                 ai_st = self.ai_gateway_service.get_provider().get_status().value if hasattr(self, "ai_gateway_service") else "not_configured"
-                active_sess = self.user_auth_service.count_active_sessions() if hasattr(self, "user_auth_service") else 0
+                active_sess = self.server_user_auth_service.count_active_sessions() if hasattr(self, "server_user_auth_service") else 0
                 exec_bound = self.execution_gateway_service.get_boundary_status(user=actor) if hasattr(self, "execution_gateway_service") and actor else None
                 _, _, fails = self.audit_control_service.query_failures(actor, limit=50) if hasattr(self, "audit_control_service") and actor else (False, "", [])
 

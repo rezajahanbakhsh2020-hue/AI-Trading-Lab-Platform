@@ -45,41 +45,44 @@ export function extractTimelineFromHostSnapshot(
   const items: TimelineItem[] = [];
 
   // 1. Signal Timeline Events (only active live signals, never NO SIGNAL or stale/historical)
+  const sig = snapshot.signal;
+  const sigTs = sig?.timestamp;
   if (
-    snapshot.signal &&
-    snapshot.signal.status === "active" &&
-    snapshot.signal.signalId &&
-    snapshot.signal.action &&
-    snapshot.signal.action !== "NO SIGNAL" &&
-    snapshot.signal.action !== "STALE SIGNAL"
+    sig &&
+    sig.status === "active" &&
+    sig.signalId &&
+    sig.action &&
+    sig.action !== "NO SIGNAL" &&
+    sig.action !== "STALE SIGNAL" &&
+    typeof sigTs === "string"
   ) {
-    const sig = snapshot.signal;
     const action = sig.action;
-    const tsStr = sig.timestamp || snapshot.generatedAt || new Date().toISOString();
-    const tsVal = Date.parse(tsStr) || Date.now();
+    const tsVal = Date.parse(sigTs);
 
-    items.push({
-      itemId: `sig-${sig.signalId}`,
-      timestamp: tsVal,
-      formattedTime: new Date(tsVal).toUTCString(),
-      category: "signal",
-      severity: action === "BUY" || action === "SELL" ? "success" : "info",
-      title: `${action} Signal Emitted (${snapshot.market?.symbol || "XAUUSD"})`,
-      summary: sig.message || `Signal action ${action} emitted by ${sig.strategyName || "Project 1"}.`,
-      source: snapshot.project1?.adapterName || "Project1GatewayAdapter",
-      route: "/signals",
-      explainable: true,
-      payload: {
-        signalId: sig.signalId,
-        action,
-        symbol: snapshot.market?.symbol,
-        timeframe: sig.timeframe,
-        confidence: sig.confidence,
-        strategyName: sig.strategyName,
-        status: sig.status,
-        metadata: sig.metadata || {},
-      },
-    });
+    if (!Number.isNaN(tsVal) && tsVal > 0) {
+      items.push({
+        itemId: `sig-${sig.signalId}`,
+        timestamp: tsVal,
+        formattedTime: new Date(tsVal).toUTCString(),
+        category: "signal",
+        severity: action === "BUY" || action === "SELL" ? "success" : "info",
+        title: `${action} Signal Emitted (${snapshot.market?.symbol || "XAUUSD"})`,
+        summary: sig.message || `Signal action ${action} emitted by ${sig.strategyName || "Project 1"}.`,
+        source: snapshot.project1?.adapterName || "Project1GatewayAdapter",
+        route: "/signals",
+        explainable: true,
+        payload: {
+          signalId: sig.signalId,
+          action,
+          symbol: snapshot.market?.symbol,
+          timeframe: sig.timeframe,
+          confidence: sig.confidence,
+          strategyName: sig.strategyName,
+          status: sig.status,
+          metadata: sig.metadata || {},
+        },
+      });
+    }
   }
 
   // 2. Market Events & Quote Context

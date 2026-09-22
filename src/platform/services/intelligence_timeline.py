@@ -53,47 +53,58 @@ class IntelligenceTimelineService:
                 sig_status = sig.get("status")
                 action = (sig.get("action") or "").upper()
                 if sig_id and sig_status == "active" and action not in ("NO SIGNAL", "UNKNOWN", "STALE SIGNAL"):
-                    ts_str = sig.get("timestamp")
-                    ts_val = time.time()
-                    if ts_str:
+                    ts_val = None
+                    raw_ts = sig.get("timestamp")
+                    if isinstance(raw_ts, (int, float)) and raw_ts > 0:
+                        ts_val = float(raw_ts)
+                    elif isinstance(raw_ts, str) and raw_ts.strip():
                         try:
-                            # Parse RFC2822 / ISO string or float if available
-                            ts_val = time.mktime(time.strptime(ts_str, "%a, %d %b %Y %H:%M:%S GMT"))
-                        except (ValueError, TypeError):
-                            pass
+                            ts_val = float(raw_ts.strip())
+                        except ValueError:
+                            try:
+                                ts_val = time.mktime(time.strptime(raw_ts.strip(), "%a, %d %b %Y %H:%M:%S GMT"))
+                            except (ValueError, TypeError):
+                                ts_val = None
 
-                    strat_name = sig.get("strategyName") or "Project 1 Engine"
-                    symbol = snapshot.get("market", {}).get("symbol", "XAUUSD")
-                    tf = sig.get("timeframe") or "1h"
+                    if ts_val is None and isinstance(sig.get("metadata"), dict):
+                        meta_ts = sig["metadata"].get("signal_timestamp")
+                        if isinstance(meta_ts, (int, float)) and meta_ts > 0:
+                            ts_val = float(meta_ts)
 
-                    # Filter protected payload details
-                    raw_meta = sig.get("metadata") or {}
-                    clean_meta = self.security_boundary.filter_protected_payload(user, raw_meta)
+                    # HARD MANDATE: Require valid positive event timestamp; never fabricate time.time()
+                    if ts_val is not None and ts_val > 0:
+                        strat_name = sig.get("strategyName") or "Project 1 Engine"
+                        symbol = snapshot.get("market", {}).get("symbol", "XAUUSD")
+                        tf = sig.get("timeframe") or "1h"
 
-                    items.append(
-                        TimelineItem(
-                            item_id=f"timeline-sig-{sig_id}",
-                            timestamp=ts_val,
-                            category=TimelineCategory.SIGNAL,
-                            severity=TimelineSeverity.SUCCESS if action in ("BUY", "SELL") else TimelineSeverity.INFO,
-                            title=f"{action} Signal for {symbol}",
-                            summary=f"Emitted via Project 1 port ({p1.get('adapterName', 'Port')}) for {symbol} ({tf}). Strategy: {strat_name}.",
-                            source="Project1IntegrationPort",
-                            route="/signals",
-                            target_user_id=None,
-                            explainable=True,
-                            payload={
-                                "signal_id": sig_id,
-                                "symbol": symbol,
-                                "action": action,
-                                "timeframe": tf,
-                                "strategy_name": strat_name,
-                                "confidence": sig.get("confidence"),
-                                "status": sig_status,
-                                "metadata": clean_meta,
-                            },
+                        # Filter protected payload details
+                        raw_meta = sig.get("metadata") or {}
+                        clean_meta = self.security_boundary.filter_protected_payload(user, raw_meta)
+
+                        items.append(
+                            TimelineItem(
+                                item_id=f"timeline-sig-{sig_id}",
+                                timestamp=ts_val,
+                                category=TimelineCategory.SIGNAL,
+                                severity=TimelineSeverity.SUCCESS if action in ("BUY", "SELL") else TimelineSeverity.INFO,
+                                title=f"{action} Signal for {symbol}",
+                                summary=f"Emitted via Project 1 port ({p1.get('adapterName', 'Port')}) for {symbol} ({tf}). Strategy: {strat_name}.",
+                                source="Project1IntegrationPort",
+                                route="/signals",
+                                target_user_id=None,
+                                explainable=True,
+                                payload={
+                                    "signal_id": sig_id,
+                                    "symbol": symbol,
+                                    "action": action,
+                                    "timeframe": tf,
+                                    "strategy_name": strat_name,
+                                    "confidence": sig.get("confidence"),
+                                    "status": sig_status,
+                                    "metadata": clean_meta,
+                                },
+                            )
                         )
-                    )
 
         # 2. Market Events & Context
         if isinstance(snapshot, dict):

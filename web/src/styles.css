@@ -520,11 +520,35 @@ video {
   grid-row: 2;
 }
 
+/* Permanent Bounded Page Layout Invariants (Mobile Geometry Contract) */
+.bounded-page-container,
+.page-view-container,
 .workspace > *,
 .page-workspace,
 .page,
 .panel,
-.flex-container {
+.flex-container,
+.dashboard-view,
+.timeline-view,
+.markets-view,
+.watchlist-view,
+.signals-view,
+.strategies-view,
+.monitoring-view,
+.providers-view,
+.notifications-view,
+.logs-view,
+.settings-view,
+.backtest-viewer,
+.performance-view,
+.risk-view,
+.audit-view,
+.intents-view,
+.users-view,
+.academy-view,
+.ai-assistant-view,
+.alerts-view,
+.help-view {
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -532,6 +556,8 @@ video {
   max-inline-size: 100%;
   min-inline-size: 0;
   box-sizing: border-box;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .flex-container {

@@ -244,58 +244,60 @@ export function AIAssistant({ snapshot }: AIAssistantProps) {
               {t("ai.boundary.protectedNote")}
             </p>
 
-            <table className="table">
-              <tbody>
-                <tr>
-                  <th>Identity / Role</th>
-                  <td>
-                    <strong>{(snapshot.security?.role || "user").toUpperCase()}</strong>
-                  </td>
-                </tr>
-                <tr>
-                  <th>Selected Capability</th>
-                  <td>
-                    <code>{capability}</code>
-                  </td>
-                </tr>
-                <tr>
-                  <th>Target Symbol</th>
-                  <td>{selectedSymbol}</td>
-                </tr>
-                <tr>
-                  <th>Signal Context Included</th>
-                  <td>
-                    {snapshot.signal?.action && snapshot.signal.action !== "NO SIGNAL" ? (
-                      <span className="chip ready-chip">{snapshot.signal.action}</span>
-                    ) : (
-                      <span className="chip">None / Neutral</span>
-                    )}
-                  </td>
-                </tr>
-                <tr>
-                  <th>Market Context Included</th>
-                  <td>
-                    {snapshot.market.quote ? (
-                      <span className="chip ready-chip">Quote Active</span>
-                    ) : (
-                      <span className="chip">Disconnected</span>
-                    )}
-                  </td>
-                </tr>
-                <tr>
-                  <th>Timeline Events Included</th>
-                  <td>{snapshot.activity ? snapshot.activity.length : 0} events</td>
-                </tr>
-                <tr>
-                  <th>Project 1 Code / Secrets</th>
-                  <td>
-                    <span className="chip" style={{ color: "var(--color-green, #10b981)" }}>
-                      ✓ Strictly Filtered Out
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <div className="table-responsive">
+              <table className="table">
+                <tbody>
+                  <tr>
+                    <th>Identity / Role</th>
+                    <td>
+                      <strong>{(snapshot.security?.role || "user").toUpperCase()}</strong>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Selected Capability</th>
+                    <td>
+                      <code>{capability}</code>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Target Symbol</th>
+                    <td>{selectedSymbol}</td>
+                  </tr>
+                  <tr>
+                    <th>Signal Context Included</th>
+                    <td>
+                      {snapshot.signal?.action && snapshot.signal.action !== "NO SIGNAL" ? (
+                        <span className="chip ready-chip">{snapshot.signal.action}</span>
+                      ) : (
+                        <span className="chip">None / Neutral</span>
+                      )}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Market Context Included</th>
+                    <td>
+                      {snapshot.market.quote ? (
+                        <span className="chip ready-chip">Quote Active</span>
+                      ) : (
+                        <span className="chip">Disconnected</span>
+                      )}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Timeline Events Included</th>
+                    <td>{snapshot.activity ? snapshot.activity.length : 0} events</td>
+                  </tr>
+                  <tr>
+                    <th>Project 1 Code / Secrets</th>
+                    <td>
+                      <span className="chip" style={{ color: "var(--color-green, #10b981)" }}>
+                        ✓ Strictly Filtered Out
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>

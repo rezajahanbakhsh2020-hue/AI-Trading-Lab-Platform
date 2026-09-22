@@ -8,6 +8,7 @@ import { CommandPalette } from "./components/CommandPalette";
 import { LoginModal } from "./components/LoginModal";
 import { UserManagementCenter } from "./components/UserManagementCenter";
 import { HelpCenter } from "./components/HelpCenter";
+import { BoundedPageContainer } from "./components/BoundedPageContainer";
 import {
   NAV_ITEMS,
   PROJECT1_GATEWAY_PORT,
@@ -369,11 +370,19 @@ export function App() {
         <Routes>
           <Route
             path="/users"
-            element={<UserManagementCenter currentAccount={authState.userAccount} />}
+            element={
+              <BoundedPageContainer>
+                <UserManagementCenter currentAccount={authState.userAccount} />
+              </BoundedPageContainer>
+            }
           />
           <Route
             path="/help"
-            element={<HelpCenter />}
+            element={
+              <BoundedPageContainer>
+                <HelpCenter />
+              </BoundedPageContainer>
+            }
           />
           {NAV_ITEMS.map((item) => (
             <Route

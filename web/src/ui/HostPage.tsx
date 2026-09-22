@@ -24,6 +24,7 @@ import { SignalDeliveryCenter } from "./components/SignalDeliveryCenter";
 import { OperationalControlCenter } from "./components/OperationalControlCenter";
 import { OrderIntentViewer } from "./components/OrderIntentViewer";
 import { UserManagementCenter } from "./components/UserManagementCenter";
+import { BoundedPageContainer } from "./components/BoundedPageContainer";
 import {
   loadUserNotifications,
   saveUserNotifications,
@@ -117,8 +118,9 @@ export function HostPage({
     : (PAGE_COPY[normalizedPageId] ?? PAGE_COPY[pageId] ?? PAGE_COPY.dashboard).summary;
 
   return (
-    <div className="page page-workspace">
-      <div className="page-header">
+    <BoundedPageContainer className="page-view-container">
+      <div className="page page-workspace">
+        <div className="page-header">
         <div>
           <p className="kicker">{copyKicker}</p>
           <h2>{copyTitle}</h2>
@@ -215,7 +217,8 @@ export function HostPage({
           ? t("footer.connectedText", { adapter: snapshot.project1.adapterName, port: snapshot.project1.port })
           : t("footer.disconnectedText")}
       </p>
-    </div>
+      </div>
+    </BoundedPageContainer>
   );
 }
 
@@ -388,50 +391,52 @@ function MarketsPage({
             </span>
           </div>
           <div className="card-body">
-            <table className="table">
-              <tbody>
-                <tr>
-                  <th>{t("markets.currentPrice")}</th>
-                  <td>
-                    {quote?.last != null
-                      ? formatCurrency(quote.last)
-                      : quote?.mid != null
-                      ? formatCurrency(quote.mid)
-                      : quote?.bid != null
-                      ? formatCurrency(quote.bid)
-                      : t("status.unavailable")}
-                  </td>
-                </tr>
-                <tr>
-                  <th>{t("markets.bidAsk")}</th>
-                  <td>
-                    {quote?.bid != null && quote?.ask != null
-                      ? `${formatCurrency(quote.bid)} / ${formatCurrency(quote.ask)}`
-                      : t("status.unavailable")}
-                  </td>
-                </tr>
-                <tr>
-                  <th>{t("markets.change24h")}</th>
-                  <td>
-                    {quote?.changePercent != null
-                      ? formatPercent(quote.changePercent)
-                      : t("status.unavailable")}
-                  </td>
-                </tr>
-                <tr>
-                  <th>{t("markets.highLow24h")}</th>
-                  <td>
-                    {quote?.high24h != null && quote?.low24h != null
-                      ? `${formatCurrency(quote.high24h)} / ${formatCurrency(quote.low24h)}`
-                      : t("status.unavailable")}
-                  </td>
-                </tr>
-                <tr>
-                  <th>{t("markets.timeframe")}</th>
-                  <td>{snapshot.market.timeframe || "1h"}</td>
-                </tr>
-              </tbody>
-            </table>
+            <div className="table-responsive">
+              <table className="table">
+                <tbody>
+                  <tr>
+                    <th>{t("markets.currentPrice")}</th>
+                    <td>
+                      {quote?.last != null
+                        ? formatCurrency(quote.last)
+                        : quote?.mid != null
+                        ? formatCurrency(quote.mid)
+                        : quote?.bid != null
+                        ? formatCurrency(quote.bid)
+                        : t("status.unavailable")}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>{t("markets.bidAsk")}</th>
+                    <td>
+                      {quote?.bid != null && quote?.ask != null
+                        ? `${formatCurrency(quote.bid)} / ${formatCurrency(quote.ask)}`
+                        : t("status.unavailable")}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>{t("markets.change24h")}</th>
+                    <td>
+                      {quote?.changePercent != null
+                        ? formatPercent(quote.changePercent)
+                        : t("status.unavailable")}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>{t("markets.highLow24h")}</th>
+                    <td>
+                      {quote?.high24h != null && quote?.low24h != null
+                        ? `${formatCurrency(quote.high24h)} / ${formatCurrency(quote.low24h)}`
+                        : t("status.unavailable")}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>{t("markets.timeframe")}</th>
+                    <td>{snapshot.market.timeframe || "1h"}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -776,36 +781,38 @@ function SettingsPage({ snapshot }: { snapshot: HostSnapshot }) {
             </span>
           </div>
           <div className="card-body">
-            <table className="table">
-              <tbody>
-                <tr>
-                  <th>User Identity</th>
-                  <td>{security?.userId || "guest_user"}</td>
-                </tr>
-                <tr>
-                  <th>Role</th>
-                  <td>
-                    <strong>{(security?.role || "user").toUpperCase()}</strong>
-                  </td>
-                </tr>
-                <tr>
-                  <th>Permissions</th>
-                  <td>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                      {(security?.permissions || ["read:signals"]).map((p) => (
-                        <span key={p} className="chip" style={{ fontSize: 11 }}>
-                          {p}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                </tr>
-                <tr>
-                  <th>Protected Secrets Boundary</th>
-                  <td>{security?.isAdmin ? "Unlocked (Admin)" : "Protected (Restricted to Admin)"}</td>
-                </tr>
-              </tbody>
-            </table>
+            <div className="table-responsive">
+              <table className="table">
+                <tbody>
+                  <tr>
+                    <th>User Identity</th>
+                    <td>{security?.userId || "guest_user"}</td>
+                  </tr>
+                  <tr>
+                    <th>Role</th>
+                    <td>
+                      <strong>{(security?.role || "user").toUpperCase()}</strong>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Permissions</th>
+                    <td>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                        {(security?.permissions || ["read:signals"]).map((p) => (
+                          <span key={p} className="chip" style={{ fontSize: 11 }}>
+                            {p}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Protected Secrets Boundary</th>
+                    <td>{security?.isAdmin ? "Unlocked (Admin)" : "Protected (Restricted to Admin)"}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
             <p className="hint" style={{ marginTop: 12 }}>
               {security?.message}
             </p>
@@ -818,26 +825,28 @@ function SettingsPage({ snapshot }: { snapshot: HostSnapshot }) {
             <span className="status ready">{t("status.enforced")}</span>
           </div>
           <div className="card-body">
-            <table className="table">
-              <tbody>
-                <tr>
-                  <th>{t("settings.table.orderExecution")}</th>
-                  <td>{t("settings.table.orderExecutionValue")}</td>
-                </tr>
-                <tr>
-                  <th>{t("settings.table.apiKeys")}</th>
-                  <td>{t("settings.table.apiKeysValue")}</td>
-                </tr>
-                <tr>
-                  <th>{t("settings.table.source")}</th>
-                  <td>{t("settings.table.sourceValue")}</td>
-                </tr>
-                <tr>
-                  <th>{t("settings.table.adapter")}</th>
-                  <td>{snapshot.project1.adapterName}</td>
-                </tr>
-              </tbody>
-            </table>
+            <div className="table-responsive">
+              <table className="table">
+                <tbody>
+                  <tr>
+                    <th>{t("settings.table.orderExecution")}</th>
+                    <td>{t("settings.table.orderExecutionValue")}</td>
+                  </tr>
+                  <tr>
+                    <th>{t("settings.table.apiKeys")}</th>
+                    <td>{t("settings.table.apiKeysValue")}</td>
+                  </tr>
+                  <tr>
+                    <th>{t("settings.table.source")}</th>
+                    <td>{t("settings.table.sourceValue")}</td>
+                  </tr>
+                  <tr>
+                    <th>{t("settings.table.adapter")}</th>
+                    <td>{snapshot.project1.adapterName}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
 

@@ -105,34 +105,36 @@ export function PerformanceViewer({ snapshot }: { snapshot: HostSnapshot }) {
             </span>
           </div>
           <div className="card-body">
-            <table className="table">
-              <tbody>
-                <tr>
-                  <th>Max Peak-to-Trough Drawdown</th>
-                  <td className="text-red">
-                    <strong>{formatPercent(s.max_drawdown)}</strong>
-                  </td>
-                </tr>
-                <tr>
-                  <th>Recovery Factor Ratio</th>
-                  <td>
-                    <strong>{dd?.recovery_factor != null ? dd.recovery_factor.toFixed(2) : "N/A"}</strong>
-                  </td>
-                </tr>
-                <tr>
-                  <th>Estimated Sharpe Ratio</th>
-                  <td className="text-green">
-                    <strong>{s.sharpe_ratio_estimate != null ? s.sharpe_ratio_estimate.toFixed(2) : "N/A"}</strong>
-                  </td>
-                </tr>
-                <tr>
-                  <th>Cumulative Net Profit</th>
-                  <td className="text-green">
-                    <strong>{formatCurrency(s.net_profit)}</strong>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <div className="table-responsive">
+              <table className="table">
+                <tbody>
+                  <tr>
+                    <th>Max Peak-to-Trough Drawdown</th>
+                    <td className="text-red">
+                      <strong>{formatPercent(s.max_drawdown)}</strong>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Recovery Factor Ratio</th>
+                    <td>
+                      <strong>{dd?.recovery_factor != null ? dd.recovery_factor.toFixed(2) : "N/A"}</strong>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Estimated Sharpe Ratio</th>
+                    <td className="text-green">
+                      <strong>{s.sharpe_ratio_estimate != null ? s.sharpe_ratio_estimate.toFixed(2) : "N/A"}</strong>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Cumulative Net Profit</th>
+                    <td className="text-green">
+                      <strong>{formatCurrency(s.net_profit)}</strong>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
 
@@ -143,26 +145,28 @@ export function PerformanceViewer({ snapshot }: { snapshot: HostSnapshot }) {
             <span className="chip ready-chip">Out-of-Sample Validation</span>
           </div>
           <div className="card-body">
-            <table className="table">
-              <tbody>
-                <tr>
-                  <th>Walk-Forward Efficiency Ratio</th>
-                  <td>
-                    <strong>{s.walk_forward_efficiency != null ? formatPercent(s.walk_forward_efficiency) : "N/A"}</strong>
-                  </td>
-                </tr>
-                <tr>
-                  <th>Out-of-Sample Consistency</th>
-                  <td>
-                    <strong>{s.walk_forward_consistency != null ? formatPercent(s.walk_forward_consistency) : "N/A"}</strong>
-                  </td>
-                </tr>
-                <tr>
-                  <th>Evaluation Detail</th>
-                  <td style={{ fontSize: 13 }}>{s.detail || "Authentic backtest assessment executed."}</td>
-                </tr>
-              </tbody>
-            </table>
+            <div className="table-responsive">
+              <table className="table">
+                <tbody>
+                  <tr>
+                    <th>Walk-Forward Efficiency Ratio</th>
+                    <td>
+                      <strong>{s.walk_forward_efficiency != null ? formatPercent(s.walk_forward_efficiency) : "N/A"}</strong>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Out-of-Sample Consistency</th>
+                    <td>
+                      <strong>{s.walk_forward_consistency != null ? formatPercent(s.walk_forward_consistency) : "N/A"}</strong>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Evaluation Detail</th>
+                    <td style={{ fontSize: 13 }}>{s.detail || "Authentic backtest assessment executed."}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
       </div>

@@ -295,32 +295,34 @@ export function HealthCenter({ snapshot, onRefresh, isLoading = false }: HealthC
             </span>
           </div>
           <div className="card-body">
-            <table className="table">
-              <tbody>
-                <tr>
-                  <th>{t("health.labels.adapter")}</th>
-                  <td>{snapshot.project1.adapterName}</td>
-                </tr>
-                <tr>
-                  <th>Integration Contract Port</th>
-                  <td>{snapshot.project1.port}</td>
-                </tr>
-                <tr>
-                  <th>Active Signal Action</th>
-                  <td>
-                    <strong>{snapshot.signal.action || t("signal.noSignal")}</strong>
-                  </td>
-                </tr>
-                <tr>
-                  <th>{t("health.labels.securityGate")}</th>
-                  <td>
-                    <span className="chip ready-chip">
-                      {t("health.labels.secretsFiltered")}
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <div className="table-responsive">
+              <table className="table">
+                <tbody>
+                  <tr>
+                    <th>{t("health.labels.adapter")}</th>
+                    <td>{snapshot.project1.adapterName}</td>
+                  </tr>
+                  <tr>
+                    <th>Integration Contract Port</th>
+                    <td>{snapshot.project1.port}</td>
+                  </tr>
+                  <tr>
+                    <th>Active Signal Action</th>
+                    <td>
+                      <strong>{snapshot.signal.action || t("signal.noSignal")}</strong>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>{t("health.labels.securityGate")}</th>
+                    <td>
+                      <span className="chip ready-chip">
+                        {t("health.labels.secretsFiltered")}
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
             <p className="hint" style={{ marginTop: 12 }}>
               Project 1 proprietary strategy logic, machine learning parameters, and indicator code stay strictly within Project 1 and are never leaked to Project 2 presentation state.
             </p>
@@ -334,28 +336,30 @@ export function HealthCenter({ snapshot, onRefresh, isLoading = false }: HealthC
             <span className="status ready">{t("status.healthy")}</span>
           </div>
           <div className="card-body">
-            <table className="table">
-              <tbody>
-                <tr>
-                  <th>{t("health.labels.pipelineStatus")}</th>
-                  <td>
-                    <span className="status ready">{t("status.active")}</span>
-                  </td>
-                </tr>
-                <tr>
-                  <th>{t("health.labels.unreadNotifications")}</th>
-                  <td>{unreadCount}</td>
-                </tr>
-                <tr>
-                  <th>Total Events Recorded</th>
-                  <td>{notifications.length}</td>
-                </tr>
-                <tr>
-                  <th>{t("health.labels.lastSynced")}</th>
-                  <td>{snapshot.generatedAt || new Date().toUTCString()}</td>
-                </tr>
-              </tbody>
-            </table>
+            <div className="table-responsive">
+              <table className="table">
+                <tbody>
+                  <tr>
+                    <th>{t("health.labels.pipelineStatus")}</th>
+                    <td>
+                      <span className="status ready">{t("status.active")}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>{t("health.labels.unreadNotifications")}</th>
+                    <td>{unreadCount}</td>
+                  </tr>
+                  <tr>
+                    <th>Total Events Recorded</th>
+                    <td>{notifications.length}</td>
+                  </tr>
+                  <tr>
+                    <th>{t("health.labels.lastSynced")}</th>
+                    <td>{snapshot.generatedAt || new Date().toUTCString()}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
             <p className="hint" style={{ marginTop: 12 }}>
               {t("notifications.privacyNote")}
             </p>

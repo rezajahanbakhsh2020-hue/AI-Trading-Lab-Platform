@@ -18,26 +18,28 @@ export function StrategyCard({ snapshot }: StrategyCardProps) {
       </div>
 
       <div className="card-body">
-        <table className="table">
-          <tbody>
-            <tr>
-              <th>Strategy Identity</th>
-              <td>{strategy.name ?? "Unavailable"}</td>
-            </tr>
-            <tr>
-              <th>Stability Score</th>
-              <td>
-                {strategy.stability != null
-                  ? `${strategy.stability}/100`
-                  : "Unavailable"}
-              </td>
-            </tr>
-            <tr>
-              <th>Validation Boundary</th>
-              <td>Project1IntegrationPort Contract</td>
-            </tr>
-          </tbody>
-        </table>
+        <div className="table-responsive">
+          <table className="table">
+            <tbody>
+              <tr>
+                <th>Strategy Identity</th>
+                <td>{strategy.name ?? "Unavailable"}</td>
+              </tr>
+              <tr>
+                <th>Stability Score</th>
+                <td>
+                  {strategy.stability != null
+                    ? `${strategy.stability}/100`
+                    : "Unavailable"}
+                </td>
+              </tr>
+              <tr>
+                <th>Validation Boundary</th>
+                <td>Project1IntegrationPort Contract</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
         <p className="hint" style={{ marginTop: 12 }}>
           {strategy.message}
         </p>

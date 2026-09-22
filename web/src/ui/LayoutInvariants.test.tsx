@@ -127,4 +127,52 @@ describe("Layout Invariants and Responsive Architecture", () => {
     expect(workspace).not.toBeNull();
     expect(workspace?.children.length).toBeGreaterThan(0);
   });
+
+  it("enforces canonical BoundedPageContainer boundary across all registered routes", () => {
+    const testRoutes = [
+      "/",
+      "/dashboard",
+      "/users",
+      "/help",
+      "/screener",
+      "/health",
+      "/watchlist",
+      "/signals",
+      "/providers",
+      "/backtest",
+      "/performance",
+      "/risk",
+      "/audit",
+      "/intents",
+      "/monitoring",
+      "/academy",
+      "/ai",
+      "/alerts",
+      "/notifications",
+      "/settings",
+    ];
+
+    for (const route of testRoutes) {
+      const { container, unmount } = render(
+        <MemoryRouter initialEntries={[route]}>
+          <I18nProvider>
+            <App />
+          </I18nProvider>
+        </MemoryRouter>
+      );
+
+      const boundedContainer = container.querySelector(".bounded-page-container");
+      expect(boundedContainer).not.toBeNull();
+      expect(boundedContainer?.getAttribute("data-testid")).toBe("bounded-page-container");
+
+      // Verify table elements are wrapped inside .table-responsive
+      const tables = container.querySelectorAll("table");
+      tables.forEach((tbl) => {
+        const responsiveParent = tbl.closest(".table-responsive");
+        expect(responsiveParent).not.toBeNull();
+      });
+
+      unmount();
+    }
+  });
 });

@@ -112,7 +112,7 @@ describe("connected Project 1 host snapshot", () => {
     expect(snapshot.signal.action).toBeNull();
   });
 
-  it("flags historical/stale XAUUSD signals (>300s old or lab_artifact) as stale status and holds risk setup levels", () => {
+  it("returns truthful no-signal status and holds risk levels when historical/stale XAUUSD signal (>300s old or lab_artifact) is passed", () => {
     const staleSignal = {
       signal_id: "p1_xauusd_1h_1700000000",
       symbol: "XAUUSD",
@@ -134,10 +134,11 @@ describe("connected Project 1 host snapshot", () => {
       "1h"
     );
 
-    expect(snapshot.signal.status).toBe("stale");
-    expect(snapshot.signal.action).toBe("STALE SIGNAL");
-    expect(snapshot.monitoring.freshness).toBe("stale");
-    expect(snapshot.risk.status).toBe("stale");
+    expect(snapshot.signal.status).toBe("no-signal");
+    expect(snapshot.signal.action).toBe("NO SIGNAL");
+    expect(snapshot.signal.signalId).toBeNull();
+    expect(snapshot.project1.adapterName).toBe("Project1GatewayAdapter");
+    expect(snapshot.risk.status).toBe("unavailable");
     expect(snapshot.risk.entry).toBeNull();
     expect(snapshot.orderIntents).toEqual([]);
   });

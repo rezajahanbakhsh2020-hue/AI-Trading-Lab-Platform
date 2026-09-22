@@ -284,3 +284,46 @@ def test_outbound_telegram_delivery_blocks_stale_and_historical_signals():
     assert res.success is False
     assert "Delivery blocked: Signal failed Current Signal eligibility check" in res.reason
     assert len(tg_port.sent_signals) == 0
+
+
+def test_evaluate_signal_live_status_symbol_mismatch_rejection():
+    """Verify signal is rejected when signal symbol does not match requested market symbol."""
+    clk = SystemClock(fixed_timestamp=1700000000.0)
+
+    sig = {
+        "signal_id": "p1_eurusd_1h_live",
+        "symbol": "EURUSD",
+        "timestamp": 1700000000.0,
+        "metadata": {"provenance_type": "live_signal"},
+    }
+
+    # Requesting XAUUSD for an EURUSD signal
+    is_live, reason = _evaluate_signal_live_status(sig, requested_symbol="XAUUSD", clock=clk)
+    assert is_live is False
+    assert "Signal symbol 'EURUSD' does not match requested market symbol 'XAUUSD'" in reason
+
+
+def test_presenter_adapter_name_default_is_gateway_adapter():
+    """Verify Project1SignalPresenter defaults adapterName to Project1GatewayAdapter when connected."""
+    class DummyRepoPort:
+        def list_records_for_user(self, user_id=None, symbol=None, lifecycle_state=None, limit=500):
+            if limit == 1:
+                return [{"signal_id": "dummy"}]
+            return []
+
+    class DummyGatewayService:
+        def __init__(self):
+            self._repo = DummyRepoPort()
+        def get_gateway_monitoring_summary(self, user=None):
+            return {}
+
+    gw = DummyGatewayService()
+    adapter = Project1GatewayAdapter(gateway_service=gw)
+    presenter = Project1SignalPresenter(port=adapter, gateway_service=gw)
+
+    snapshot = presenter.build_host_snapshot(symbol="XAUUSD")
+    assert snapshot["project1"]["connected"] is True
+    assert snapshot["project1"]["adapterName"] == "Project1GatewayAdapter"
+    assert snapshot["project1"]["adapterName"] != "Project1LabArtifactAdapter"
+    assert snapshot["signal"]["status"] == "no-signal"
+    assert snapshot["signal"]["action"] == "NO SIGNAL"

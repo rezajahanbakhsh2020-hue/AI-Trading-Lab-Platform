@@ -38,14 +38,16 @@ def mock_snapshot():
         },
         "signal": {
             "signalId": "sig_xauusd_1001",
+            "symbol": "XAUUSD",
             "action": "BUY",
-            "timestamp": "Mon, 15 Sep 2026 10:00:00 GMT",
+            "timestamp": time.time() - 50.0,
             "confidence": 0.88,
             "strategyName": "GoldTrendv1",
             "timeframe": "1h",
             "status": "active",
             "metadata": {
                 "source": "Project1",
+                "provenance_type": "live_signal",
                 "indicator_logic": "SECRET_SMA_CROSSOVER_LOGIC",
                 "sensitive_parameters": {"fast_len": 12, "slow_len": 26},
             },
@@ -252,3 +254,125 @@ def test_unauthorized_explainability_access(mock_snapshot):
             item=sig_item,
             snapshot=mock_snapshot,
         )
+
+
+def test_historical_2023_artifact_produces_zero_signal_timeline_events(admin_user):
+    """Prove p1_xauusd_1h_1700000000 (Nov 2023) produces ZERO SIGNAL timeline events."""
+    service = IntelligenceTimelineService()
+
+    historical_snapshot = {
+        "project1": {"connected": True, "port": "Project1IntegrationPort", "adapterName": "Project1GatewayAdapter"},
+        "market": {"symbol": "XAUUSD", "timeframe": "1h", "status": "connected"},
+        "signal": {
+            "signalId": "p1_xauusd_1h_1700000000",
+            "symbol": "XAUUSD",
+            "action": "BUY",
+            "timestamp": 1700000000.0,  # Nov 14, 2023
+            "confidence": 0.88,
+            "strategyName": "GoldTrendv1",
+            "timeframe": "1h",
+            "status": "active",
+            "metadata": {"provenance_type": "lab_artifact", "is_historical": True},
+        },
+    }
+
+    items = service.build_timeline(user=admin_user, snapshot=historical_snapshot)
+    sig_items = [it for it in items if it.category == TimelineCategory.SIGNAL]
+    assert len(sig_items) == 0
+
+
+def test_missing_provenance_or_invalid_status_produces_zero_signal_timeline_events(admin_user):
+    """Prove missing provenance, stale status, symbol mismatch, or future ts produce ZERO SIGNAL timeline events."""
+    service = IntelligenceTimelineService()
+
+    # 1. Missing provenance
+    snap_no_prov = {
+        "project1": {"connected": True},
+        "market": {"symbol": "XAUUSD"},
+        "signal": {
+            "signalId": "sig_live_1",
+            "symbol": "XAUUSD",
+            "action": "BUY",
+            "timestamp": time.time() - 10,
+            "status": "active",
+            "metadata": {},
+        },
+    }
+    assert len([it for it in service.build_timeline(user=admin_user, snapshot=snap_no_prov) if it.category == TimelineCategory.SIGNAL]) == 0
+
+    # 2. Stale / no-signal status
+    snap_stale = {
+        "project1": {"connected": True},
+        "market": {"symbol": "XAUUSD"},
+        "signal": {
+            "signalId": "sig_live_2",
+            "symbol": "XAUUSD",
+            "action": "BUY",
+            "timestamp": time.time() - 10,
+            "status": "stale",
+            "metadata": {"provenance_type": "live_signal"},
+        },
+    }
+    assert len([it for it in service.build_timeline(user=admin_user, snapshot=snap_stale) if it.category == TimelineCategory.SIGNAL]) == 0
+
+    # 3. Symbol mismatch (signal for EURUSD, market requested XAUUSD)
+    snap_mismatch = {
+        "project1": {"connected": True},
+        "market": {"symbol": "XAUUSD"},
+        "signal": {
+            "signalId": "sig_live_3",
+            "symbol": "EURUSD",
+            "action": "BUY",
+            "timestamp": time.time() - 10,
+            "status": "active",
+            "metadata": {"provenance_type": "live_signal"},
+        },
+    }
+    assert len([it for it in service.build_timeline(user=admin_user, snapshot=snap_mismatch) if it.category == TimelineCategory.SIGNAL]) == 0
+
+    # 4. Future timestamp
+    snap_future = {
+        "project1": {"connected": True},
+        "market": {"symbol": "XAUUSD"},
+        "signal": {
+            "signalId": "sig_live_4",
+            "symbol": "XAUUSD",
+            "action": "BUY",
+            "timestamp": time.time() + 1000,
+            "status": "active",
+            "metadata": {"provenance_type": "live_signal"},
+        },
+    }
+    assert len([it for it in service.build_timeline(user=admin_user, snapshot=snap_future) if it.category == TimelineCategory.SIGNAL]) == 0
+
+
+def test_valid_current_live_signal_produces_exactly_one_signal_timeline_event(admin_user):
+    """Prove genuinely valid current live signal produces exactly 1 SIGNAL timeline event with true timestamp."""
+    service = IntelligenceTimelineService()
+    now_ts = time.time() - 20.0
+
+    valid_snap = {
+        "project1": {"connected": True, "port": "Project1IntegrationPort", "adapterName": "Project1GatewayAdapter"},
+        "market": {"symbol": "XAUUSD", "timeframe": "1h", "status": "connected"},
+        "signal": {
+            "signalId": "p1_xauusd_1h_live_valid",
+            "symbol": "XAUUSD",
+            "action": "BUY",
+            "timestamp": now_ts,
+            "confidence": 0.92,
+            "strategyName": "GoldTrendv1",
+            "timeframe": "1h",
+            "status": "active",
+            "metadata": {"provenance_type": "live_signal", "is_live": True},
+        },
+    }
+
+    items = service.build_timeline(user=admin_user, snapshot=valid_snap)
+    sig_items = [it for it in items if it.category == TimelineCategory.SIGNAL]
+
+    assert len(sig_items) == 1
+    item = sig_items[0]
+    assert item.item_id == "timeline-sig-p1_xauusd_1h_live_valid"
+    assert item.timestamp == pytest.approx(now_ts, abs=0.01)
+    assert item.payload["signal_id"] == "p1_xauusd_1h_live_valid"
+    assert item.payload["symbol"] == "XAUUSD"

@@ -155,7 +155,7 @@ export function syncAlertsFromHostSnapshot(
   }
 
   // 2. Evaluate active user rules against snapshot data
-  const price = snapshot.market.quote?.last ?? snapshot.market.quote?.mid ?? snapshot.risk.entry ?? null;
+  const price = snapshot.market.quote?.last ?? snapshot.market.quote?.mid ?? snapshot.market.quote?.bid ?? null;
   const signalAction = snapshot.signal.action || null;
   const confidence = snapshot.signal.confidence ?? null;
 

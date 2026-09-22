@@ -442,12 +442,19 @@ export function InteractiveChart({
         });
 
         // 4. Project 1 Signal Event Markers
-        if (signalAction && cleanCandles.length > 0) {
+        const actUpper = (signalAction || "").toUpperCase().trim();
+        if (
+          actUpper &&
+          actUpper !== "NO SIGNAL" &&
+          actUpper !== "HOLD" &&
+          actUpper !== "STALE SIGNAL" &&
+          cleanCandles.length > 0
+        ) {
           const lastCandleTime = signalTime && Number.isFinite(signalTime)
             ? (signalTime as Time)
             : (cleanCandles[cleanCandles.length - 1].timestamp as Time);
 
-          const isBuy = signalAction.toUpperCase().includes("BUY") || signalAction.toUpperCase().includes("LONG");
+          const isBuy = actUpper.includes("BUY") || actUpper.includes("LONG");
 
           const markers: SeriesMarker<Time>[] = [
             {
@@ -455,7 +462,7 @@ export function InteractiveChart({
               position: isBuy ? "belowBar" : "aboveBar",
               color: isBuy ? "#10B981" : "#EF4444",
               shape: isBuy ? "arrowUp" : "arrowDown",
-              text: `P1 Signal: ${signalAction}`,
+              text: `P1 Signal: ${actUpper}`,
             },
           ];
 

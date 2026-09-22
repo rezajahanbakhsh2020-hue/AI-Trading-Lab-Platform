@@ -7,9 +7,12 @@ Enforces security boundary permissions for trade setup details.
 
 from typing import Optional
 
+import time
 from src.platform.domain.presented_signal import PresentedSignal
 from src.platform.domain.security import Permission
 from src.platform.integrations.telegram import TelegramDeliveryPort, TelegramDeliveryResult
+from src.platform.services.clock import SystemClock, default_clock
+from src.platform.services.project1_presenter import _evaluate_signal_live_status
 from src.platform.services.user_authorization import UserAuthorizationService
 
 
@@ -28,11 +31,12 @@ class TelegramDeliveryService:
 
         self._port = delivery_port
         self._user_auth_svc = user_auth_service
+        self._clock = default_clock
 
     def deliver_signal_to_user(
         self, user_id: str, signal: PresentedSignal
     ) -> TelegramDeliveryResult:
-        """Deliver signal to user_id if user is authorized and policy permits."""
+        """Deliver signal to user_id if user is authorized and Current Signal eligibility passes."""
         if not isinstance(signal, PresentedSignal):
             raise ValueError("signal must be a PresentedSignal instance")
 
@@ -48,6 +52,16 @@ class TelegramDeliveryService:
                 success=False,
                 chat_id=chat_id,
                 reason=f"Authorization denied: {reason}",
+            )
+
+        # Enforce Current Signal Eligibility Gate on Outbound Delivery
+        sig_dict = signal.to_dict()
+        is_live, live_reason = _evaluate_signal_live_status(sig_dict, clock=self._clock)
+        if not is_live:
+            return TelegramDeliveryResult(
+                success=False,
+                chat_id=chat_id,
+                reason=f"Delivery blocked: Signal failed Current Signal eligibility check ({live_reason})",
             )
 
         # Enforce trade setup permission boundary

@@ -133,7 +133,7 @@ def test_presenter_with_genuinely_live_signal():
     assert snapshot["risk"]["takeProfits"] == [2670.0, 2690.0, 2710.0]
 
 
-def test_presenter_with_lab_adapter_full_signal_and_setup():
+def test_presenter_with_lab_artifact_historical_isolation():
     import time
     now_ts = time.time()
     source = DummyLabArtifactSource(
@@ -156,34 +156,13 @@ def test_presenter_with_lab_adapter_full_signal_and_setup():
     )
     service = LabArtifactService(source)
     adapter = Project1LabArtifactAdapter(service)
-    presenter = Project1SignalPresenter(adapter)
 
-    res = presenter.present_signal("XAUUSD", "1h")
-    assert res["connected"] is True
-    assert res["status"] == "stale"  # Lab artifacts are tagged provenance_type="lab_artifact"
-    assert "Historical/stale Project 1 signal" in res["message"]
-
-    snapshot = presenter.build_host_snapshot("XAUUSD", "1h")
-    assert snapshot["project1"]["connected"] is True
-    assert snapshot["signal"]["status"] == "stale"
-    assert snapshot["risk"]["entry"] is None  # Entry price held for non-live lab artifacts
-
-
-def test_presenter_with_lab_adapter_no_signal():
-    source = DummyLabArtifactSource(signal_data=None, setup_data=None)
-    service = LabArtifactService(source)
-    adapter = Project1LabArtifactAdapter(service)
-    presenter = Project1SignalPresenter(adapter)
-
-    res = presenter.present_signal("XAUUSD", "1h")
-    assert res["connected"] is True
-    assert res["status"] == "no-signal"
-    assert res["signal"] is None
-
-    snapshot = presenter.build_host_snapshot("XAUUSD", "1h")
-    assert snapshot["project1"]["connected"] is True
-    assert snapshot["signal"]["action"] == "NO SIGNAL"
-    assert snapshot["risk"]["entry"] is None
+    # Historical lab artifact adapter is isolated from Project1IntegrationPort
+    assert not isinstance(adapter, Project1IntegrationPort)
+    artifact = adapter.fetch_historical_artifact("XAUUSD", "1h")
+    assert artifact is not None
+    assert artifact.metadata["provenance_type"] == "lab_artifact"
+    assert artifact.metadata["is_historical"] is True
 
 
 def test_presenter_preserves_real_data_without_fabrication():

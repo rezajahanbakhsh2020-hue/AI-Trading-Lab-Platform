@@ -265,6 +265,7 @@ def test_project1_presenter_alternate_path_cannot_bypass_authorization():
 
 
 def test_telegram_delivery_enforces_trade_setup_permission():
+    import time
     telegram_port = MockTelegramPort()
     auth_svc = UserAuthorizationService()
     delivery_svc = TelegramDeliveryService(delivery_port=telegram_port, user_auth_service=auth_svc)
@@ -290,11 +291,12 @@ def test_telegram_delivery_enforces_trade_setup_permission():
         signal_id="sig_100",
         symbol="XAUUSD",
         signal_type="buy",
-        timestamp=1700000000,
+        timestamp=time.time(),
         entry_price=2700.0,
         stop_loss=2680.0,
         take_profits=(2730.0, 2750.0),
         strategy_name="GoldTrend",
+        metadata={"provenance_type": "live_signal"},
     )
 
     # Deliver to user with full permissions

@@ -78,7 +78,7 @@ def test_lab_artifact_adapter_maps_real_signal_and_setup_to_presented_signal():
     service = LabArtifactService(source=source)
     adapter = Project1LabArtifactAdapter(service=service)
 
-    presented = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h")
+    presented = adapter.fetch_historical_artifact(symbol="XAUUSD", timeframe="1h")
 
     assert isinstance(presented, PresentedSignal)
     assert presented.symbol == "XAUUSD"
@@ -101,8 +101,8 @@ def test_lab_artifact_adapter_filters_by_strategy_name():
     service = LabArtifactService(source=source)
     adapter = Project1LabArtifactAdapter(service=service)
 
-    assert adapter.fetch_latest_signal("EURUSD", "4h", strategy_name="OtherStrategy") is None
-    matched = adapter.fetch_latest_signal("EURUSD", "4h", strategy_name="TrendFollower")
+    assert adapter.fetch_historical_artifact("EURUSD", "4h", strategy_name="OtherStrategy") is None
+    matched = adapter.fetch_historical_artifact("EURUSD", "4h", strategy_name="TrendFollower")
     assert matched is not None
     assert matched.signal_type == "sell"
 
@@ -117,7 +117,7 @@ def test_lab_artifact_adapter_handles_missing_trade_setup():
     service = LabArtifactService(source=source)
     adapter = Project1LabArtifactAdapter(service=service)
 
-    presented = adapter.fetch_latest_signal(symbol="BTCUSD", timeframe="15m")
+    presented = adapter.fetch_historical_artifact(symbol="BTCUSD", timeframe="15m")
     assert presented is not None
     assert presented.entry_price is None
     assert presented.stop_loss is None
@@ -131,6 +131,6 @@ def test_lab_artifact_adapter_describe():
     desc = adapter.describe()
 
     assert desc["name"] == "Project1LabArtifactAdapter"
-    assert desc["port"] == "Project1IntegrationPort"
+    assert desc["port"] == "HistoricalLabArtifactPort"
     assert desc["connected"] is True
     assert desc["source"]["name"] == "MockLabArtifactSource"

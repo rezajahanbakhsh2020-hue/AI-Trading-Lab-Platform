@@ -67,7 +67,7 @@ describe("connected Project 1 host snapshot", () => {
 
     expect(snapshot.project1.connected).toBe(true);
     expect(snapshot.project1.status).toBe("connected");
-    expect(snapshot.project1.adapterName).toBe("Project1LabArtifactAdapter");
+    expect(snapshot.project1.adapterName).toBe("Project1GatewayAdapter");
     expect(snapshot.project1.port).toBe("Project1IntegrationPort");
 
     expect(snapshot.market.status).toBe("connected");
@@ -76,7 +76,7 @@ describe("connected Project 1 host snapshot", () => {
     expect(snapshot.market.candles.length).toBe(SAMPLE_BIQUOTE_CANDLES_XAUUSD.length);
 
     expect(snapshot.signal.action).toBe("BUY");
-    expect(snapshot.signal.signalId).toBe("p1_xauusd_1h_1700000000");
+    expect(snapshot.signal.signalId).toBe("p1_xauusd_1h_live_current");
     expect(snapshot.signal.confidence).toBe(0.88);
     expect(snapshot.signal.strategyName).toBe("GoldTrendv1");
     expect(snapshot.signal.status).toBe("active");

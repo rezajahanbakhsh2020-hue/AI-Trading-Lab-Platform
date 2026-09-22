@@ -155,11 +155,15 @@ class DisconnectedProject1Adapter(Project1IntegrationPort):
     """Placeholder adapter for Project1IntegrationPort when Project 1 is disconnected."""
 
     def fetch_latest_signal(
-        self, symbol: str, timeframe: str, strategy_name: Optional[str] = None
+        self,
+        symbol: str,
+        timeframe: str,
+        strategy_name: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> Optional[PresentedSignal]:
         return None
 
-    def describe(self) -> Dict[str, Any]:
+    def describe(self, user_id: Optional[str] = None) -> Dict[str, Any]:
         return {
             "name": "DisconnectedProject1Adapter",
             "port": "Project1IntegrationPort",
@@ -178,7 +182,11 @@ class Project1GatewayAdapter(Project1IntegrationPort):
         self._gateway_service = gateway_service
 
     def fetch_latest_signal(
-        self, symbol: str, timeframe: str, strategy_name: Optional[str] = None
+        self,
+        symbol: str,
+        timeframe: str,
+        strategy_name: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> Optional[PresentedSignal]:
         import math
         import time
@@ -187,7 +195,7 @@ class Project1GatewayAdapter(Project1IntegrationPort):
             return None
 
         records = repo.list_records_for_user(
-            user_id=None,
+            user_id=user_id,
             symbol=symbol,
             lifecycle_state=None,
             limit=500,
@@ -203,6 +211,11 @@ class Project1GatewayAdapter(Project1IntegrationPort):
             if timeframe and rec.get("timeframe") and rec.get("timeframe") != timeframe:
                 continue
             if strategy_name and rec.get("strategy_name") and rec.get("strategy_name") != strategy_name:
+                continue
+
+            # Lifecycle control: Inactive signals must not be presented as active Current Signal
+            l_state = str(rec.get("lifecycle_state") or "STAGED").strip().upper()
+            if l_state in ("CANCELLED", "EXPIRED", "REJECTED", "EXECUTED"):
                 continue
 
             raw_ts = rec.get("timestamp")
@@ -270,14 +283,16 @@ class Project1GatewayAdapter(Project1IntegrationPort):
             metadata=meta,
         )
 
-    def describe(self) -> Dict[str, Any]:
+    def describe(self, user_id: Optional[str] = None) -> Dict[str, Any]:
         repo = getattr(self._gateway_service, "_repo", None)
-        recs = repo.list_records_for_user(user_id=None, limit=1) if repo else []
+        recs = repo.list_records_for_user(user_id=user_id, limit=1) if repo else []
         has_records = len(recs) > 0
         return {
             "name": "Project1GatewayAdapter",
             "port": "Project1IntegrationPort",
-            "connected": has_records,
-            "status": "active" if has_records else "disconnected",
-            "message": "Connected to Project 1 Integration Gateway." if has_records else "No Project 1 integration records received yet via gateway.",
+            "connected": True,
+            "gateway_ready": True,
+            "received_records_count": 1 if has_records else 0,
+            "status": "active" if has_records else "ready",
+            "message": "Connected to Project 1 Integration Gateway." if has_records else "Project 1 Integration Gateway active and ready for signal delivery.",
         }

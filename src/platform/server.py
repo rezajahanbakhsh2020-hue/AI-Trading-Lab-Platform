@@ -162,7 +162,7 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                 self._send_json_response(200, {"status": "alive", "liveness": is_live, "message": msg}, origin=origin)
                 return
 
-            if path in ("/health/readiness", "/health/ready"):
+            if path in ("/health/readiness", "/health/ready", "/ready"):
                 ai_st = self.ai_gateway_service.get_provider().get_status().value if hasattr(self, "ai_gateway_service") else "not_configured"
                 is_ready, details = self.health_service.check_readiness(ai_provider_status=ai_st)
                 status_code = 200 if is_ready else 503

@@ -213,6 +213,19 @@ class Project1SignalPresenter:
             "lastFetchedAt": None,
         }
 
+    def _get_providers_status(self, mkt_state: Dict[str, Any]) -> Dict[str, Any]:
+        """Format truthful provider connectivity status for HostSnapshot."""
+        mkt_status = mkt_state.get("status", "unconnected") if isinstance(mkt_state, dict) else "unconnected"
+        mkt_prov = mkt_state.get("provider") if isinstance(mkt_state, dict) else None
+        prov_id = mkt_prov.get("id", "biquote") if isinstance(mkt_prov, dict) else "biquote"
+        is_connected = (mkt_status == "connected")
+
+        return {
+            "marketData": "connected" if is_connected else mkt_status,
+            "quote": "connected" if is_connected else mkt_status,
+            "message": f"Market data provider '{prov_id}' session active." if is_connected else "Provider slots are ready. No live provider session is attached.",
+        }
+
     def present_signal(
         self,
         symbol: str = "XAUUSD",
@@ -225,7 +238,11 @@ class Project1SignalPresenter:
         _validate_symbol(symbol)
         _validate_timeframe(timeframe)
 
-        desc = self._port.describe()
+        user_id = user.user_id if user else None
+        try:
+            desc = self._port.describe(user_id=user_id)
+        except TypeError:
+            desc = self._port.describe()
         is_connected = bool(desc.get("connected", False))
 
         if user is not None:
@@ -252,9 +269,14 @@ class Project1SignalPresenter:
                 "message": desc.get("message", "Project 1 is disconnected."),
             }
 
-        presented_signal = self._port.fetch_latest_signal(
-            symbol=symbol, timeframe=timeframe, strategy_name=strategy_name
-        )
+        try:
+            presented_signal = self._port.fetch_latest_signal(
+                symbol=symbol, timeframe=timeframe, strategy_name=strategy_name, user_id=user_id
+            )
+        except TypeError:
+            presented_signal = self._port.fetch_latest_signal(
+                symbol=symbol, timeframe=timeframe, strategy_name=strategy_name
+            )
 
         if presented_signal is None:
             return {
@@ -507,17 +529,16 @@ class Project1SignalPresenter:
                     "status": "unavailable",
                     "message": "Monitoring has no live observations yet.",
                 },
-                "providers": {
-                    "marketData": "unconnected",
-                    "quote": "unconnected",
-                    "message": "Provider slots are ready. No live provider session is attached.",
-                },
+                "providers": self._get_providers_status(self._get_market_state(symbol, timeframe)),
                 "activity": [],
                 "orderIntents": self.get_order_intents_payload(user=user),
                 "project1Gateway": self._gateway_service.get_gateway_monitoring_summary(user=user),
             }
 
         # Connected port handling
+        mkt_state = self._get_market_state(symbol, signal_dict.get("timeframe") if signal_dict else timeframe)
+        prov_status = self._get_providers_status(mkt_state)
+
         if signal_dict is None:
             return {
                 "generatedAt": None,
@@ -533,16 +554,7 @@ class Project1SignalPresenter:
                     "adapterName": desc.get("name", "Project1GatewayAdapter"),
                     "message": f"Project 1 connected via {desc.get('name', 'adapter')}.",
                 },
-                "market": {
-                    "symbol": symbol,
-                    "timeframe": timeframe,
-                    "quote": None,
-                    "change": None,
-                    "volume": None,
-                    "candles": [],
-                    "status": "unavailable",
-                    "message": "Market data is unavailable until a provider is connected.",
-                },
+                "market": mkt_state,
                 "strategy": {
                     "name": strategy_name,
                     "stability": None,
@@ -589,11 +601,7 @@ class Project1SignalPresenter:
                     "status": "unavailable",
                     "message": "Monitoring has no live observations yet.",
                 },
-                "providers": {
-                    "marketData": "unconnected",
-                    "quote": "unconnected",
-                    "message": "Provider slots are ready. No live provider session is attached.",
-                },
+                "providers": prov_status,
                 "activity": [],
                 "orderIntents": self.get_order_intents_payload(user=user),
                 "project1Gateway": self._gateway_service.get_gateway_monitoring_summary(user=user),
@@ -790,11 +798,7 @@ class Project1SignalPresenter:
                 "status": "available" if is_live else "stale",
                 "message": "Project 1 signal active and fresh." if is_live else f"Project 1 signal for {symbol} is historical/stale. Live signal data is unavailable.",
             },
-            "providers": {
-                "marketData": "unconnected",
-                "quote": "unconnected",
-                "message": "Provider slots are ready. No live provider session is attached.",
-            },
+            "providers": prov_status,
             "activity": [
                 {
                     "timestamp": str(signal_dict.get("timestamp")),

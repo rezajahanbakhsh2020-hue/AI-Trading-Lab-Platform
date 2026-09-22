@@ -10,9 +10,11 @@ import {
 import {
   createDisconnectedHostSnapshot,
   createHostSnapshotFromProject1,
+} from "./hostView";
+import {
   SAMPLE_CONNECTED_PORT,
   SAMPLE_REAL_PROJECT1_SIGNAL,
-} from "./hostView";
+} from "./testFixtures";
 
 describe("Signal Delivery Architecture Layer", () => {
   beforeEach(() => {

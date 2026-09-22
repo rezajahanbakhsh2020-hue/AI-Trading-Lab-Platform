@@ -2,7 +2,8 @@ import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { OrderIntentViewer } from "./OrderIntentViewer";
-import { createHostSnapshotFromProject1, SAMPLE_CONNECTED_PORT, SAMPLE_REAL_PROJECT1_SIGNAL } from "../../architecture/hostView";
+import { createHostSnapshotFromProject1 } from "../../architecture/hostView";
+import { SAMPLE_CONNECTED_PORT, SAMPLE_REAL_PROJECT1_SIGNAL } from "../../architecture/testFixtures";
 import { I18nProvider } from "../../i18n";
 
 const snapshot = createHostSnapshotFromProject1(

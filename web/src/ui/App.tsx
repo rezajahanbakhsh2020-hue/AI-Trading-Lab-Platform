@@ -10,11 +10,12 @@ import { UserManagementCenter } from "./components/UserManagementCenter";
 import { HelpCenter } from "./components/HelpCenter";
 import {
   NAV_ITEMS,
-  SAMPLE_CONNECTED_PORT,
-  SAMPLE_REAL_PROJECT1_SIGNAL,
+  PROJECT1_GATEWAY_PORT,
   createDisconnectedHostSnapshot,
   createHostSnapshotFromProject1,
+  type PresentedSignalPayload,
 } from "../architecture/hostView";
+import { fetchProject1Records } from "../architecture/project1Gateway";
 import {
   SAMPLE_BIQUOTE_PROVIDER,
   SAMPLE_BIQUOTE_CANDLES_XAUUSD,
@@ -50,6 +51,69 @@ export function App() {
   const [selectedSymbol, setSelectedSymbol] = useState("XAUUSD");
   const [selectedTimeframe, setSelectedTimeframe] = useState("1h");
   const [stagedIntents, setStagedIntents] = useState<OrderIntentPayload[]>([]);
+  const [activeSignal, setActiveSignal] = useState<PresentedSignalPayload | null>(null);
+
+  useEffect(() => {
+    if (!isConnected) {
+      setActiveSignal(null);
+      return;
+    }
+
+    let isMounted = true;
+    async function syncGatewaySignal() {
+      const token = authState.sessionToken;
+      if (!token) {
+        if (isMounted) setActiveSignal(null);
+        return;
+      }
+
+      const res = await fetchProject1Records(token, selectedSymbol);
+      if (!isMounted) return;
+
+      if (res.success && res.records && res.records.length > 0) {
+        const validRecords = [...res.records].sort((a, b) => b.timestamp - a.timestamp);
+        const latest = validRecords[0];
+
+        if (
+          latest &&
+          (latest.lifecycle_state === "ACTIVE" || latest.lifecycle_state === "STAGED") &&
+          latest.signal_type &&
+          latest.signal_type !== "no-signal" &&
+          latest.signal_type !== "hold"
+        ) {
+          const presented: PresentedSignalPayload = {
+            signal_id: latest.signal_id,
+            symbol: latest.symbol || selectedSymbol,
+            signal_type: latest.signal_type,
+            timestamp: latest.timestamp,
+            entry_price: latest.entry_price ?? null,
+            stop_loss: latest.stop_loss ?? null,
+            take_profits: [
+              latest.take_profit_1,
+              latest.take_profit_2,
+              latest.take_profit_3,
+            ].filter((tp): tp is number => typeof tp === "number"),
+            confidence: latest.confidence ?? null,
+            strategy_name: latest.strategy_name ?? "Project 1 Strategy",
+            timeframe: latest.timeframe || selectedTimeframe,
+            metadata: {
+              provenance_type: "live_signal",
+              is_live: true,
+              source: latest.source_id || "Project1GatewayAdapter",
+            },
+          };
+          setActiveSignal(presented);
+          return;
+        }
+      }
+      setActiveSignal(null);
+    }
+
+    syncGatewaySignal();
+    return () => {
+      isMounted = false;
+    };
+  }, [isConnected, selectedSymbol, selectedTimeframe, authState.sessionToken]);
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -134,8 +198,8 @@ export function App() {
 
   const baseSnapshot = isConnected
     ? createHostSnapshotFromProject1(
-        SAMPLE_CONNECTED_PORT,
-        SAMPLE_REAL_PROJECT1_SIGNAL,
+        PROJECT1_GATEWAY_PORT,
+        activeSignal,
         selectedSymbol,
         selectedTimeframe,
         marketState

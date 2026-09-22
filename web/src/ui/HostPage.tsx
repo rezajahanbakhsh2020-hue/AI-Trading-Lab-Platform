@@ -339,6 +339,15 @@ function MarketsPage({
   const quote = snapshot.market.quote;
   const isMarketConnected = snapshot.market.status === "connected";
 
+  const isSignalSymbolMatch =
+    snapshot.signal.status === "active" &&
+    (snapshot.signal.symbol || currentSymbol).toUpperCase() === currentSymbol.toUpperCase();
+
+  const entryPriceOverlay = isSignalSymbolMatch ? snapshot.risk.entry : null;
+  const stopLossPriceOverlay = isSignalSymbolMatch ? snapshot.risk.stopLoss : null;
+  const takeProfitsOverlay = isSignalSymbolMatch ? snapshot.risk.takeProfits : [];
+  const signalActionOverlay = isSignalSymbolMatch ? snapshot.signal.action : null;
+
   return (
     <div className="markets-view">
       <MarketPulse
@@ -388,8 +397,8 @@ function MarketsPage({
                       ? formatCurrency(quote.last)
                       : quote?.mid != null
                       ? formatCurrency(quote.mid)
-                      : snapshot.risk.entry
-                      ? formatCurrency(snapshot.risk.entry)
+                      : quote?.bid != null
+                      ? formatCurrency(quote.bid)
                       : t("status.unavailable")}
                   </td>
                 </tr>
@@ -434,10 +443,10 @@ function MarketsPage({
           candles={snapshot.market.candles}
           status={snapshot.market.status}
           provider={snapshot.market.provider}
-          entryPrice={currentSymbol === snapshot.market.symbol ? snapshot.risk.entry : null}
-          stopLossPrice={currentSymbol === snapshot.market.symbol ? snapshot.risk.stopLoss : null}
-          takeProfits={currentSymbol === snapshot.market.symbol ? snapshot.risk.takeProfits : []}
-          signalAction={currentSymbol === snapshot.market.symbol ? snapshot.signal.action : null}
+          entryPrice={entryPriceOverlay}
+          stopLossPrice={stopLossPriceOverlay}
+          takeProfits={takeProfitsOverlay}
+          signalAction={signalActionOverlay}
           isProviderConnected={snapshot.project1.connected && isMarketConnected}
           onTimeframeChange={onSelectTimeframe}
           onRefresh={onRefresh}

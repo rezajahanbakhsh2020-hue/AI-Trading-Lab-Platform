@@ -227,4 +227,41 @@ describe("InteractiveChart Component", () => {
 
     expect(container.querySelector(".overlay-title")?.textContent).toBe("No Candles Available");
   });
+
+  it("renders price line overlays when active signal levels are supplied and clears them when null", () => {
+    const { rerender } = render(
+      <I18nProvider>
+        <InteractiveChart
+          symbol="XAUUSD"
+          timeframe="1h"
+          candles={sampleCandles}
+          status="connected"
+          provider={sampleProvider}
+          entryPrice={2650.5}
+          stopLossPrice={2635.0}
+          takeProfits={[2670.0, 2690.0, 2710.0]}
+          signalAction="BUY"
+          isProviderConnected={true}
+        />
+      </I18nProvider>
+    );
+
+    // Re-render with null signal levels (e.g. signal transitioned to NO SIGNAL or STALE)
+    rerender(
+      <I18nProvider>
+        <InteractiveChart
+          symbol="XAUUSD"
+          timeframe="1h"
+          candles={sampleCandles}
+          status="connected"
+          provider={sampleProvider}
+          entryPrice={null}
+          stopLossPrice={null}
+          takeProfits={[]}
+          signalAction="NO SIGNAL"
+          isProviderConnected={true}
+        />
+      </I18nProvider>
+    );
+  });
 });

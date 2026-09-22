@@ -29,7 +29,16 @@ export const IntelligenceWorkspace: React.FC<IntelligenceWorkspaceProps> = ({
 
   const isConnected = snapshot?.project1?.connected ?? false;
   const quote = snapshot?.market?.quote;
-  const quotePrice = quote?.last ?? quote?.mid ?? quote?.bid ?? snapshot?.risk?.entry ?? null;
+  const quotePrice = quote?.last ?? quote?.mid ?? quote?.bid ?? null;
+
+  const isSignalSymbolMatch =
+    snapshot?.signal?.status === "active" &&
+    (snapshot?.signal?.symbol || activeSymbol).toUpperCase() === activeSymbol.toUpperCase();
+
+  const entryPriceOverlay = isSignalSymbolMatch ? snapshot?.risk?.entry : null;
+  const stopLossPriceOverlay = isSignalSymbolMatch ? snapshot?.risk?.stopLoss : null;
+  const takeProfitsOverlay = isSignalSymbolMatch ? snapshot?.risk?.takeProfits : [];
+  const signalActionOverlay = isSignalSymbolMatch ? snapshot?.signal?.action : null;
 
   return (
     <div className="space-y-6">
@@ -42,9 +51,10 @@ export const IntelligenceWorkspace: React.FC<IntelligenceWorkspaceProps> = ({
             candles={snapshot?.market?.candles || []}
             status={snapshot?.market?.status || 'disconnected'}
             provider={snapshot?.market?.provider || null}
-            entryPrice={snapshot?.risk?.entry}
-            stopLossPrice={snapshot?.risk?.stopLoss}
-            takeProfits={snapshot?.risk?.takeProfits}
+            entryPrice={entryPriceOverlay}
+            stopLossPrice={stopLossPriceOverlay}
+            takeProfits={takeProfitsOverlay}
+            signalAction={signalActionOverlay}
             isProviderConnected={isConnected}
           />
         </div>

@@ -53,6 +53,7 @@ def release_validation_env(tmp_path):
         allowed_origins=("https://release.yourdomain.com", "http://127.0.0.1:8000"),
         session_secret="release_validation_super_secret_session_key_32_chars_2026!",
         initial_admin_password="ReleaseAdminPassword2026!",
+        public_base_url="https://trade.yourdomain.com",
         persistence_dir=p_dir,
     )
 

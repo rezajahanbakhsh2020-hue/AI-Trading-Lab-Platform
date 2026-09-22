@@ -143,6 +143,7 @@ def test_production_fail_closed_on_weak_secret():
         app_env="production",
         session_secret="prod_strong_session_secret_32_chars_2026_key!",
         initial_admin_password="AdminPassword123!",
+        public_base_url="https://trade.yourdomain.com",
     )
     object.__setattr__(weak_cfg, "session_secret", "dev_session_secret_key_change_in_production_2026")
     with pytest.raises(RuntimeError, match="CRITICAL PRODUCTION SECURITY FAILURE"):

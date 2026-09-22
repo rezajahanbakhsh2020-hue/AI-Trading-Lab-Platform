@@ -17,13 +17,24 @@ def test_platform_config_defaults():
 
 def test_platform_config_production_fail_closed():
     with pytest.raises(ValueError, match="SESSION_SECRET must be explicitly set"):
-        PlatformConfig(app_env="production", session_secret="dev_session_secret_key_change_in_production_2026")
+        PlatformConfig(app_env="production", session_secret="dev_session_secret_key_change_in_production_2026", public_base_url="https://trade.yourdomain.com")
+
+
+def test_platform_config_production_public_base_url_required():
+    valid_secret = "a_very_long_secure_production_secret_key_32bytes"
+    with pytest.raises(ValueError, match="PUBLIC_BASE_URL must be explicitly set to a valid non-localhost"):
+        PlatformConfig(app_env="production", session_secret=valid_secret, public_base_url="http://localhost:3000")
 
 
 def test_platform_config_production_valid():
     valid_secret = "a_very_long_secure_production_secret_key_32bytes"
-    config = PlatformConfig(app_env="production", session_secret=valid_secret)
+    config = PlatformConfig(
+        app_env="production",
+        session_secret=valid_secret,
+        public_base_url="https://trade.yourdomain.com",
+    )
     assert config.is_production
+    assert config.public_base_url == "https://trade.yourdomain.com"
     headers = config.get_security_headers()
     assert "Strict-Transport-Security" in headers
     assert headers["X-Frame-Options"] == "DENY"

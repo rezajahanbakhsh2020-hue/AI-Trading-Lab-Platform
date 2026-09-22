@@ -230,6 +230,29 @@ class UserAuthorizationService:
         )
         return True, user, "Authentication successful"
 
+    def count_active_sessions(self, max_age_seconds: float = 86400) -> int:
+        """Count non-expired active session tokens in real-time."""
+        now_ts = time.time()
+        active_count = 0
+        expired_hashes = []
+        for token_h, (uid, created_ts) in list(self._sessions.items()):
+            if now_ts - created_ts > max_age_seconds:
+                expired_hashes.append(token_h)
+            else:
+                user = self.get_user_authorization(uid)
+                if user and user.is_account_valid():
+                    active_count += 1
+                else:
+                    expired_hashes.append(token_h)
+
+        for token_h in expired_hashes:
+            if token_h in self._sessions:
+                del self._sessions[token_h]
+                if self._repository:
+                    self._repository.delete_session(token_h)
+
+        return active_count
+
     def create_session_token(self, user_id: str, max_age_seconds: float = 86400) -> Optional[str]:
         """Generate a secure session token for an authenticated valid account."""
         user = self.get_user_authorization(user_id)

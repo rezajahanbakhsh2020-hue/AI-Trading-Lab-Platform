@@ -158,6 +158,15 @@ class TestHealthOperationsAndRecovery(unittest.TestCase):
         self.assertEqual(rep_dict["overall_status"], "HEALTHY")
         self.assertEqual(rep_dict["components"]["project1_gateway"]["status"], "HEALTHY")
 
+    def test_observability_endpoint_returns_active_sessions(self) -> None:
+        """GET /api/v1/operational/observability reports real active session counts."""
+        server = create_server(host="127.0.0.1", port=0, config=self.config)
+        auth_service = server.RequestHandlerClass.server_user_auth_service
+        token = auth_service.create_session_token("admin_owner")
+        self.assertIsNotNone(token)
+
+        self.assertEqual(auth_service.count_active_sessions(), 1)
+
 
 class TestOperationalFailureAndAudit(unittest.TestCase):
     """Test suite for operational failure tracking, incident logs, and RBAC."""

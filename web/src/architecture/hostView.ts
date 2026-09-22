@@ -352,7 +352,7 @@ export function createDisconnectedHostSnapshot(
           resource_id: "project1_lab_adapter",
           correlation_id: "sys-prov-002",
           details: "Lab artifact provider adapter verified and online.",
-          metadata: { provider: "Project1LabArtifactAdapter", status: "READY" },
+          metadata: { provider: "Project1GatewayAdapter", status: "READY" },
         },
       ],
     },
@@ -402,7 +402,37 @@ export function createHostSnapshotFromProject1(
       : "Standard user identity active. Proprietary secrets and admin-only resources are protected.",
   };
 
-  if (!signal) {
+  const LIVE_SIGNAL_MAX_AGE_SECONDS = 300;
+  const nowSec = Date.now() / 1000;
+  const sigTs = Number(signal?.timestamp || 0);
+  const ageSec = sigTs > 0 ? Math.max(0, nowSec - sigTs) : Infinity;
+  const meta = signal?.metadata || {};
+  const provenance = (meta.provenance_type as string) || "";
+  const isHistorical = meta.is_historical === true || ["lab_artifact", "historical_snapshot", "backtest_record"].includes(provenance);
+
+  // UTC Calendar Date Comparison (YYYY-MM-DD)
+  const currentUtcDate = new Date(nowSec * 1000).toISOString().slice(0, 10);
+  const signalUtcDate = sigTs > 0 ? new Date(sigTs * 1000).toISOString().slice(0, 10) : "";
+  const sameCalendarDate = signalUtcDate === currentUtcDate;
+
+  // Symbol match check
+  const sigSymbol = (signal?.symbol || "").toUpperCase();
+  const requestedSymbol = symbol.toUpperCase();
+  const symbolMatches = !sigSymbol || sigSymbol === requestedSymbol;
+
+  const isLive = Boolean(
+    signal &&
+    sigTs > 0 &&
+    sigTs <= nowSec + 5.0 &&
+    provenance === "live_signal" &&
+    !isHistorical &&
+    meta.is_live !== false &&
+    ageSec <= LIVE_SIGNAL_MAX_AGE_SECONDS &&
+    sameCalendarDate &&
+    symbolMatches
+  );
+
+  if (!signal || !isLive) {
     return {
       generatedAt: null,
       platform: {
@@ -415,15 +445,15 @@ export function createHostSnapshotFromProject1(
         connected: true,
         status: "connected",
         port: portDesc.port || "Project1IntegrationPort",
-        adapterName: portDesc.name || "Project1LabArtifactAdapter",
-        message: portDesc.message || `Project 1 connected via ${portDesc.name}.`,
+        adapterName: portDesc.name || "Project1GatewayAdapter",
+        message: portDesc.message || `Project 1 connected via ${portDesc.name || "Project1GatewayAdapter"}.`,
       },
       market: defaultMarketState,
       strategy: {
         name: null,
         stability: null,
         status: "unavailable",
-        message: "Connected to Project 1 engine. No active strategy emitted for this symbol.",
+        message: "Connected to Project 1 engine. No active current live signal emitted for this symbol.",
       },
       signal: {
         signalId: null,
@@ -433,7 +463,7 @@ export function createHostSnapshotFromProject1(
         strategyName: null,
         timeframe,
         status: "no-signal",
-        message: `No active signal emitted by Project 1 for ${symbol} (${timeframe}).`,
+        message: `No active current live signal emitted by Project 1 for ${symbol} (${timeframe}).`,
         metadata: {},
       },
       performance: {
@@ -445,13 +475,13 @@ export function createHostSnapshotFromProject1(
         stopLoss: null,
         takeProfits: [],
         status: "unavailable",
-        message: "Risk levels stay empty until Project 1 emits a trade setup.",
+        message: "Risk levels stay empty until Project 1 emits an active current trade setup.",
       },
       monitoring: {
-        freshness: null,
+        freshness: "no-signal",
         health: "healthy",
-        status: "available",
-        message: "Project 1 engine connected.",
+        status: "no-signal",
+        message: "No active current live signal available.",
       },
       providers: {
         marketData: defaultMarketState.provider ? defaultMarketState.provider.status : "disconnected",
@@ -464,20 +494,6 @@ export function createHostSnapshotFromProject1(
       orderIntents: [],
     };
   }
-
-  const LIVE_SIGNAL_MAX_AGE_SECONDS = 300;
-  const nowSec = Date.now() / 1000;
-  const ageSec = signal.timestamp ? Math.max(0, nowSec - signal.timestamp) : Infinity;
-  const meta = signal.metadata || {};
-  const provenance = (meta.provenance_type as string) || (meta.source as string) || "";
-  const isHistorical = meta.is_historical === true || ["lab_artifact", "historical_snapshot", "backtest_record"].includes(provenance);
-
-  const isLive = Boolean(
-    signal.timestamp &&
-    ageSec <= LIVE_SIGNAL_MAX_AGE_SECONDS &&
-    !isHistorical &&
-    meta.is_live !== false
-  );
 
   const actionUpper = (signal.signal_type || "NO SIGNAL").toUpperCase();
   const entry = signal.entry_price ?? null;
@@ -499,7 +515,7 @@ export function createHostSnapshotFromProject1(
       connected: true,
       status: "connected",
       port: portDesc.port || "Project1IntegrationPort",
-      adapterName: portDesc.name || "Project1LabArtifactAdapter",
+      adapterName: portDesc.name || "Project1GatewayAdapter",
       message: `Project 1 emitting real signals via ${portDesc.name || "adapter"}.`,
     },
     market: defaultMarketState,
@@ -511,15 +527,13 @@ export function createHostSnapshotFromProject1(
     },
     signal: {
       signalId: signal.signal_id,
-      action: isLive ? actionUpper : "STALE SIGNAL",
+      action: actionUpper,
       timestamp: formattedTime,
       confidence: conf,
       strategyName: stratName,
       timeframe: signal.timeframe || timeframe,
-      status: isLive ? "active" : "stale",
-      message: isLive
-        ? `Validated ${actionUpper} signal emitted by Project 1.`
-        : `Historical/stale Project 1 signal for ${signal.symbol || symbol} (emitted at ${formattedTime}). Current live signal is unavailable.`,
+      status: "active",
+      message: `Validated ${actionUpper} signal emitted by Project 1.`,
       metadata: signal.metadata || {},
     },
     performance: {

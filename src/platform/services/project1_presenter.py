@@ -38,7 +38,9 @@ LIVE_SIGNAL_MAX_AGE_SECONDS = 300.0  # 5 minutes currentness threshold for live 
 
 
 def _evaluate_signal_live_status(
-    sig_dict: Dict[str, Any], clock: Optional[SystemClock] = None
+    sig_dict: Dict[str, Any],
+    requested_symbol: Optional[str] = None,
+    clock: Optional[SystemClock] = None,
 ) -> Tuple[bool, str]:
     """Evaluate whether a signal record satisfies all Current Signal eligibility requirements."""
     if not sig_dict:
@@ -47,6 +49,10 @@ def _evaluate_signal_live_status(
     clk = clock or default_clock
     now_ts = clk.get_current_timestamp()
     current_date = clk.get_current_date()
+
+    sig_symbol = str(sig_dict.get("symbol") or "").strip().upper()
+    if requested_symbol and sig_symbol and sig_symbol != requested_symbol.strip().upper():
+        return False, f"Signal symbol '{sig_symbol}' does not match requested market symbol '{requested_symbol}'."
 
     sig_ts = float(sig_dict.get("timestamp") or 0.0)
     if sig_ts <= 0:
@@ -270,7 +276,9 @@ class Project1SignalPresenter:
             sig_dict["take_profits"] = []
 
         # Evaluate signal live provenance and currentness against system clock
-        is_live, live_reason = _evaluate_signal_live_status(sig_dict, clock=self._clock)
+        is_live, live_reason = _evaluate_signal_live_status(
+            sig_dict, requested_symbol=symbol, clock=self._clock
+        )
         sig_dict["is_live"] = is_live
         sig_dict["live_reason"] = live_reason
 
@@ -522,7 +530,7 @@ class Project1SignalPresenter:
                     "connected": True,
                     "status": "connected",
                     "port": desc.get("port", "Project1IntegrationPort"),
-                    "adapterName": desc.get("name", "Project1LabArtifactAdapter"),
+                    "adapterName": desc.get("name", "Project1GatewayAdapter"),
                     "message": f"Project 1 connected via {desc.get('name', 'adapter')}.",
                 },
                 "market": {
@@ -743,7 +751,7 @@ class Project1SignalPresenter:
                 "connected": True,
                 "status": "connected",
                 "port": desc.get("port", "Project1IntegrationPort"),
-                "adapterName": desc.get("name", "Project1LabArtifactAdapter"),
+                "adapterName": desc.get("name", "Project1GatewayAdapter"),
                 "message": f"Project 1 emitting signals via {desc.get('name', 'adapter')}.",
             },
             "market": self._get_market_state(symbol, signal_dict.get("timeframe") or timeframe),

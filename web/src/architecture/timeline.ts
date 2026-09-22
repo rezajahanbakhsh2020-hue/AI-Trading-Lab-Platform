@@ -44,22 +44,29 @@ export function extractTimelineFromHostSnapshot(
 ): TimelineItem[] {
   const items: TimelineItem[] = [];
 
-  // 1. Signal Timeline Events
-  if (snapshot.signal && snapshot.signal.status !== "unavailable") {
+  // 1. Signal Timeline Events (only active live signals, never NO SIGNAL or stale/historical)
+  if (
+    snapshot.signal &&
+    snapshot.signal.status === "active" &&
+    snapshot.signal.signalId &&
+    snapshot.signal.action &&
+    snapshot.signal.action !== "NO SIGNAL" &&
+    snapshot.signal.action !== "STALE SIGNAL"
+  ) {
     const sig = snapshot.signal;
-    const action = sig.action || "NO SIGNAL";
+    const action = sig.action;
     const tsStr = sig.timestamp || snapshot.generatedAt || new Date().toISOString();
     const tsVal = Date.parse(tsStr) || Date.now();
 
     items.push({
-      itemId: `sig-${sig.signalId || tsVal}`,
+      itemId: `sig-${sig.signalId}`,
       timestamp: tsVal,
       formattedTime: new Date(tsVal).toUTCString(),
       category: "signal",
       severity: action === "BUY" || action === "SELL" ? "success" : "info",
       title: `${action} Signal Emitted (${snapshot.market?.symbol || "XAUUSD"})`,
       summary: sig.message || `Signal action ${action} emitted by ${sig.strategyName || "Project 1"}.`,
-      source: snapshot.project1?.adapterName || "Project1IntegrationPort",
+      source: snapshot.project1?.adapterName || "Project1GatewayAdapter",
       route: "/signals",
       explainable: true,
       payload: {

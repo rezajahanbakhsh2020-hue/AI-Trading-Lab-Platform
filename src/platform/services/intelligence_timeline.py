@@ -41,7 +41,7 @@ class IntelligenceTimelineService:
         items: List[TimelineItem] = []
         user_id = user.user_id if user else "guest"
 
-        # 1. Project 1 Signal Events (Requires READ_SIGNALS)
+        # 1. Project 1 Signal Events (Requires READ_SIGNALS, active live signals only)
         can_read_signals, _ = self.security_boundary.authorize(
             user=user, resource="signals", action="read", required_permission=Permission.READ_SIGNALS
         )
@@ -49,49 +49,51 @@ class IntelligenceTimelineService:
             sig = snapshot.get("signal")
             p1 = snapshot.get("project1")
             if isinstance(sig, dict) and isinstance(p1, dict) and p1.get("connected"):
-                sig_id = sig.get("signalId") or "p1-latest-sig"
-                action = sig.get("action") or "UNKNOWN"
-                ts_str = sig.get("timestamp")
-                ts_val = time.time()
-                if ts_str:
-                    try:
-                        # Parse RFC2822 / ISO string or float if available
-                        ts_val = time.mktime(time.strptime(ts_str, "%a, %d %b %Y %H:%M:%S GMT"))
-                    except (ValueError, TypeError):
-                        pass
+                sig_id = sig.get("signalId")
+                sig_status = sig.get("status")
+                action = (sig.get("action") or "").upper()
+                if sig_id and sig_status == "active" and action not in ("NO SIGNAL", "UNKNOWN", "STALE SIGNAL"):
+                    ts_str = sig.get("timestamp")
+                    ts_val = time.time()
+                    if ts_str:
+                        try:
+                            # Parse RFC2822 / ISO string or float if available
+                            ts_val = time.mktime(time.strptime(ts_str, "%a, %d %b %Y %H:%M:%S GMT"))
+                        except (ValueError, TypeError):
+                            pass
 
-                strat_name = sig.get("strategyName") or "Project 1 Engine"
-                symbol = snapshot.get("market", {}).get("symbol", "XAUUSD")
-                tf = sig.get("timeframe") or "1h"
+                    strat_name = sig.get("strategyName") or "Project 1 Engine"
+                    symbol = snapshot.get("market", {}).get("symbol", "XAUUSD")
+                    tf = sig.get("timeframe") or "1h"
 
-                # Filter protected payload details
-                raw_meta = sig.get("metadata") or {}
-                clean_meta = self.security_boundary.filter_protected_payload(user, raw_meta)
+                    # Filter protected payload details
+                    raw_meta = sig.get("metadata") or {}
+                    clean_meta = self.security_boundary.filter_protected_payload(user, raw_meta)
 
-                items.append(
-                    TimelineItem(
-                        item_id=f"timeline-sig-{sig_id}",
-                        timestamp=ts_val,
-                        category=TimelineCategory.SIGNAL,
-                        severity=TimelineSeverity.SUCCESS if action in ("BUY", "SELL") else TimelineSeverity.INFO,
-                        title=f"{action} Signal for {symbol}",
-                        summary=f"Emitted via Project 1 port ({p1.get('adapterName', 'Port')}) for {symbol} ({tf}). Strategy: {strat_name}.",
-                        source="Project1IntegrationPort",
-                        route="/signals",
-                        target_user_id=None,
-                        explainable=True,
-                        payload={
-                            "signal_id": sig_id,
-                            "symbol": symbol,
-                            "action": action,
-                            "timeframe": tf,
-                            "strategy_name": strat_name,
-                            "confidence": sig.get("confidence"),
-                            "status": sig.get("status"),
-                            "metadata": clean_meta,
-                        },
+                    items.append(
+                        TimelineItem(
+                            item_id=f"timeline-sig-{sig_id}",
+                            timestamp=ts_val,
+                            category=TimelineCategory.SIGNAL,
+                            severity=TimelineSeverity.SUCCESS if action in ("BUY", "SELL") else TimelineSeverity.INFO,
+                            title=f"{action} Signal for {symbol}",
+                            summary=f"Emitted via Project 1 port ({p1.get('adapterName', 'Port')}) for {symbol} ({tf}). Strategy: {strat_name}.",
+                            source="Project1IntegrationPort",
+                            route="/signals",
+                            target_user_id=None,
+                            explainable=True,
+                            payload={
+                                "signal_id": sig_id,
+                                "symbol": symbol,
+                                "action": action,
+                                "timeframe": tf,
+                                "strategy_name": strat_name,
+                                "confidence": sig.get("confidence"),
+                                "status": sig_status,
+                                "metadata": clean_meta,
+                            },
+                        )
                     )
-                )
 
         # 2. Market Events & Context
         if isinstance(snapshot, dict):

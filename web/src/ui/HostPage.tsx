@@ -244,7 +244,17 @@ function DashboardPage({
 }) {
   const { t } = useI18n();
   const quote = snapshot.market.quote;
-  const quotePrice = quote?.last ?? quote?.mid ?? quote?.bid ?? snapshot.risk.entry ?? null;
+  const quotePrice = quote?.last ?? quote?.mid ?? quote?.bid ?? null;
+
+  const isSignalSymbolMatch =
+    snapshot.signal.status === "active" &&
+    (snapshot.signal.symbol || snapshot.market.symbol).toUpperCase() ===
+      snapshot.market.symbol.toUpperCase();
+
+  const entryPriceOverlay = isSignalSymbolMatch ? snapshot.risk.entry : null;
+  const stopLossPriceOverlay = isSignalSymbolMatch ? snapshot.risk.stopLoss : null;
+  const takeProfitsOverlay = isSignalSymbolMatch ? snapshot.risk.takeProfits : [];
+  const signalActionOverlay = isSignalSymbolMatch ? snapshot.signal.action : null;
 
   return (
     <div className="dashboard-view">
@@ -284,10 +294,10 @@ function DashboardPage({
           candles={snapshot.market.candles}
           status={snapshot.market.status}
           provider={snapshot.market.provider}
-          entryPrice={snapshot.risk.entry}
-          stopLossPrice={snapshot.risk.stopLoss}
-          takeProfits={snapshot.risk.takeProfits}
-          signalAction={snapshot.signal.action}
+          entryPrice={entryPriceOverlay}
+          stopLossPrice={stopLossPriceOverlay}
+          takeProfits={takeProfitsOverlay}
+          signalAction={signalActionOverlay}
           isProviderConnected={snapshot.project1.connected && snapshot.market.status === "connected"}
           onTimeframeChange={onSelectTimeframe}
           onRefresh={onSync}

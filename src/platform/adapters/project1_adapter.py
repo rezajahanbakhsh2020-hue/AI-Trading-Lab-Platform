@@ -208,8 +208,20 @@ class Project1GatewayAdapter(Project1IntegrationPort):
         candidates = []
 
         for rec in records:
-            if timeframe and rec.get("timeframe") and rec.get("timeframe") != timeframe:
+            cmd_type = str(rec.get("command_type") or "EMIT_SIGNAL").strip().upper()
+            if cmd_type != "EMIT_SIGNAL":
                 continue
+
+            rec_sym = str(rec.get("symbol") or "").strip().upper()
+            if not rec_sym:
+                continue
+            if symbol and rec_sym != symbol.strip().upper():
+                continue
+
+            rec_tf = str(rec.get("timeframe") or "").strip()
+            if timeframe and rec_tf and rec_tf != timeframe.strip():
+                continue
+
             if strategy_name and rec.get("strategy_name") and rec.get("strategy_name") != strategy_name:
                 continue
 
@@ -269,9 +281,10 @@ class Project1GatewayAdapter(Project1IntegrationPort):
         meta["signal_timestamp"] = sig_event_ts
         meta["ingested_at"] = ingested_ts
 
+        target_sym = str(target_rec.get("symbol") or symbol).strip().upper()
         return PresentedSignal(
-            signal_id=str(target_rec.get("signal_id") or f"p1_{symbol.lower()}_{int(sig_event_ts)}"),
-            symbol=symbol,
+            signal_id=str(target_rec.get("signal_id") or f"p1_{target_sym.lower()}_{int(sig_event_ts)}"),
+            symbol=target_sym,
             signal_type=str(target_rec.get("signal_type", "no-signal")).lower(),
             timestamp=sig_event_ts,
             entry_price=float(target_rec["entry_price"]) if target_rec.get("entry_price") is not None else None,

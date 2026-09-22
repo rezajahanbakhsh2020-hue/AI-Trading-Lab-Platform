@@ -57,8 +57,8 @@ def running_prod_server(temp_smoke_dir):
     cfg = PlatformConfig(
         app_env="production",
         allowed_origins=("https://trade.yourdomain.com", "http://127.0.0.1:8000"),
-        session_secret="production_super_secret_session_key_32_chars_min_2026!",
-        initial_admin_password="ProductionAdminPassword2026!",
+        session_secret="prod_smoke_test_valid_session_secret_key_32bytes!",
+        initial_admin_password="ProdSmokeAdminPassword2026!",
         public_base_url="https://trade.yourdomain.com",
         persistence_dir=p_dir,
     )
@@ -150,8 +150,8 @@ def test_smoke_auth_workspace_and_recovery_flow(running_prod_server):
     """Smoke Test 5: End-to-end authentication, user workspace, and recovery diagnostics."""
     base_url, _, _, _, _ = running_prod_server
 
-    # 1. Login as bootstrapped admin_owner using ProductionAdminPassword2026!
-    admin_login_data = json.dumps({"user_id": "admin_owner", "password": "ProductionAdminPassword2026!"}).encode("utf-8")
+    # 1. Login as bootstrapped admin_owner using ProdSmokeAdminPassword2026!
+    admin_login_data = json.dumps({"user_id": "admin_owner", "password": "ProdSmokeAdminPassword2026!"}).encode("utf-8")
     req_admin_login = urllib.request.Request(
         f"{base_url}/api/v1/auth/login",
         data=admin_login_data,

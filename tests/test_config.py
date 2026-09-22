@@ -20,6 +20,26 @@ def test_platform_config_production_fail_closed():
         PlatformConfig(app_env="production", session_secret="dev_session_secret_key_change_in_production_2026", public_base_url="https://trade.yourdomain.com")
 
 
+def test_platform_config_production_rejects_docker_compose_default_session_secret():
+    with pytest.raises(ValueError, match="SESSION_SECRET must be explicitly set"):
+        PlatformConfig(
+            app_env="production",
+            session_secret="production_super_secret_session_key_32_chars_min_2026!",
+            public_base_url="https://trade.yourdomain.com",
+        )
+
+
+def test_platform_config_production_rejects_default_initial_admin_password():
+    valid_secret = "a_very_long_secure_production_secret_key_32bytes"
+    with pytest.raises(ValueError, match="INITIAL_ADMIN_PASSWORD must be explicitly set"):
+        PlatformConfig(
+            app_env="production",
+            session_secret=valid_secret,
+            initial_admin_password="ProductionAdminPassword2026!",
+            public_base_url="https://trade.yourdomain.com",
+        )
+
+
 def test_platform_config_production_public_base_url_required():
     valid_secret = "a_very_long_secure_production_secret_key_32bytes"
     with pytest.raises(ValueError, match="PUBLIC_BASE_URL must be explicitly set to a valid non-localhost"):

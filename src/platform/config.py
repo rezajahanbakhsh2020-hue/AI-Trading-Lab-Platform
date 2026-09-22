@@ -59,11 +59,20 @@ class PlatformConfig:
         if clean_env == "production":
             if self.session_secret in (
                 "dev_session_secret_key_change_in_production_2026",
+                "production_super_secret_session_key_32_chars_min_2026!",
                 "secret",
                 "changeme",
                 "password",
             ) or len(self.session_secret) < 32:
                 raise ValueError("SESSION_SECRET must be explicitly set to a strong key (at least 32 chars) in production.")
+
+            if self.initial_admin_password in (
+                "ProductionAdminPassword2026!",
+                "admin",
+                "password",
+                "admin123",
+            ):
+                raise ValueError("INITIAL_ADMIN_PASSWORD must be explicitly set to a strong custom password in production.")
 
             clean_pub_url = self.public_base_url.lower()
             if any(local in clean_pub_url for local in ("localhost", "127.0.0.1", "0.0.0.0", "::1")):

@@ -20,9 +20,10 @@ cd web && npm ci && npm run build && cd ..
 
 # 2. Run Production Web Application Server
 APP_ENV=production \
-SESSION_SECRET="production_super_secret_session_key_32_chars_min_2026!" \
-INITIAL_ADMIN_PASSWORD="ProductionAdminPassword2026!" \
-ALLOWED_ORIGINS="https://yourdomain.com" \
+PUBLIC_BASE_URL="https://trade.yourdomain.com" \
+SESSION_SECRET="<YOUR_32_CHAR_RANDOM_SESSION_SECRET>" \
+INITIAL_ADMIN_PASSWORD="<YOUR_SECURE_INITIAL_ADMIN_PASSWORD>" \
+ALLOWED_ORIGINS="https://trade.yourdomain.com" \
 python -m src.platform.server
 ```
 

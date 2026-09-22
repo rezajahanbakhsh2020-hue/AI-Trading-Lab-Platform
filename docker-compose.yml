@@ -14,6 +14,8 @@ services:
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:?PUBLIC_BASE_URL environment variable is required in production}
       - SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET environment variable is required in production}
       - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD:?INITIAL_ADMIN_PASSWORD environment variable is required in production}
+      - OWNER_EMAIL=${OWNER_EMAIL:-Reza.jahanbakhsh2020@gmail.com}
+      - RECOVERY_EMAIL=${RECOVERY_EMAIL:-Reza.jahanbakhsh2020@gmail.com}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://trade.yourdomain.com}
     volumes:
       - platform_data:/app/.data

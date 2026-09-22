@@ -71,6 +71,29 @@ def test_owner_bootstrap_with_custom_config():
     assert owner.verify_password("ProductionOwnerKey2026!") is True
 
 
+def test_configured_owner_recovery_email_propagation_and_status(monkeypatch):
+    """Verify designated owner recovery email Reza.jahanbakhsh2020@gmail.com is loaded, normalized, and propagated to Owner account."""
+    monkeypatch.setenv("OWNER_EMAIL", "Reza.jahanbakhsh2020@gmail.com")
+    monkeypatch.setenv("RECOVERY_EMAIL", "Reza.jahanbakhsh2020@gmail.com")
+
+    cfg = PlatformConfig.load_from_env()
+    assert cfg.owner_email == "reza.jahanbakhsh2020@gmail.com"
+    assert cfg.recovery_email == "reza.jahanbakhsh2020@gmail.com"
+
+    auth_svc = UserAuthorizationService(config=cfg)
+    owner = auth_svc.get_user_authorization(cfg.owner_user_id)
+
+    assert owner is not None
+    assert owner.recovery_email == "reza.jahanbakhsh2020@gmail.com"
+
+    # Password recovery request recognizes configured owner recipient
+    res = auth_svc.request_password_recovery(owner.user_id, "Reza.jahanbakhsh2020@gmail.com")
+    assert res["success"] is True
+    # Honest status reporting when external SMTP credentials are absent
+    assert res["delivery_status"] == "NOT_CONFIGURED"
+    assert res["recovery_token"] is not None
+
+
 def test_email_delivery_adapters():
     """Verify DisabledEmailDeliveryAdapter and MockEmailDeliveryAdapter behaviors."""
     disabled_adapter = DisabledEmailDeliveryAdapter("Not configured in test.")

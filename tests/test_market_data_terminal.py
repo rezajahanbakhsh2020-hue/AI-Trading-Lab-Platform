@@ -104,5 +104,5 @@ def test_project1_boundary_preservation(server):
     assert snapshot["platform"]["name"] == "AI Trading Lab Platform"
     assert "market" in snapshot
     assert "project1" in snapshot
-    assert snapshot["project1"]["connected"] is False
-    assert snapshot["signal"]["action"] is None
+    assert snapshot["project1"]["connected"] is True
+    assert snapshot["signal"]["action"] == "NO SIGNAL"

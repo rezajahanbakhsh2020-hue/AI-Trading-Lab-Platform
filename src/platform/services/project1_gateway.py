@@ -196,12 +196,9 @@ class Project1IntegrationGatewayService:
         if not sanitized.get("tenant_id"):
             sanitized["tenant_id"] = f"tenant_{user.user_id}"
 
-        # Ensure provenance_type is tagged as live_signal for gateway ingested contracts if unassigned
         meta = sanitized.get("metadata")
         if not isinstance(meta, dict):
             meta = {}
-        if "provenance_type" not in meta:
-            meta["provenance_type"] = "live_signal"
         sanitized["metadata"] = meta
 
         # 5. Correlation ID Generation or Propagation

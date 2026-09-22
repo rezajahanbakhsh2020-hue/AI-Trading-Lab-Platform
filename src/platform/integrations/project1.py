@@ -17,12 +17,16 @@ class Project1IntegrationPort(ABC):
 
     @abstractmethod
     def fetch_latest_signal(
-        self, symbol: str, timeframe: str, strategy_name: Optional[str] = None
+        self,
+        symbol: str,
+        timeframe: str,
+        strategy_name: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> Optional[PresentedSignal]:
         """Fetch latest presented signal produced by Project 1, or None if unavailable."""
         raise NotImplementedError
 
     @abstractmethod
-    def describe(self) -> Dict[str, Any]:
+    def describe(self, user_id: Optional[str] = None) -> Dict[str, Any]:
         """Return description of Project 1 integration source status."""
         raise NotImplementedError

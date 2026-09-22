@@ -46,8 +46,8 @@ def test_gateway_adapter_empty_repo_returns_none(gateway_svc):
     desc = adapter.describe()
     assert desc["name"] == "Project1GatewayAdapter"
     assert desc["port"] == "Project1IntegrationPort"
-    assert desc["connected"] is False
-    assert desc["status"] == "disconnected"
+    assert desc["connected"] is True
+    assert desc["status"] == "ready"
 
 def test_gateway_adapter_fetches_ingested_signal(gateway_svc, admin_user):
     adapter = Project1GatewayAdapter(gateway_service=gateway_svc)
@@ -94,10 +94,10 @@ def test_gateway_adapter_presenter_scenarios(gateway_svc, admin_user):
     adapter = Project1GatewayAdapter(gateway_service=gateway_svc)
     presenter = Project1SignalPresenter(port=adapter, gateway_service=gateway_svc)
 
-    # 1. Empty Repo -> Disconnected / Unavailable
+    # 1. Empty Repo -> Gateway Connected / Signal Unavailable (no-signal)
     pres_empty = presenter.present_signal(symbol="XAUUSD", timeframe="1h", user=admin_user)
-    assert pres_empty["connected"] is False
-    assert pres_empty["status"] == "disconnected"
+    assert pres_empty["connected"] is True
+    assert pres_empty["status"] == "no-signal"
 
     # 2. Fresh Live Signal Ingestion (<= 300s) -> Active
     fresh_ts = time.time() - 30

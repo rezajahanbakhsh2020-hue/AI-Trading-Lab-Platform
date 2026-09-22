@@ -161,6 +161,7 @@ export interface HostSnapshot {
   };
   signal: {
     signalId?: string | null;
+    symbol?: string | null;
     action: string | null;
     timestamp: string | null;
     confidence?: number | null;
@@ -279,6 +280,7 @@ export function createDisconnectedHostSnapshot(
     },
     signal: {
       signalId: null,
+      symbol,
       action: null,
       timestamp: null,
       confidence: null,
@@ -457,6 +459,7 @@ export function createHostSnapshotFromProject1(
       },
       signal: {
         signalId: null,
+        symbol,
         action: "NO SIGNAL",
         timestamp: null,
         confidence: null,
@@ -527,6 +530,7 @@ export function createHostSnapshotFromProject1(
     },
     signal: {
       signalId: signal.signal_id,
+      symbol: signal.symbol || symbol,
       action: actionUpper,
       timestamp: formattedTime,
       confidence: conf,

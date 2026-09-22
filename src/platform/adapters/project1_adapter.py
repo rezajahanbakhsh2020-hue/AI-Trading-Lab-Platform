@@ -180,6 +180,7 @@ class Project1GatewayAdapter(Project1IntegrationPort):
     def fetch_latest_signal(
         self, symbol: str, timeframe: str, strategy_name: Optional[str] = None
     ) -> Optional[PresentedSignal]:
+        import math
         import time
         repo = getattr(self._gateway_service, "_repo", None)
         if repo is None:
@@ -189,23 +190,54 @@ class Project1GatewayAdapter(Project1IntegrationPort):
             user_id=None,
             symbol=symbol,
             lifecycle_state=None,
-            limit=100,
+            limit=500,
         )
 
         if not records:
             return None
 
-        target_rec = None
+        now_ts = time.time()
+        candidates = []
+
         for rec in records:
             if timeframe and rec.get("timeframe") and rec.get("timeframe") != timeframe:
                 continue
             if strategy_name and rec.get("strategy_name") and rec.get("strategy_name") != strategy_name:
                 continue
-            target_rec = rec
-            break
 
-        if target_rec is None:
+            raw_ts = rec.get("timestamp")
+            if raw_ts is None or isinstance(raw_ts, bool) or not isinstance(raw_ts, (int, float)):
+                continue
+
+            try:
+                sig_event_ts = float(raw_ts)
+            except (ValueError, TypeError):
+                continue
+
+            if not math.isfinite(sig_event_ts) or sig_event_ts < 0:
+                continue
+
+            if sig_event_ts > now_ts + 5.0:
+                continue
+
+            raw_meta = rec.get("metadata")
+            if not isinstance(raw_meta, dict):
+                continue
+
+            prov = raw_meta.get("provenance_type")
+            if prov != "live_signal":
+                continue
+
+            if raw_meta.get("is_historical") is True:
+                continue
+
+            candidates.append((sig_event_ts, rec))
+
+        if not candidates:
             return None
+
+        # Event-time correctness: select candidate with maximum event timestamp
+        sig_event_ts, target_rec = max(candidates, key=lambda pair: pair[0])
 
         tps = []
         if target_rec.get("take_profit_1") is not None:
@@ -217,13 +249,10 @@ class Project1GatewayAdapter(Project1IntegrationPort):
 
         raw_meta = target_rec.get("metadata")
         meta = dict(raw_meta) if isinstance(raw_meta, dict) else {}
-        if "provenance_type" not in meta:
-            meta["provenance_type"] = "live_signal"
         meta["adapter"] = "Project1GatewayAdapter"
         meta["source"] = "Project1"
 
-        sig_event_ts = float(target_rec.get("timestamp") or time.time())
-        ingested_ts = float(target_rec.get("created_at") or time.time())
+        ingested_ts = float(target_rec.get("created_at") or 0.0)
         meta["signal_timestamp"] = sig_event_ts
         meta["ingested_at"] = ingested_ts
 

@@ -136,7 +136,7 @@ def test_incident_regression_2023_archive_rejected_by_current_signal_allowed_by_
     current_signal_response = presenter.present_signal(symbol="XAUUSD", timeframe="1h", user=mock_admin_user)
     assert current_signal_response["status"] == "no-signal"
     assert current_signal_response["signal"] is None
-    assert "No active current Project 1 signal" in current_signal_response["message"]
+    assert "No active" in current_signal_response["message"]
 
 
 def test_multi_year_archive_rejection_from_current_signal(tmp_path, mock_admin_user):

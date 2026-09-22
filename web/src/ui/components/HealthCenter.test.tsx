@@ -4,9 +4,11 @@ import { HealthCenter } from "./HealthCenter";
 import {
   createDisconnectedHostSnapshot,
   createHostSnapshotFromProject1,
+} from "../../architecture/hostView";
+import {
   SAMPLE_CONNECTED_PORT,
   SAMPLE_REAL_PROJECT1_SIGNAL,
-} from "../../architecture/hostView";
+} from "../../architecture/testFixtures";
 import { I18nProvider } from "../../i18n";
 
 describe("HealthCenter UI Component", () => {

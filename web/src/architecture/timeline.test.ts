@@ -6,9 +6,11 @@ import {
 import {
   createDisconnectedHostSnapshot,
   createHostSnapshotFromProject1,
+} from "./hostView";
+import {
   SAMPLE_CONNECTED_PORT,
   SAMPLE_REAL_PROJECT1_SIGNAL,
-} from "./hostView";
+} from "./testFixtures";
 
 describe("Timeline & Explainability Architecture", () => {
   it("extracts chronological timeline items from connected snapshot", () => {

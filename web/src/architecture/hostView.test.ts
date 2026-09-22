@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   DISCONNECTED_MESSAGE,
   PRIMARY_MARKET,
-  SAMPLE_CONNECTED_PORT,
-  SAMPLE_REAL_PROJECT1_SIGNAL,
+  PROJECT1_GATEWAY_PORT,
   createDisconnectedHostSnapshot,
   createHostSnapshotFromProject1,
 } from "./hostView";
+import { SAMPLE_CONNECTED_PORT, SAMPLE_REAL_PROJECT1_SIGNAL } from "./testFixtures";
 import { SAMPLE_BIQUOTE_PROVIDER, SAMPLE_BIQUOTE_QUOTE_XAUUSD, SAMPLE_BIQUOTE_CANDLES_XAUUSD } from "./marketData";
 
 describe("disconnected host snapshot", () => {
@@ -141,5 +141,74 @@ describe("connected Project 1 host snapshot", () => {
     expect(snapshot.risk.status).toBe("unavailable");
     expect(snapshot.risk.entry).toBeNull();
     expect(snapshot.orderIntents).toEqual([]);
+  });
+});
+
+describe("signal purity and fail-closed runtime verification", () => {
+  it("ensures a runtime with zero Project 1 Gateway records displays NO SIGNAL and null trade setup levels", () => {
+    const snapshot = createHostSnapshotFromProject1(PROJECT1_GATEWAY_PORT, null, "XAUUSD", "1h");
+
+    expect(snapshot.project1.connected).toBe(true);
+    expect(snapshot.project1.adapterName).toBe("Project1GatewayAdapter");
+    expect(snapshot.signal.action).toBe("NO SIGNAL");
+    expect(snapshot.signal.status).toBe("no-signal");
+    expect(snapshot.signal.signalId).toBeNull();
+    expect(snapshot.risk.entry).toBeNull();
+    expect(snapshot.risk.stopLoss).toBeNull();
+    expect(snapshot.risk.takeProfits).toEqual([]);
+    expect(snapshot.risk.status).toBe("unavailable");
+  });
+
+  it("ensures production PROJECT1_GATEWAY_PORT does not contain hardcoded sample signals", () => {
+    expect(PROJECT1_GATEWAY_PORT.name).toBe("Project1GatewayAdapter");
+    expect(PROJECT1_GATEWAY_PORT.port).toBe("Project1IntegrationPort");
+    expect(PROJECT1_GATEWAY_PORT.connected).toBe(true);
+    // Verify no trading signal values exist on gateway port payload
+    expect((PROJECT1_GATEWAY_PORT as any).entry_price).toBeUndefined();
+    expect((PROJECT1_GATEWAY_PORT as any).signal_type).toBeUndefined();
+  });
+
+  it("ensures sample, lab, or backtest artifact data cannot be converted into live_signal in connected state", () => {
+    const labArtifactSignal = {
+      signal_id: "lab_artifact_xauusd_001",
+      symbol: "XAUUSD",
+      signal_type: "buy",
+      timestamp: Math.floor(Date.now() / 1000), // recent timestamp
+      entry_price: 2650.5,
+      stop_loss: 2635.0,
+      take_profits: [2670.0, 2690.0, 2710.0],
+      confidence: 0.90,
+      strategy_name: "LabArtifactStrategy",
+      timeframe: "1h",
+      metadata: { provenance_type: "lab_artifact", is_historical: true },
+    };
+
+    const snapshot = createHostSnapshotFromProject1(
+      PROJECT1_GATEWAY_PORT,
+      labArtifactSignal,
+      "XAUUSD",
+      "1h"
+    );
+
+    expect(snapshot.signal.status).toBe("no-signal");
+    expect(snapshot.signal.action).toBe("NO SIGNAL");
+    expect(snapshot.risk.entry).toBeNull();
+    expect(snapshot.risk.stopLoss).toBeNull();
+    expect(snapshot.risk.takeProfits).toEqual([]);
+  });
+
+  it("verifies test fixtures in testFixtures.ts remain functional for test suites", () => {
+    expect(SAMPLE_CONNECTED_PORT.connected).toBe(true);
+    expect(SAMPLE_REAL_PROJECT1_SIGNAL.signal_id).toBe("p1_xauusd_1h_live_current");
+    expect(SAMPLE_REAL_PROJECT1_SIGNAL.entry_price).toBe(2650.5);
+
+    const fixtureSnapshot = createHostSnapshotFromProject1(
+      SAMPLE_CONNECTED_PORT,
+      SAMPLE_REAL_PROJECT1_SIGNAL,
+      "XAUUSD",
+      "1h"
+    );
+    expect(fixtureSnapshot.signal.action).toBe("BUY");
+    expect(fixtureSnapshot.risk.entry).toBe(2650.5);
   });
 });

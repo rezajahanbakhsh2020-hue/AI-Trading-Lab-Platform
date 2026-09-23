@@ -56,7 +56,7 @@ export function normalizeQuote(raw: any): Quote | null {
     mid = (bid + ask) / 2.0;
   }
 
-  const last = typeof raw.last === "number" && Number.isFinite(raw.last) ? raw.last : null;
+  const last = typeof raw.last === "number" && Number.isFinite(raw.last) && raw.last > 0 ? raw.last : null;
   const changePercent = typeof raw.changePercent === "number" && Number.isFinite(raw.changePercent)
     ? raw.changePercent
     : (typeof raw.change_percent === "number" && Number.isFinite(raw.change_percent) ? raw.change_percent : null);
@@ -98,11 +98,11 @@ export function getQuotePrice(quote?: Quote | null): number | null {
   const normalized = normalizeQuote(quote);
   if (!normalized) return null;
 
-  if (normalized.last != null) return normalized.last;
-  if (normalized.mid != null) return normalized.mid;
-  if (normalized.bid != null && normalized.ask != null) return (normalized.bid + normalized.ask) / 2.0;
-  if (normalized.bid != null) return normalized.bid;
-  if (normalized.ask != null) return normalized.ask;
+  if (normalized.last != null && normalized.last > 0) return normalized.last;
+  if (normalized.mid != null && normalized.mid > 0) return normalized.mid;
+  if (normalized.bid != null && normalized.ask != null && normalized.bid > 0 && normalized.ask > 0) return (normalized.bid + normalized.ask) / 2.0;
+  if (normalized.bid != null && normalized.bid > 0) return normalized.bid;
+  if (normalized.ask != null && normalized.ask > 0) return normalized.ask;
 
   return null;
 }

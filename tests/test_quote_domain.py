@@ -28,6 +28,22 @@ def test_zero_last_is_preserved():
     assert quote.last == 0.0
 
 
+def test_biquote_quote_provider_normalizes_zero_last_to_none():
+    from src.platform.providers.biquote_quote import BiQuoteQuoteProvider
+    p = BiQuoteQuoteProvider()
+    record = p._normalize_tick({
+        "symbol": "XAUUSD",
+        "timestamp": "2026-09-23T12:00:00Z",
+        "bid": 4303.04,
+        "ask": 4303.22,
+        "last": 0.0,
+    })
+    assert record["symbol"] == "XAUUSD"
+    assert record["bid"] == 4303.04
+    assert record["ask"] == 4303.22
+    assert "last" not in record
+
+
 def test_high_low_and_change_percent_preserved():
     quote = Quote(
         symbol="XAUUSD",

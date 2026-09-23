@@ -19,7 +19,7 @@ def _tick(**overrides):
         "ask": 4337.8,
         "mid": 4337.7,
         "spread": 0.2,
-        "last": 0.0,
+        "last": 4337.7,
         "volume": 0,
         "high": 4350.0,
         "low": 4330.0,
@@ -83,7 +83,7 @@ def test_fetch_normalizes_tick_fields(mock_urlopen):
     assert out["bid"] == 4337.6
     assert out["ask"] == 4337.8
     assert out["mid"] == 4337.7
-    assert out["last"] == 0.0
+    assert out["last"] == 4337.7
     assert out["change_percent"] == -0.09
     assert out["high"] == 4350.0
     assert out["low"] == 4330.0

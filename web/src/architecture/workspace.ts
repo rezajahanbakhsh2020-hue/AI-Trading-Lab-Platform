@@ -255,7 +255,7 @@ export function mapWatchlistSymbols(
     const rawStatus = isMatch
       ? (activeQuote.availability?.status || marketStatus)
       : "disconnected";
-    const currentStatus: MarketDataStatus = rawStatus === "live" ? "connected" : (rawStatus as MarketDataStatus);
+    const currentStatus: MarketDataStatus = (rawStatus as string) === "live" ? "connected" : (rawStatus as MarketDataStatus);
 
     const lastPrice = isMatch
       ? (activeQuote.last ?? activeQuote.mid ?? activeQuote.bid ?? null)

@@ -30,10 +30,81 @@ export interface Quote {
   mid?: number | null;
   last?: number | null;
   changePercent?: number | null;
+  change_percent?: number | null;
   high24h?: number | null;
+  high?: number | null;
   low24h?: number | null;
+  low?: number | null;
   volume24h?: number | null;
   availability?: QuoteAvailability;
+}
+
+/**
+ * Normalizes a raw or partial Quote object into a truthful canonical Quote model.
+ * Automatically derives `mid` from `(bid + ask) / 2` when `mid` is absent and both `bid` and `ask` are present.
+ * Ensures camelCase and snake_case field compatibility.
+ */
+export function normalizeQuote(raw: any): Quote | null {
+  if (!raw || typeof raw !== "object" || !raw.symbol) {
+    return null;
+  }
+
+  const bid = typeof raw.bid === "number" && Number.isFinite(raw.bid) ? raw.bid : null;
+  const ask = typeof raw.ask === "number" && Number.isFinite(raw.ask) ? raw.ask : null;
+  let mid = typeof raw.mid === "number" && Number.isFinite(raw.mid) ? raw.mid : null;
+  if (mid === null && bid !== null && ask !== null) {
+    mid = (bid + ask) / 2.0;
+  }
+
+  const last = typeof raw.last === "number" && Number.isFinite(raw.last) ? raw.last : null;
+  const changePercent = typeof raw.changePercent === "number" && Number.isFinite(raw.changePercent)
+    ? raw.changePercent
+    : (typeof raw.change_percent === "number" && Number.isFinite(raw.change_percent) ? raw.change_percent : null);
+
+  const high24h = typeof raw.high24h === "number" && Number.isFinite(raw.high24h)
+    ? raw.high24h
+    : (typeof raw.high === "number" && Number.isFinite(raw.high) ? raw.high : null);
+
+  const low24h = typeof raw.low24h === "number" && Number.isFinite(raw.low24h)
+    ? raw.low24h
+    : (typeof raw.low === "number" && Number.isFinite(raw.low) ? raw.low : null);
+
+  const volume24h = typeof raw.volume24h === "number" && Number.isFinite(raw.volume24h) ? raw.volume24h : null;
+
+  return {
+    symbol: String(raw.symbol).trim().toUpperCase(),
+    timestamp: typeof raw.timestamp === "number" ? raw.timestamp : Date.now() / 1000,
+    bid,
+    ask,
+    mid,
+    last,
+    changePercent,
+    change_percent: changePercent,
+    high24h,
+    high: high24h,
+    low24h,
+    low: low24h,
+    volume24h,
+    availability: raw.availability || undefined,
+  };
+}
+
+/**
+ * Derives the single canonical quote price from a Quote object.
+ * Priority order according to domain contract: last -> mid -> ((bid + ask)/2) -> bid -> ask.
+ */
+export function getQuotePrice(quote?: Quote | null): number | null {
+  if (!quote) return null;
+  const normalized = normalizeQuote(quote);
+  if (!normalized) return null;
+
+  if (normalized.last != null) return normalized.last;
+  if (normalized.mid != null) return normalized.mid;
+  if (normalized.bid != null && normalized.ask != null) return (normalized.bid + normalized.ask) / 2.0;
+  if (normalized.bid != null) return normalized.bid;
+  if (normalized.ask != null) return normalized.ask;
+
+  return null;
 }
 
 export interface ProviderMetadata {

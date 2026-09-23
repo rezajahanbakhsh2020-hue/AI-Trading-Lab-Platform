@@ -23,6 +23,7 @@ import {
   SAMPLE_BIQUOTE_QUOTE_XAUUSD,
   fetchMarketCandles,
   fetchMarketQuote,
+  normalizeQuote,
 } from "../architecture/marketData";
 import {
   requestExecutionApi,
@@ -175,12 +176,16 @@ export function App() {
     };
   }, [isConnected, selectedSymbol, selectedTimeframe, authState.sessionToken]);
 
+  const normalizedLiveQuote = normalizeQuote(
+    liveQuote.symbol === selectedSymbol ? liveQuote : { ...SAMPLE_BIQUOTE_QUOTE_XAUUSD, symbol: selectedSymbol }
+  );
+
   const marketState = isConnected
     ? {
         symbol: selectedSymbol,
         timeframe: selectedTimeframe,
         provider: SAMPLE_BIQUOTE_PROVIDER,
-        quote: liveQuote.symbol === selectedSymbol ? liveQuote : { ...SAMPLE_BIQUOTE_QUOTE_XAUUSD, symbol: selectedSymbol },
+        quote: normalizedLiveQuote,
         candles: liveCandles,
         status: "connected" as const,
         message: `Streaming live market data for ${selectedSymbol} via BiQuoteProvider.`,

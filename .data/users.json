@@ -1,0 +1,61 @@
+[
+  {
+    "user_id": "admin_owner",
+    "auth_code": "AUTH_ADMIN_PROVISIONED",
+    "telegram_chat_id": null,
+    "delivery_enabled": true,
+    "allowed_symbols": [],
+    "allowed_strategies": [],
+    "role": "owner",
+    "permissions": [
+      "admin:all",
+      "manage:users",
+      "manage:system",
+      "read:signals",
+      "read:trade_setups",
+      "read:best_strategies",
+      "read:proprietary_indicators",
+      "read:strategy_parameters",
+      "read:lab_research",
+      "read:secrets"
+    ],
+    "detail": "Permanent protected Owner account",
+    "password_hash": "bbf7ef196e672e6e98d58a2c5915acf380070cef03b002170be872813daa1272",
+    "salt": "35eef6ac6488e37b34f419c5fea61cc1",
+    "is_active": true,
+    "activation_timestamp": null,
+    "expiration_timestamp": null,
+    "is_permanent_admin": true,
+    "recovery_email": null,
+    "recovery_token_hash": null,
+    "recovery_token_expiration": null,
+    "_schema_version": 2
+  },
+  {
+    "user_id": "demo_user",
+    "auth_code": "AUTH_USER_DEV",
+    "telegram_chat_id": null,
+    "delivery_enabled": true,
+    "allowed_symbols": [
+      "XAUUSD",
+      "EURUSD"
+    ],
+    "allowed_strategies": [],
+    "role": "customer",
+    "permissions": [
+      "read:signals",
+      "read:trade_setups"
+    ],
+    "detail": "Development demo customer account",
+    "password_hash": "50dd4ec8378a9d8795a67b5f7f3c96f17e6b2b3e4936a2d3fbe25ce2c39ede3d",
+    "salt": "1353306dd3314bb33812b81e06dea8ed",
+    "is_active": true,
+    "activation_timestamp": 1790162915.188618,
+    "expiration_timestamp": 1792758515.188618,
+    "is_permanent_admin": false,
+    "recovery_email": null,
+    "recovery_token_hash": null,
+    "recovery_token_expiration": null,
+    "_schema_version": 2
+  }
+]

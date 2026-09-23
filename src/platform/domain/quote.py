@@ -55,6 +55,10 @@ class Quote:
                 raise ValueError(f"{name} must be a finite number")
             object.__setattr__(self, name, float(value))
 
+        # Derive mid price automatically from bid and ask when bid and ask are provided and mid is absent
+        if self.mid is None and self.bid is not None and self.ask is not None:
+            object.__setattr__(self, "mid", (self.bid + self.ask) / 2.0)
+
         if self.change_percent is not None:
             if not isinstance(self.change_percent, numbers.Real) or isinstance(self.change_percent, bool):
                 raise ValueError("change_percent must be a numeric real value if provided")
@@ -81,7 +85,10 @@ class Quote:
             "mid": self.mid,
             "last": self.last,
             "change_percent": self.change_percent,
+            "changePercent": self.change_percent,
             "high": self.high,
+            "high24h": self.high,
             "low": self.low,
+            "low24h": self.low,
             "availability": None if self.availability is None else self.availability.to_dict(),
         }

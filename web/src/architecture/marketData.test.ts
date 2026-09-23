@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { WATCHLIST_SYMBOLS, INITIAL_NOTIFICATIONS, fetchMarketCandles, fetchMarketQuote, fetchProviders } from "./marketData";
+import { WATCHLIST_SYMBOLS, INITIAL_NOTIFICATIONS, fetchMarketCandles, fetchMarketQuote, fetchProviders, normalizeQuote, getQuotePrice } from "./marketData";
 
 describe("Market Data & Watchlist Structures", () => {
   it("includes XAUUSD as the primary market asset", () => {
@@ -17,6 +17,32 @@ describe("Market Data & Watchlist Structures", () => {
   it("provides initial notifications feed", () => {
     expect(INITIAL_NOTIFICATIONS.length).toBeGreaterThan(0);
     expect(INITIAL_NOTIFICATIONS[0].title).toBeTruthy();
+  });
+
+  it("normalizes quote and derives mid price and current price when bid and ask are provided", () => {
+    const rawQuote = {
+      symbol: "XAUUSD",
+      timestamp: 1710025200,
+      bid: 4308.50,
+      ask: 4309.50,
+      change_percent: 1.25,
+      high: 4320.0,
+      low: 4290.0,
+    };
+
+    const normalized = normalizeQuote(rawQuote);
+    expect(normalized).not.toBeNull();
+    expect(normalized?.symbol).toBe("XAUUSD");
+    expect(normalized?.bid).toBe(4308.50);
+    expect(normalized?.ask).toBe(4309.50);
+    expect(normalized?.mid).toBe(4309.00);
+    expect(normalized?.last).toBeNull();
+    expect(normalized?.changePercent).toBe(1.25);
+    expect(normalized?.high24h).toBe(4320.0);
+    expect(normalized?.low24h).toBe(4290.0);
+
+    const price = getQuotePrice(rawQuote as any);
+    expect(price).toBe(4309.00);
   });
 });
 

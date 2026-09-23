@@ -252,9 +252,10 @@ export function mapWatchlistSymbols(
     const baseSym = WATCHLIST_SYMBOLS.find((s) => s.symbol === sym);
 
     const isMatch = activeQuote && activeQuote.symbol === sym;
-    const currentStatus: MarketDataStatus = isMatch
+    const rawStatus = isMatch
       ? (activeQuote.availability?.status || marketStatus)
       : "disconnected";
+    const currentStatus: MarketDataStatus = rawStatus === "live" ? "connected" : (rawStatus as MarketDataStatus);
 
     const lastPrice = isMatch
       ? (activeQuote.last ?? activeQuote.mid ?? activeQuote.bid ?? null)

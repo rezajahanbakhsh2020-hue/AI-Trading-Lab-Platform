@@ -136,6 +136,23 @@ class BiQuoteQuoteProvider(QuoteProvider):
             if source in payload:
                 record[dest] = payload[source]
 
+        # Derive 'last' if missing or non-positive (e.g. provider returned last=0.0) from mid/bid/ask
+        raw_last = record.get("last")
+        if raw_last is None or not (isinstance(raw_last, (int, float)) and raw_last > 0):
+            derived_last = record.get("mid")
+            if derived_last is None or not (isinstance(derived_last, (int, float)) and derived_last > 0):
+                bid_val = record.get("bid")
+                ask_val = record.get("ask")
+                if isinstance(bid_val, (int, float)) and isinstance(ask_val, (int, float)) and bid_val > 0 and ask_val > 0:
+                    derived_last = (bid_val + ask_val) / 2.0
+                elif isinstance(bid_val, (int, float)) and bid_val > 0:
+                    derived_last = bid_val
+                elif isinstance(ask_val, (int, float)) and ask_val > 0:
+                    derived_last = ask_val
+
+            if derived_last is not None and isinstance(derived_last, (int, float)) and derived_last > 0:
+                record["last"] = derived_last
+
         availability = self._availability_from_payload(payload)
         if availability is not None:
             record["availability"] = availability

@@ -83,7 +83,7 @@ def test_fetch_normalizes_tick_fields(mock_urlopen):
     assert out["bid"] == 4337.6
     assert out["ask"] == 4337.8
     assert out["mid"] == 4337.7
-    assert out["last"] == 0.0
+    assert out["last"] == 4337.7
     assert out["change_percent"] == -0.09
     assert out["high"] == 4350.0
     assert out["low"] == 4330.0
@@ -93,6 +93,21 @@ def test_fetch_normalizes_tick_fields(mock_urlopen):
     assert "description" not in out
     assert "marketState" not in out
     assert "dayDiffPercent" not in out
+
+
+@patch("src.platform.providers.biquote_quote.urllib.request.urlopen")
+def test_derives_last_price_when_provider_returns_zero(mock_urlopen):
+    # BiQuote live endpoint returns real bid/ask/mid around 4308 but last=0.00
+    mock_urlopen.return_value = FakeHTTPResponse(_json_bytes(_tick(bid=4308.1, ask=4308.3, mid=4308.2, last=0.0)))
+    provider = BiQuoteQuoteProvider()
+    out = provider.fetch_quote("XAUUSD")
+    assert out["last"] == 4308.2
+
+    # Verify downstream QuoteService generates non-zero Quote.last
+    service = QuoteService(QuoteAdapter(provider))
+    mock_urlopen.return_value = FakeHTTPResponse(_json_bytes(_tick(bid=4308.1, ask=4308.3, mid=4308.2, last=0.0)))
+    quote = service.get_quote("XAUUSD")
+    assert quote.last == 4308.2
 
 
 @patch("src.platform.providers.biquote_quote.urllib.request.urlopen")

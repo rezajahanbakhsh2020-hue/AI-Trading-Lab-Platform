@@ -85,6 +85,16 @@ describe("Frontend Workspace Architecture & Watchlist State", () => {
 
     expect(rows[1].symbol).toBe("EURUSD");
     expect(rows[1].status).toBe("disconnected");
+
+    // Live availability status mapping to connected
+    const liveQuote: Quote = {
+      symbol: "XAUUSD",
+      timestamp: 1710000000,
+      last: 4308.2,
+      availability: { status: "live" as any },
+    };
+    const liveRows = mapWatchlistSymbols(["XAUUSD"], liveQuote, "connected");
+    expect(liveRows[0].status).toBe("connected");
   });
 
   it("filters and sorts watchlist rows accurately", () => {

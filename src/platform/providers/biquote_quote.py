@@ -134,7 +134,10 @@ class BiQuoteQuoteProvider(QuoteProvider):
             ("low", "low"),
         ):
             if source in payload:
-                record[dest] = payload[source]
+                val = payload[source]
+                if source == "last" and isinstance(val, (int, float)) and val <= 0:
+                    continue
+                record[dest] = val
 
         availability = self._availability_from_payload(payload)
         if availability is not None:

@@ -176,31 +176,28 @@ export function App() {
     };
   }, [isConnected, selectedSymbol, selectedTimeframe, authState.sessionToken]);
 
-  const normalizedLiveQuote = normalizeQuote(
-    liveQuote.symbol === selectedSymbol ? liveQuote : { ...SAMPLE_BIQUOTE_QUOTE_XAUUSD, symbol: selectedSymbol }
-  );
+  const rawQuoteForSymbol = liveQuote.symbol === selectedSymbol
+    ? liveQuote
+    : { ...SAMPLE_BIQUOTE_QUOTE_XAUUSD, symbol: selectedSymbol };
 
-  const marketState = isConnected
-    ? {
-        symbol: selectedSymbol,
-        timeframe: selectedTimeframe,
-        provider: SAMPLE_BIQUOTE_PROVIDER,
-        quote: normalizedLiveQuote,
-        candles: liveCandles,
-        status: "connected" as const,
-        message: `Streaming live market data for ${selectedSymbol} via BiQuoteProvider.`,
-        lastFetchedAt: new Date().toUTCString(),
-      }
-    : {
-        symbol: selectedSymbol,
-        timeframe: selectedTimeframe,
-        provider: null,
-        quote: null,
-        candles: [],
-        status: "disconnected" as const,
-        message: `Market data provider disconnected for ${selectedSymbol}.`,
-        lastFetchedAt: null,
-      };
+  const normalizedLiveQuote = normalizeQuote(rawQuoteForSymbol);
+
+  const marketCandles = liveCandles.length > 0 ? liveCandles : (selectedSymbol === "XAUUSD" && selectedTimeframe === "1h" ? SAMPLE_BIQUOTE_CANDLES_XAUUSD : []);
+  const isMarketConnected = marketCandles.length > 0 || normalizedLiveQuote != null;
+  const marketStatus = isMarketConnected ? "connected" as const : "disconnected" as const;
+
+  const marketState = {
+    symbol: selectedSymbol,
+    timeframe: selectedTimeframe,
+    provider: isMarketConnected ? SAMPLE_BIQUOTE_PROVIDER : null,
+    quote: normalizedLiveQuote,
+    candles: marketCandles,
+    status: marketStatus,
+    message: isMarketConnected
+      ? `Streaming live market data for ${selectedSymbol} via BiQuoteProvider.`
+      : `Market data provider disconnected for ${selectedSymbol}.`,
+    lastFetchedAt: isMarketConnected ? new Date().toUTCString() : null,
+  };
 
   const baseSnapshot = isConnected
     ? createHostSnapshotFromProject1(

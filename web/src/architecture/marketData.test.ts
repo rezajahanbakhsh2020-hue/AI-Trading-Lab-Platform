@@ -44,6 +44,26 @@ describe("Market Data & Watchlist Structures", () => {
     const price = getQuotePrice(rawQuote as any);
     expect(price).toBe(4309.00);
   });
+
+  it("ignores zero or negative last price and computes valid bid/ask average price", () => {
+    const realQuoteWithZeroLast = {
+      symbol: "XAUUSD",
+      timestamp: 1710025200,
+      bid: 4303.04,
+      ask: 4303.22,
+      last: 0.0,
+      change_percent: -1.39,
+      high: 4369.41,
+      low: 4294.41,
+    };
+
+    const normalized = normalizeQuote(realQuoteWithZeroLast);
+    expect(normalized?.last).toBeNull();
+    expect(normalized?.mid).toBeCloseTo(4303.13, 2);
+
+    const price = getQuotePrice(realQuoteWithZeroLast as any);
+    expect(price).toBeCloseTo(4303.13, 2);
+  });
 });
 
 describe("Market Data API Helper Functions", () => {

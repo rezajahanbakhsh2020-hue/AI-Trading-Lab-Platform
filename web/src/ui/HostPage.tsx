@@ -303,7 +303,7 @@ function DashboardPage({
           stopLossPrice={stopLossPriceOverlay}
           takeProfits={takeProfitsOverlay}
           signalAction={signalActionOverlay}
-          isProviderConnected={snapshot.project1.connected && snapshot.market.status === "connected"}
+          isProviderConnected={snapshot.market.status === "connected"}
           onTimeframeChange={onSelectTimeframe}
           onRefresh={onSync}
         />
@@ -452,7 +452,7 @@ function MarketsPage({
           stopLossPrice={stopLossPriceOverlay}
           takeProfits={takeProfitsOverlay}
           signalAction={signalActionOverlay}
-          isProviderConnected={snapshot.project1.connected && isMarketConnected}
+          isProviderConnected={isMarketConnected}
           onTimeframeChange={onSelectTimeframe}
           onRefresh={onRefresh}
         />

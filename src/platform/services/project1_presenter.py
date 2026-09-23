@@ -547,7 +547,7 @@ class Project1SignalPresenter:
             }
 
         # Connected port handling
-        mkt_state = self._get_market_state(symbol, signal_dict.get("timeframe") if signal_dict else timeframe)
+        mkt_state = self._get_market_state(symbol, timeframe)
         prov_status = self._get_providers_status(mkt_state)
 
         if signal_dict is None:
@@ -743,7 +743,7 @@ class Project1SignalPresenter:
         _, _, audit_events = self._audit_control_service.query_events(user=user, filter_params=None)
         _, _, operational_failures = self._audit_control_service.query_failures(user=user, limit=50)
         persistence_rec = self._health_service.validate_persistence_integrity()
-        mkt_state = self._get_market_state(symbol, signal_dict.get("timeframe") or timeframe)
+        mkt_state = self._get_market_state(symbol, timeframe)
 
         observability_rep = self._health_service.get_unified_observability_report(
             active_sessions_count=1 if user else 0,
@@ -775,7 +775,7 @@ class Project1SignalPresenter:
                 "adapterName": desc.get("name", "Project1GatewayAdapter"),
                 "message": f"Project 1 emitting signals via {desc.get('name', 'adapter')}.",
             },
-            "market": self._get_market_state(symbol, signal_dict.get("timeframe") or timeframe),
+            "market": self._get_market_state(symbol, timeframe),
             "strategy": {
                 "name": strat_name,
                 "stability": int(conf * 100) if conf is not None else None,

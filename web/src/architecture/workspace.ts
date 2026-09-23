@@ -1,4 +1,4 @@
-import { WATCHLIST_SYMBOLS, type MarketSymbol, type Quote, type MarketDataStatus } from "./marketData";
+import { WATCHLIST_SYMBOLS, normalizeQuote, getQuotePrice, type MarketSymbol, type Quote, type MarketDataStatus } from "./marketData";
 
 export interface Watchlist {
   id: string;
@@ -247,21 +247,24 @@ export function mapWatchlistSymbols(
   activeQuote?: Quote | null,
   marketStatus: MarketDataStatus = "disconnected"
 ): WatchlistSymbolRow[] {
+  const normalizedActiveQuote = activeQuote ? normalizeQuote(activeQuote) : null;
+
   return symbols.map((sym) => {
     const known = KNOWN_MARKET_SYMBOLS[sym] || {};
     const baseSym = WATCHLIST_SYMBOLS.find((s) => s.symbol === sym);
 
-    const isMatch = activeQuote && activeQuote.symbol === sym;
+    const isMatch = normalizedActiveQuote && normalizedActiveQuote.symbol === sym;
+
     const currentStatus: MarketDataStatus = isMatch
-      ? (activeQuote.availability?.status || marketStatus)
+      ? (normalizedActiveQuote.availability?.status || marketStatus)
       : "disconnected";
 
     const lastPrice = isMatch
-      ? (activeQuote.last ?? activeQuote.mid ?? activeQuote.bid ?? null)
+      ? getQuotePrice(normalizedActiveQuote)
       : (baseSym?.lastPrice ?? null);
 
     const change24hPct = isMatch
-      ? (activeQuote.changePercent ?? null)
+      ? (normalizedActiveQuote.changePercent ?? normalizedActiveQuote.change_percent ?? null)
       : (baseSym?.change24hPct ?? null);
 
     return {
@@ -271,10 +274,10 @@ export function mapWatchlistSymbols(
       status: currentStatus,
       lastPrice,
       change24hPct,
-      high24h: isMatch ? activeQuote.high24h ?? null : baseSym?.high24h ?? null,
-      low24h: isMatch ? activeQuote.low24h ?? null : baseSym?.low24h ?? null,
-      volume24h: isMatch && activeQuote.volume24h ? activeQuote.volume24h.toLocaleString() : (baseSym?.volume24h ?? null),
-      quote: isMatch ? activeQuote : null,
+      high24h: isMatch ? (normalizedActiveQuote.high24h ?? normalizedActiveQuote.high ?? null) : (baseSym?.high24h ?? null),
+      low24h: isMatch ? (normalizedActiveQuote.low24h ?? normalizedActiveQuote.low ?? null) : (baseSym?.low24h ?? null),
+      volume24h: isMatch && normalizedActiveQuote.volume24h ? normalizedActiveQuote.volume24h.toLocaleString() : (baseSym?.volume24h ?? null),
+      quote: isMatch ? normalizedActiveQuote : null,
       primary: sym === "XAUUSD",
     };
   });

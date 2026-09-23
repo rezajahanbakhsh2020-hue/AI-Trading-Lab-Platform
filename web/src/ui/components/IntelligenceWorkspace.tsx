@@ -4,6 +4,7 @@ import { MarketPulse } from './MarketPulse';
 import { MarketScreener } from './MarketScreener';
 import { SignalCard } from './SignalCard';
 import { HostSnapshot } from '../../architecture/hostView';
+import { getQuotePrice, normalizeQuote } from '../../architecture/marketData';
 
 interface IntelligenceWorkspaceProps {
   snapshot?: HostSnapshot | null;
@@ -28,8 +29,9 @@ export const IntelligenceWorkspace: React.FC<IntelligenceWorkspaceProps> = ({
   };
 
   const isConnected = snapshot?.project1?.connected ?? false;
-  const quote = snapshot?.market?.quote;
-  const quotePrice = quote?.last ?? quote?.mid ?? quote?.bid ?? null;
+  const rawQuote = snapshot?.market?.quote;
+  const quote = rawQuote ? normalizeQuote(rawQuote) : null;
+  const quotePrice = getQuotePrice(quote);
 
   const isSignalSymbolMatch =
     snapshot?.signal?.status === "active" &&

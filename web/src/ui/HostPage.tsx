@@ -31,6 +31,7 @@ import {
   syncNotificationsFromHostSnapshot,
   type NotificationItem,
 } from "../architecture/notification";
+import { getQuotePrice, normalizeQuote } from "../architecture/marketData";
 import { useI18n, type SupportedLanguage } from "../i18n";
 
 type HostPageProps = {
@@ -246,8 +247,9 @@ function DashboardPage({
   onStageOrderIntent?: () => void;
 }) {
   const { t } = useI18n();
-  const quote = snapshot.market.quote;
-  const quotePrice = quote?.last ?? quote?.mid ?? quote?.bid ?? null;
+  const rawQuote = snapshot.market.quote;
+  const quote = rawQuote ? normalizeQuote(rawQuote) : null;
+  const quotePrice = getQuotePrice(quote);
 
   const isSignalSymbolMatch =
     snapshot.signal.status === "active" &&
@@ -339,7 +341,9 @@ function MarketsPage({
 }) {
   const { t, formatCurrency, formatPercent } = useI18n();
   const currentSymbol = snapshot.market.symbol;
-  const quote = snapshot.market.quote;
+  const rawQuote = snapshot.market.quote;
+  const quote = rawQuote ? normalizeQuote(rawQuote) : null;
+  const quotePrice = getQuotePrice(quote);
   const isMarketConnected = snapshot.market.status === "connected";
 
   const isSignalSymbolMatch =
@@ -354,8 +358,8 @@ function MarketsPage({
   return (
     <div className="markets-view">
       <MarketPulse
-        quotePrice={quote?.last ?? quote?.mid ?? quote?.bid ?? null}
-        change24hPct={quote?.changePercent ?? null}
+        quotePrice={quotePrice}
+        change24hPct={quote?.changePercent ?? quote?.change_percent ?? null}
       />
 
       <div className="grid cols-2" style={{ marginTop: 16 }}>
@@ -397,12 +401,8 @@ function MarketsPage({
                   <tr>
                     <th>{t("markets.currentPrice")}</th>
                     <td>
-                      {quote?.last != null
-                        ? formatCurrency(quote.last)
-                        : quote?.mid != null
-                        ? formatCurrency(quote.mid)
-                        : quote?.bid != null
-                        ? formatCurrency(quote.bid)
+                      {quotePrice != null
+                        ? formatCurrency(quotePrice)
                         : t("status.unavailable")}
                     </td>
                   </tr>

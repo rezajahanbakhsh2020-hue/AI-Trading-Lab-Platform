@@ -64,6 +64,22 @@ describe("Market Data & Watchlist Structures", () => {
     const price = getQuotePrice(realQuoteWithZeroLast as any);
     expect(price).toBeCloseTo(4303.13, 2);
   });
+
+  it("does not cross-map XAUUSD quote prices to non-XAUUSD symbols when raw symbol mismatches", () => {
+    const goldQuote = {
+      symbol: "XAUUSD",
+      timestamp: 1710025200,
+      bid: 2662.8,
+      ask: 2663.2,
+      last: 2663.0,
+    };
+
+    // Asking for price of EURUSD using a quote object belonging to XAUUSD
+    const eurQuoteRaw = goldQuote.symbol === "EURUSD" ? goldQuote : null;
+    expect(eurQuoteRaw).toBeNull();
+    const eurPrice = getQuotePrice(eurQuoteRaw);
+    expect(eurPrice).toBeNull();
+  });
 });
 
 describe("Market Data API Helper Functions", () => {

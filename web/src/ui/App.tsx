@@ -24,6 +24,7 @@ import {
   fetchMarketCandles,
   fetchMarketQuote,
   normalizeQuote,
+  type Quote,
 } from "../architecture/marketData";
 import {
   requestExecutionApi,
@@ -129,22 +130,25 @@ export function App() {
   }, []);
 
   const [liveCandles, setLiveCandles] = useState<typeof SAMPLE_BIQUOTE_CANDLES_XAUUSD>([]);
-  const [liveQuote, setLiveQuote] = useState(SAMPLE_BIQUOTE_QUOTE_XAUUSD);
+  const [liveQuote, setLiveQuote] = useState<Quote | null>(SAMPLE_BIQUOTE_QUOTE_XAUUSD);
 
   useEffect(() => {
     // When disconnected, only provide sample dataset for default XAUUSD 1h demo view.
-    // Clear candles for any other timeframe or symbol so wrong timeframe data is never shown.
+    // Clear candles and quotes for any other timeframe or symbol so wrong symbol/timeframe data is never shown.
     if (!isConnected) {
       if (selectedSymbol === "XAUUSD" && selectedTimeframe === "1h") {
         setLiveCandles(SAMPLE_BIQUOTE_CANDLES_XAUUSD);
+        setLiveQuote(SAMPLE_BIQUOTE_QUOTE_XAUUSD);
       } else {
         setLiveCandles([]);
+        setLiveQuote(selectedSymbol === "XAUUSD" ? SAMPLE_BIQUOTE_QUOTE_XAUUSD : null);
       }
       return;
     }
 
-    // Immediately invalidate/clear candles upon timeframe or symbol selection change
+    // Immediately invalidate/clear candles and quote upon timeframe or symbol selection change
     setLiveCandles([]);
+    setLiveQuote(selectedSymbol === "XAUUSD" ? SAMPLE_BIQUOTE_QUOTE_XAUUSD : null);
 
     let isMounted = true;
     const reqSymbol = selectedSymbol;
@@ -166,6 +170,8 @@ export function App() {
         }
         if (quoteRes.success && quoteRes.quote) {
           setLiveQuote(quoteRes.quote);
+        } else {
+          setLiveQuote(reqSymbol === "XAUUSD" ? SAMPLE_BIQUOTE_QUOTE_XAUUSD : null);
         }
       }
     }
@@ -176,9 +182,9 @@ export function App() {
     };
   }, [isConnected, selectedSymbol, selectedTimeframe, authState.sessionToken]);
 
-  const rawQuoteForSymbol = liveQuote.symbol === selectedSymbol
+  const rawQuoteForSymbol = (liveQuote && liveQuote.symbol === selectedSymbol)
     ? liveQuote
-    : { ...SAMPLE_BIQUOTE_QUOTE_XAUUSD, symbol: selectedSymbol };
+    : (selectedSymbol === "XAUUSD" ? SAMPLE_BIQUOTE_QUOTE_XAUUSD : null);
 
   const normalizedLiveQuote = normalizeQuote(rawQuoteForSymbol);
 

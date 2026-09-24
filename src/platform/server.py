@@ -689,7 +689,18 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                 user = None
                 if token:
                     _, user = self.server_user_auth_service.validate_session_token(token)
-                snapshot = self.presenter.build_host_snapshot(user=user)
+
+                query_params = urllib.parse.parse_qs(parsed_url.query)
+                symbol = query_params.get("symbol", ["XAUUSD"])[0]
+                timeframe = query_params.get("timeframe", ["1h"])[0]
+                strategy_name = query_params.get("strategy_name", [None])[0]
+
+                snapshot = self.presenter.build_host_snapshot(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    strategy_name=strategy_name,
+                    user=user,
+                )
                 self._send_json_response(200, snapshot, origin=origin)
                 return
 

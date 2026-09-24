@@ -660,6 +660,42 @@ export const PROJECT1_GATEWAY_PORT: PortDescriptionPayload = {
   message: "Connected to Project 1 Integration Gateway.",
 };
 
+/**
+ * Fetches host snapshot payload from backend /api/v1/snapshot.
+ */
+export async function fetchHostSnapshot(
+  token?: string | null,
+  symbol: string = PRIMARY_MARKET,
+  timeframe: string = "1h"
+): Promise<{ success: boolean; snapshot?: HostSnapshot; message?: string }> {
+  try {
+    const params = new URLSearchParams();
+    if (symbol) params.set("symbol", symbol);
+    if (timeframe) params.set("timeframe", timeframe);
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const resp = await fetch(`/api/v1/snapshot?${params.toString()}`, {
+      method: "GET",
+      headers,
+    });
+
+    if (!resp.ok) {
+      return { success: false, message: `HTTP error ${resp.status}` };
+    }
+
+    const data = await resp.json();
+    return { success: true, snapshot: data as HostSnapshot };
+  } catch (err) {
+    return { success: false, message: (err as Error).message };
+  }
+}
+
 export const PAGE_COPY: Record<
   string,
   { title: string; kicker: string; summary: string }

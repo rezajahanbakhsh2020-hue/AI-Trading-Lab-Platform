@@ -5,6 +5,7 @@ import {
   PROJECT1_GATEWAY_PORT,
   createDisconnectedHostSnapshot,
   createHostSnapshotFromProject1,
+  fetchHostSnapshot,
 } from "./hostView";
 import { SAMPLE_CONNECTED_PORT, SAMPLE_REAL_PROJECT1_SIGNAL } from "./testFixtures";
 import { SAMPLE_BIQUOTE_PROVIDER, SAMPLE_BIQUOTE_QUOTE_XAUUSD, SAMPLE_BIQUOTE_CANDLES_XAUUSD } from "./marketData";
@@ -195,6 +196,29 @@ describe("signal purity and fail-closed runtime verification", () => {
     expect(snapshot.risk.entry).toBeNull();
     expect(snapshot.risk.stopLoss).toBeNull();
     expect(snapshot.risk.takeProfits).toEqual([]);
+  });
+
+  it("fetches host snapshot from API via fetchHostSnapshot helper", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url: string | URL | Request) => {
+      const urlStr = url.toString();
+      expect(urlStr).toContain("/api/v1/snapshot");
+      expect(urlStr).toContain("symbol=EURUSD");
+      expect(urlStr).toContain("timeframe=15m");
+      return {
+        ok: true,
+        json: async () => createDisconnectedHostSnapshot("EURUSD", "15m"),
+      } as Response;
+    };
+
+    try {
+      const res = await fetchHostSnapshot("sample_token", "EURUSD", "15m");
+      expect(res.success).toBe(true);
+      expect(res.snapshot?.market.symbol).toBe("EURUSD");
+      expect(res.snapshot?.market.timeframe).toBe("15m");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("verifies test fixtures in testFixtures.ts remain functional for test suites", () => {

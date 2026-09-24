@@ -72,61 +72,89 @@ async function run() {
         await page.goto(url, { waitUntil: 'networkidle' });
         await page.waitForTimeout(50);
 
-        const geometry = await page.evaluate(() => {
-          const docWidth = document.documentElement.scrollWidth;
-          const bodyWidth = document.body.scrollWidth;
-          const viewportWidth = window.innerWidth;
-          const appShell = document.querySelector('.app-shell');
-          const workspace = document.querySelector('.workspace');
-          const boundedContainer = document.querySelector('.bounded-page-container');
+        const checkGeometry = async (stateName = 'default') => {
+          return await page.evaluate(({ stateName }) => {
+            const docWidth = document.documentElement.scrollWidth;
+            const bodyWidth = document.body.scrollWidth;
+            const viewportWidth = window.innerWidth;
+            const appShell = document.querySelector('.app-shell');
+            const workspace = document.querySelector('.workspace');
+            const boundedContainer = document.querySelector('.bounded-page-container');
 
-          const appShellWidth = appShell ? appShell.scrollWidth : 0;
-          const workspaceWidth = workspace ? workspace.scrollWidth : 0;
-          const containerWidth = boundedContainer ? boundedContainer.scrollWidth : 0;
+            const appShellWidth = appShell ? appShell.scrollWidth : 0;
+            const workspaceWidth = workspace ? workspace.scrollWidth : 0;
+            const containerWidth = boundedContainer ? boundedContainer.scrollWidth : 0;
 
-          // Find elements wider than viewport
-          const wideElements = [];
-          const all = document.querySelectorAll('*');
-          all.forEach((el) => {
-            if (el.scrollWidth > viewportWidth + 1.5) { // 1.5px rounding tolerance
-              const className = typeof el.className === 'string' ? el.className : '';
-              const tag = el.tagName;
-              const textSnippet = (el.textContent || '').substring(0, 40).replace(/\s+/g, ' ');
-              const rect = el.getBoundingClientRect();
-              wideElements.push({
-                tag,
-                className,
-                scrollWidth: el.scrollWidth,
-                rectWidth: rect.width,
-                textSnippet
-              });
-            }
-          });
+            // Find elements wider than viewport
+            const wideElements = [];
+            const all = document.querySelectorAll('*');
+            all.forEach((el) => {
+              if (el.scrollWidth > viewportWidth + 1.5) { // 1.5px rounding tolerance
+                const className = typeof el.className === 'string' ? el.className : '';
+                const tag = el.tagName;
+                const textSnippet = (el.textContent || '').substring(0, 40).replace(/\s+/g, ' ');
+                const rect = el.getBoundingClientRect();
+                wideElements.push({
+                  tag,
+                  className,
+                  scrollWidth: el.scrollWidth,
+                  rectWidth: rect.width,
+                  textSnippet
+                });
+              }
+            });
 
-          return {
-            docWidth,
-            bodyWidth,
-            viewportWidth,
-            appShellWidth,
-            workspaceWidth,
-            containerWidth,
-            hasOverflow: docWidth > viewportWidth + 1.5,
-            wideElements
-          };
-        });
+            return {
+              stateName,
+              docWidth,
+              bodyWidth,
+              viewportWidth,
+              appShellWidth,
+              workspaceWidth,
+              containerWidth,
+              hasOverflow: docWidth > viewportWidth + 1.5,
+              wideElements
+            };
+          }, { stateName });
+        };
 
-        if (geometry.hasOverflow) {
+        const defaultGeometry = await checkGeometry('default');
+        if (defaultGeometry.hasOverflow) {
           violations.push({
             lang,
             viewport: vp.name,
             route,
-            viewportWidth: geometry.viewportWidth,
-            docWidth: geometry.docWidth,
-            appShellWidth: geometry.appShellWidth,
-            workspaceWidth: geometry.workspaceWidth,
-            containerWidth: geometry.containerWidth,
-            wideElements: geometry.wideElements
+            state: 'default',
+            viewportWidth: defaultGeometry.viewportWidth,
+            docWidth: defaultGeometry.docWidth,
+            appShellWidth: defaultGeometry.appShellWidth,
+            workspaceWidth: defaultGeometry.workspaceWidth,
+            containerWidth: defaultGeometry.containerWidth,
+            wideElements: defaultGeometry.wideElements
           });
+        }
+
+        // Check Command Palette modal geometry when triggered on dashboard
+        if (route === '/') {
+          await page.keyboard.press('Control+k');
+          await page.waitForTimeout(50);
+          const modalGeometry = await checkGeometry('command-palette-open');
+          if (modalGeometry.hasOverflow) {
+            violations.push({
+              lang,
+              viewport: vp.name,
+              route,
+              state: 'command-palette-open',
+              viewportWidth: modalGeometry.viewportWidth,
+              docWidth: modalGeometry.docWidth,
+              appShellWidth: modalGeometry.appShellWidth,
+              workspaceWidth: modalGeometry.workspaceWidth,
+              containerWidth: modalGeometry.containerWidth,
+              wideElements: modalGeometry.wideElements
+            });
+          }
+          await page.keyboard.press('Escape');
+          await page.waitForTimeout(50);
         }
       }
       await context.close();

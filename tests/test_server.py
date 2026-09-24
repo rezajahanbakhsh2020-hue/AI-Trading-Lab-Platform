@@ -129,13 +129,15 @@ def test_server_auth_login_and_validation_workflow(running_server):
 
 def test_server_snapshot_endpoint(running_server):
     base_url, _, _ = running_server
-    req = urllib.request.Request(f"{base_url}/api/v1/snapshot")
+    req = urllib.request.Request(f"{base_url}/api/v1/snapshot?symbol=EURUSD&timeframe=15m")
     with urllib.request.urlopen(req) as resp:
         assert resp.status == 200
         snapshot = json.loads(resp.read().decode("utf-8"))
         assert "authorization" in snapshot
         assert "platform" in snapshot
         assert "project1" in snapshot
+        assert snapshot["market"]["symbol"] == "EURUSD"
+        assert snapshot["market"]["timeframe"] == "15m"
 
 
 def test_production_fail_closed_on_weak_secret():

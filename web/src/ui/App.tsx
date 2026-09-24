@@ -14,16 +14,15 @@ import {
   PROJECT1_GATEWAY_PORT,
   createDisconnectedHostSnapshot,
   createHostSnapshotFromProject1,
-  type PresentedSignalPayload,
+  fetchHostSnapshot,
+  type HostSnapshot,
 } from "../architecture/hostView";
-import { fetchProject1Records } from "../architecture/project1Gateway";
 import {
   SAMPLE_BIQUOTE_PROVIDER,
-  SAMPLE_BIQUOTE_CANDLES_XAUUSD,
-  SAMPLE_BIQUOTE_QUOTE_XAUUSD,
   fetchMarketCandles,
   fetchMarketQuote,
   normalizeQuote,
+  type Candle,
   type Quote,
 } from "../architecture/marketData";
 import {
@@ -54,65 +53,28 @@ export function App() {
   const [selectedSymbol, setSelectedSymbol] = useState("XAUUSD");
   const [selectedTimeframe, setSelectedTimeframe] = useState("1h");
   const [stagedIntents, setStagedIntents] = useState<OrderIntentPayload[]>([]);
-  const [activeSignal, setActiveSignal] = useState<PresentedSignalPayload | null>(null);
+  const [backendSnapshot, setBackendSnapshot] = useState<HostSnapshot | null>(null);
 
   useEffect(() => {
     if (!isConnected) {
-      setActiveSignal(null);
+      setBackendSnapshot(null);
       return;
     }
 
     let isMounted = true;
-    async function syncGatewaySignal() {
+    async function syncBackendHostSnapshot() {
       const token = authState.sessionToken;
-      if (!token) {
-        if (isMounted) setActiveSignal(null);
-        return;
-      }
-
-      const res = await fetchProject1Records(token, selectedSymbol);
+      const res = await fetchHostSnapshot(token, selectedSymbol, selectedTimeframe);
       if (!isMounted) return;
 
-      if (res.success && res.records && res.records.length > 0) {
-        const validRecords = [...res.records].sort((a, b) => b.timestamp - a.timestamp);
-        const latest = validRecords[0];
-
-        if (
-          latest &&
-          (latest.lifecycle_state === "ACTIVE" || latest.lifecycle_state === "STAGED") &&
-          latest.signal_type &&
-          latest.signal_type !== "no-signal" &&
-          latest.signal_type !== "hold"
-        ) {
-          const presented: PresentedSignalPayload = {
-            signal_id: latest.signal_id,
-            symbol: latest.symbol || selectedSymbol,
-            signal_type: latest.signal_type,
-            timestamp: latest.timestamp,
-            entry_price: latest.entry_price ?? null,
-            stop_loss: latest.stop_loss ?? null,
-            take_profits: [
-              latest.take_profit_1,
-              latest.take_profit_2,
-              latest.take_profit_3,
-            ].filter((tp): tp is number => typeof tp === "number"),
-            confidence: latest.confidence ?? null,
-            strategy_name: latest.strategy_name ?? "Project 1 Strategy",
-            timeframe: latest.timeframe || selectedTimeframe,
-            metadata: {
-              provenance_type: "live_signal",
-              is_live: true,
-              source: latest.source_id || "Project1GatewayAdapter",
-            },
-          };
-          setActiveSignal(presented);
-          return;
-        }
+      if (res.success && res.snapshot) {
+        setBackendSnapshot(res.snapshot);
+      } else {
+        setBackendSnapshot(null);
       }
-      setActiveSignal(null);
     }
 
-    syncGatewaySignal();
+    syncBackendHostSnapshot();
     return () => {
       isMounted = false;
     };
@@ -129,26 +91,21 @@ export function App() {
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, []);
 
-  const [liveCandles, setLiveCandles] = useState<typeof SAMPLE_BIQUOTE_CANDLES_XAUUSD>([]);
-  const [liveQuote, setLiveQuote] = useState<Quote | null>(SAMPLE_BIQUOTE_QUOTE_XAUUSD);
+  const [liveCandles, setLiveCandles] = useState<Candle[]>([]);
+  const [liveQuote, setLiveQuote] = useState<Quote | null>(null);
 
   useEffect(() => {
-    // When disconnected, only provide sample dataset for default XAUUSD 1h demo view.
-    // Clear candles and quotes for any other timeframe or symbol so wrong symbol/timeframe data is never shown.
+    // When disconnected or provider is not active, set candles to empty array and quote to null.
+    // Zero sample or synthetic fallbacks are used in production runtime.
     if (!isConnected) {
-      if (selectedSymbol === "XAUUSD" && selectedTimeframe === "1h") {
-        setLiveCandles(SAMPLE_BIQUOTE_CANDLES_XAUUSD);
-        setLiveQuote(SAMPLE_BIQUOTE_QUOTE_XAUUSD);
-      } else {
-        setLiveCandles([]);
-        setLiveQuote(selectedSymbol === "XAUUSD" ? SAMPLE_BIQUOTE_QUOTE_XAUUSD : null);
-      }
+      setLiveCandles([]);
+      setLiveQuote(null);
       return;
     }
 
     // Immediately invalidate/clear candles and quote upon timeframe or symbol selection change
     setLiveCandles([]);
-    setLiveQuote(selectedSymbol === "XAUUSD" ? SAMPLE_BIQUOTE_QUOTE_XAUUSD : null);
+    setLiveQuote(null);
 
     let isMounted = true;
     const reqSymbol = selectedSymbol;
@@ -168,10 +125,10 @@ export function App() {
         } else {
           setLiveCandles([]);
         }
-        if (quoteRes.success && quoteRes.quote) {
+        if (quoteRes.success && quoteRes.quote && quoteRes.quote.symbol === reqSymbol) {
           setLiveQuote(quoteRes.quote);
         } else {
-          setLiveQuote(reqSymbol === "XAUUSD" ? SAMPLE_BIQUOTE_QUOTE_XAUUSD : null);
+          setLiveQuote(null);
         }
       }
     }
@@ -182,13 +139,10 @@ export function App() {
     };
   }, [isConnected, selectedSymbol, selectedTimeframe, authState.sessionToken]);
 
-  const rawQuoteForSymbol = (liveQuote && liveQuote.symbol === selectedSymbol)
-    ? liveQuote
-    : (selectedSymbol === "XAUUSD" ? SAMPLE_BIQUOTE_QUOTE_XAUUSD : null);
-
+  const rawQuoteForSymbol = (liveQuote && liveQuote.symbol === selectedSymbol) ? liveQuote : null;
   const normalizedLiveQuote = normalizeQuote(rawQuoteForSymbol);
 
-  const marketCandles = liveCandles.length > 0 ? liveCandles : (selectedSymbol === "XAUUSD" && selectedTimeframe === "1h" ? SAMPLE_BIQUOTE_CANDLES_XAUUSD : []);
+  const marketCandles = liveCandles;
   const isMarketConnected = marketCandles.length > 0 || normalizedLiveQuote != null;
   const marketStatus = isMarketConnected ? "connected" as const : "disconnected" as const;
 
@@ -206,13 +160,13 @@ export function App() {
   };
 
   const baseSnapshot = isConnected
-    ? createHostSnapshotFromProject1(
+    ? (backendSnapshot || createHostSnapshotFromProject1(
         PROJECT1_GATEWAY_PORT,
-        activeSignal,
+        null,
         selectedSymbol,
         selectedTimeframe,
         marketState
-      )
+      ))
     : createDisconnectedHostSnapshot(selectedSymbol, selectedTimeframe);
 
   const snapshot = {

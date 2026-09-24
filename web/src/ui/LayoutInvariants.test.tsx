@@ -132,23 +132,26 @@ describe("Layout Invariants and Responsive Architecture", () => {
     const testRoutes = [
       "/",
       "/dashboard",
-      "/users",
-      "/help",
+      "/timeline",
       "/screener",
-      "/health",
+      "/markets",
       "/watchlist",
       "/signals",
-      "/providers",
+      "/strategies",
       "/backtest",
       "/performance",
       "/risk",
       "/audit",
       "/intents",
+      "/users",
+      "/health",
       "/monitoring",
+      "/providers",
       "/academy",
       "/ai",
       "/alerts",
       "/notifications",
+      "/help",
       "/settings",
     ];
 
@@ -164,6 +167,13 @@ describe("Layout Invariants and Responsive Architecture", () => {
       const boundedContainer = container.querySelector(".bounded-page-container");
       expect(boundedContainer).not.toBeNull();
       expect(boundedContainer?.getAttribute("data-testid")).toBe("bounded-page-container");
+      expect(boundedContainer?.getAttribute("data-mobile-geometry-contract")).toBe("true");
+
+      // Verify container style invariants
+      const style = (boundedContainer as HTMLElement).style;
+      expect(style.width).toBe("100%");
+      expect(style.maxWidth).toBe("100%");
+      expect(style.minWidth).toBe("0px");
 
       // Verify table elements are wrapped inside .table-responsive
       const tables = container.querySelectorAll("table");
@@ -174,5 +184,40 @@ describe("Layout Invariants and Responsive Architecture", () => {
 
       unmount();
     }
+  });
+
+  it("verifies BoundedTableWrapper and BoundedModal primitives adhere to mobile geometry bounds", async () => {
+    const { BoundedTableWrapper, BoundedModal } = await import("./components/BoundedPageContainer");
+
+    const { container: tableContainer } = render(
+      <BoundedTableWrapper>
+        <table>
+          <tbody>
+            <tr>
+              <td>Test Table Data</td>
+            </tr>
+          </tbody>
+        </table>
+      </BoundedTableWrapper>
+    );
+
+    const tblWrapper = tableContainer.querySelector(".table-responsive");
+    expect(tblWrapper).not.toBeNull();
+    const tblWrapperStyle = (tblWrapper as HTMLElement).style;
+    expect(tblWrapperStyle.width).toBe("100%");
+    expect(tblWrapperStyle.maxWidth).toBe("100%");
+    expect(tblWrapperStyle.overflowX).toBe("auto");
+
+    const { container: modalContainer } = render(
+      <BoundedModal maxWidthPx={480}>
+        <div>Modal Content</div>
+      </BoundedModal>
+    );
+
+    const modalEl = modalContainer.querySelector(".modal-card");
+    expect(modalEl).not.toBeNull();
+    const modalStyle = (modalEl as HTMLElement).style;
+    expect(modalStyle.width).toBe("100%");
+    expect(modalStyle.maxWidth).toBe("min(100%, 480px)");
   });
 });

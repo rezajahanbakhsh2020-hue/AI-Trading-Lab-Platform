@@ -521,6 +521,7 @@ video {
 }
 
 /* Permanent Bounded Page Layout Invariants (Mobile Geometry Contract) */
+[data-mobile-geometry-contract="true"],
 .bounded-page-container,
 .page-view-container,
 .workspace > *,

@@ -2296,7 +2296,7 @@ video {
   font-size: 10px;
   font-weight: 500;
   min-height: 44px;
-  min-width: 0;
+  min-width: 44px;
   max-width: 100%;
 }
 
@@ -2400,6 +2400,8 @@ video {
 
   .mobile-menu-btn {
     display: inline-flex;
+    min-height: 44px;
+    min-width: 44px;
   }
 
   .top-search-trigger {
@@ -2408,6 +2410,50 @@ video {
 
   .top-meta .market-chip {
     display: none;
+  }
+
+  /* Mobile Touch Target Standards (>= 44px min-height / min-width) */
+  .btn,
+  .notification-icon-btn,
+  .lang-selector,
+  .seg-btn,
+  .watchlist-tab,
+  .pill-btn,
+  .cat-tab-btn,
+  .recent-chip,
+  .select-filter,
+  .input-search,
+  .input-add-symbol,
+  .input-modal,
+  .mobile-drawer-item {
+    min-height: 44px;
+    box-sizing: border-box;
+  }
+
+  .tab-action-btn,
+  .btn-icon-remove,
+  .command-palette-close-btn,
+  .close-btn {
+    min-height: 44px;
+    min-width: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Responsive Mobile Card View vs Desktop Table View */
+  .desktop-table-wrapper {
+    display: none !important;
+  }
+
+  .mobile-card-list {
+    display: flex !important;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .workspace,
@@ -2452,10 +2498,59 @@ video {
   }
 }
 
-/* Small Device Adjustments */
+/* Desktop-only Table Wrapper */
+.desktop-table-wrapper {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Mobile-only Card List (hidden on desktop) */
+.mobile-card-list {
+  display: none;
+}
+
+/* Mobile Landscape Height & Squeeze Adjustments */
+@media (max-height: 480px) {
+  .command-palette-backdrop {
+    padding: clamp(6px, 1.5vh, 12px) clamp(8px, 2vw, 16px) clamp(6px, 1.5vh, 12px);
+  }
+
+  .command-palette-modal {
+    max-height: 94dvh;
+  }
+
+  .command-palette-body {
+    padding: 8px 14px;
+    gap: 8px;
+  }
+
+  .mobile-drawer-content {
+    gap: 10px;
+    padding-top: calc(8px + var(--sat));
+    padding-bottom: calc(8px + var(--sab));
+  }
+}
+
+/* Refined Persian / Arabic Table Header Text Wrapping */
+.table th {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  hyphens: manual;
+}
+
+/* Small Device Adjustments (width <= 480px / 30rem) */
 @media (max-width: 30rem) {
-  .top-meta .chip {
+  .top-meta .chip:not(.project1-chip):not(.role-chip) {
     display: none;
+  }
+
+  .top-meta .chip.project1-chip,
+  .top-meta .chip.role-chip {
+    display: inline-flex;
+    padding: 2px 6px;
+    font-size: 10px;
   }
 
   .brand-text p {

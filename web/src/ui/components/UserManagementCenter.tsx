@@ -188,19 +188,138 @@ export function UserManagementCenter({ currentAccount, snapshot }: UserManagemen
       {/* Account List Grid / Cards */}
       <div className="card">
         <div className="card-body" style={{ padding: "0.5rem" }}>
-          <div className="table-responsive">
-            <table className="table">
-          <thead>
-            <tr style={{ borderBottom: "1px solid #334155", textAlign: "left", fontSize: "0.75rem", color: "#94a3b8", textTransform: "uppercase" }}>
-              <th style={{ padding: "0.75rem 0.5rem" }}>{t("userMgmt.username")}</th>
-              <th style={{ padding: "0.75rem 0.5rem" }}>{t("userMgmt.status")}</th>
-              <th style={{ padding: "0.75rem 0.5rem" }}>{t("userMgmt.activationDate")}</th>
-              <th style={{ padding: "0.75rem 0.5rem" }}>{t("userMgmt.expirationDate")}</th>
-              <th style={{ padding: "0.75rem 0.5rem" }}>{t("userMgmt.allowedSymbolsLabel")}</th>
-              <th style={{ padding: "0.75rem 0.5rem", textAlign: "right" }}>{t("userMgmt.actions")}</th>
-            </tr>
-          </thead>
-          <tbody>
+          <div className="desktop-table-wrapper">
+            <div className="table-responsive">
+              <table className="table">
+                <thead>
+                  <tr style={{ borderBottom: "1px solid #334155", textAlign: "left", fontSize: "0.75rem", color: "#94a3b8", textTransform: "uppercase" }}>
+                    <th style={{ padding: "0.75rem 0.5rem" }}>{t("userMgmt.username")}</th>
+                    <th style={{ padding: "0.75rem 0.5rem" }}>{t("userMgmt.status")}</th>
+                    <th style={{ padding: "0.75rem 0.5rem" }}>{t("userMgmt.activationDate")}</th>
+                    <th style={{ padding: "0.75rem 0.5rem" }}>{t("userMgmt.expirationDate")}</th>
+                    <th style={{ padding: "0.75rem 0.5rem" }}>{t("userMgmt.allowedSymbolsLabel")}</th>
+                    <th style={{ padding: "0.75rem 0.5rem", textAlign: "right" }}>{t("userMgmt.actions")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {accounts
+                    .filter((acc) => {
+                      const evalRes = evaluateAccountStatus(acc);
+                      const matchesSearch =
+                        !searchQuery ||
+                        acc.userId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        acc.allowedSymbols.some((s) => s.toLowerCase().includes(searchQuery.toLowerCase()));
+                      const matchesStatus = statusFilter === "ALL" || evalRes.status === statusFilter;
+                      return matchesSearch && matchesStatus;
+                    })
+                    .map((acc) => {
+                      const evalRes = evaluateAccountStatus(acc);
+                      const formatTs = (ts: number | null) => (ts ? new Date(ts * 1000).toLocaleDateString() : "Permanent / No Limit");
+
+                    return (
+                      <tr key={acc.userId} style={{ borderBottom: "1px solid #1e293b", fontSize: "0.875rem" }}>
+                        <td style={{ padding: "0.75rem 0.5rem", fontWeight: 600, color: "#f8fafc" }}>
+                          {acc.userId} {acc.isPermanentAdmin && "👑"}
+                        </td>
+
+                        <td style={{ padding: "0.75rem 0.5rem" }}>
+                          <span
+                            style={{
+                              padding: "0.25rem 0.5rem",
+                              borderRadius: "4px",
+                              fontSize: "0.75rem",
+                              fontWeight: 700,
+                              backgroundColor:
+                                evalRes.status === "PERMANENT_ADMIN"
+                                  ? "rgba(168, 85, 247, 0.2)"
+                                  : evalRes.status === "ACTIVE"
+                                  ? "rgba(34, 197, 94, 0.2)"
+                                  : evalRes.status === "EXPIRED"
+                                  ? "rgba(239, 68, 68, 0.2)"
+                                  : "rgba(245, 158, 11, 0.2)",
+                              color:
+                                evalRes.status === "PERMANENT_ADMIN"
+                                  ? "#c084fc"
+                                  : evalRes.status === "ACTIVE"
+                                  ? "#4ade80"
+                                  : evalRes.status === "EXPIRED"
+                                  ? "#fca5a5"
+                                  : "#fcd34d",
+                            }}
+                          >
+                            {evalRes.status === "PERMANENT_ADMIN"
+                              ? t("userMgmt.permanentAdminBadge")
+                              : evalRes.status === "ACTIVE"
+                              ? t("userMgmt.activeBadge")
+                              : evalRes.status === "EXPIRED"
+                              ? t("userMgmt.expiredBadge")
+                              : evalRes.status === "INACTIVE"
+                              ? t("userMgmt.inactiveBadge")
+                              : t("userMgmt.futureBadge")}
+                          </span>
+                        </td>
+
+                        <td style={{ padding: "0.75rem 0.5rem", color: "#cbd5e1" }}>
+                          {formatTs(acc.activationTimestamp)}
+                        </td>
+
+                        <td style={{ padding: "0.75rem 0.5rem", color: "#cbd5e1" }}>
+                          {formatTs(acc.expirationTimestamp)}
+                        </td>
+
+                        <td style={{ padding: "0.75rem 0.5rem", color: "#94a3b8", fontSize: "0.8125rem" }}>
+                          {acc.allowedSymbols.join(", ")}
+                        </td>
+
+                        <td style={{ padding: "0.75rem 0.5rem", textAlign: "right" }}>
+                          <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+                            <button
+                              onClick={() => setSelectedUserDetail(acc)}
+                              className="btn btn-ghost"
+                              style={{ minHeight: "44px", fontSize: "0.75rem", padding: "0.25rem 0.5rem", color: "#60a5fa" }}
+                              title="View user details"
+                            >
+                              🔍 Details
+                            </button>
+
+                            {acc.isPermanentAdmin ? (
+                              <span style={{ fontSize: "0.75rem", color: "#a855f7", alignSelf: "center" }}>Protected Admin</span>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => handleRenew(acc.userId)}
+                                  className="btn btn-secondary"
+                                  style={{ minHeight: "44px", fontSize: "0.75rem", padding: "0.25rem 0.5rem" }}
+                                  title={t("userMgmt.renewButton")}
+                                >
+                                  🔄 {t("userMgmt.renewButton")}
+                                </button>
+                                <button
+                                  onClick={() => handleToggleStatus(acc.userId)}
+                                  className="btn btn-secondary"
+                                  style={{
+                                    minHeight: "44px",
+                                    fontSize: "0.75rem",
+                                    padding: "0.25rem 0.5rem",
+                                    borderColor: acc.isActive ? "#ef4444" : "#22c55e",
+                                    color: acc.isActive ? "#fca5a5" : "#4ade80",
+                                  }}
+                                >
+                                  {acc.isActive ? t("userMgmt.deactivateButton") : t("userMgmt.activateButton")}
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="mobile-card-list">
             {accounts
               .filter((acc) => {
                 const evalRes = evaluateAccountStatus(acc);
@@ -215,81 +334,69 @@ export function UserManagementCenter({ currentAccount, snapshot }: UserManagemen
                 const evalRes = evaluateAccountStatus(acc);
                 const formatTs = (ts: number | null) => (ts ? new Date(ts * 1000).toLocaleDateString() : "Permanent / No Limit");
 
-              return (
-                <tr key={acc.userId} style={{ borderBottom: "1px solid #1e293b", fontSize: "0.875rem" }}>
-                  <td style={{ padding: "0.75rem 0.5rem", fontWeight: 600, color: "#f8fafc" }}>
-                    {acc.userId} {acc.isPermanentAdmin && "👑"}
-                  </td>
+                return (
+                  <div key={acc.userId} className="card p-3 space-y-3" style={{ background: "var(--bg-2)" }}>
+                    <div className="flex justify-between items-center">
+                      <strong style={{ color: "#f8fafc", fontSize: "0.9375rem" }}>
+                        {acc.userId} {acc.isPermanentAdmin && "👑"}
+                      </strong>
+                      <span
+                        style={{
+                          padding: "0.25rem 0.5rem",
+                          borderRadius: "4px",
+                          fontSize: "0.75rem",
+                          fontWeight: 700,
+                          backgroundColor:
+                            evalRes.status === "PERMANENT_ADMIN"
+                              ? "rgba(168, 85, 247, 0.2)"
+                              : evalRes.status === "ACTIVE"
+                              ? "rgba(34, 197, 94, 0.2)"
+                              : evalRes.status === "EXPIRED"
+                              ? "rgba(239, 68, 68, 0.2)"
+                              : "rgba(245, 158, 11, 0.2)",
+                          color:
+                            evalRes.status === "PERMANENT_ADMIN"
+                              ? "#c084fc"
+                              : evalRes.status === "ACTIVE"
+                              ? "#4ade80"
+                              : evalRes.status === "EXPIRED"
+                              ? "#fca5a5"
+                              : "#fcd34d",
+                        }}
+                      >
+                        {evalRes.status === "PERMANENT_ADMIN"
+                          ? t("userMgmt.permanentAdminBadge")
+                          : evalRes.status === "ACTIVE"
+                          ? t("userMgmt.activeBadge")
+                          : evalRes.status === "EXPIRED"
+                          ? t("userMgmt.expiredBadge")
+                          : evalRes.status === "INACTIVE"
+                          ? t("userMgmt.inactiveBadge")
+                          : t("userMgmt.futureBadge")}
+                      </span>
+                    </div>
 
-                  <td style={{ padding: "0.75rem 0.5rem" }}>
-                    <span
-                      style={{
-                        padding: "0.25rem 0.5rem",
-                        borderRadius: "4px",
-                        fontSize: "0.75rem",
-                        fontWeight: 700,
-                        backgroundColor:
-                          evalRes.status === "PERMANENT_ADMIN"
-                            ? "rgba(168, 85, 247, 0.2)"
-                            : evalRes.status === "ACTIVE"
-                            ? "rgba(34, 197, 94, 0.2)"
-                            : evalRes.status === "EXPIRED"
-                            ? "rgba(239, 68, 68, 0.2)"
-                            : "rgba(245, 158, 11, 0.2)",
-                        color:
-                          evalRes.status === "PERMANENT_ADMIN"
-                            ? "#c084fc"
-                            : evalRes.status === "ACTIVE"
-                            ? "#4ade80"
-                            : evalRes.status === "EXPIRED"
-                            ? "#fca5a5"
-                            : "#fcd34d",
-                      }}
-                    >
-                      {evalRes.status === "PERMANENT_ADMIN"
-                        ? t("userMgmt.permanentAdminBadge")
-                        : evalRes.status === "ACTIVE"
-                        ? t("userMgmt.activeBadge")
-                        : evalRes.status === "EXPIRED"
-                        ? t("userMgmt.expiredBadge")
-                        : evalRes.status === "INACTIVE"
-                        ? t("userMgmt.inactiveBadge")
-                        : t("userMgmt.futureBadge")}
-                    </span>
-                  </td>
+                    <div className="text-xs space-y-1" style={{ color: "#cbd5e1" }}>
+                      <div>Activation: {formatTs(acc.activationTimestamp)}</div>
+                      <div>Expiration: {formatTs(acc.expirationTimestamp)}</div>
+                      <div>Symbols: {acc.allowedSymbols.join(", ")}</div>
+                    </div>
 
-                  <td style={{ padding: "0.75rem 0.5rem", color: "#cbd5e1" }}>
-                    {formatTs(acc.activationTimestamp)}
-                  </td>
-
-                  <td style={{ padding: "0.75rem 0.5rem", color: "#cbd5e1" }}>
-                    {formatTs(acc.expirationTimestamp)}
-                  </td>
-
-                  <td style={{ padding: "0.75rem 0.5rem", color: "#94a3b8", fontSize: "0.8125rem" }}>
-                    {acc.allowedSymbols.join(", ")}
-                  </td>
-
-                  <td style={{ padding: "0.75rem 0.5rem", textAlign: "right" }}>
-                    <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+                    <div className="flex gap-2 flex-wrap justify-end pt-2" style={{ borderTop: "1px solid var(--line)" }}>
                       <button
                         onClick={() => setSelectedUserDetail(acc)}
                         className="btn btn-ghost"
-                        style={{ minHeight: "44px", fontSize: "0.75rem", padding: "0.25rem 0.5rem", color: "#60a5fa" }}
-                        title="View user details"
+                        style={{ minHeight: "44px", fontSize: "0.75rem", color: "#60a5fa" }}
                       >
                         🔍 Details
                       </button>
 
-                      {acc.isPermanentAdmin ? (
-                        <span style={{ fontSize: "0.75rem", color: "#a855f7", alignSelf: "center" }}>Protected Admin</span>
-                      ) : (
+                      {!acc.isPermanentAdmin && (
                         <>
                           <button
                             onClick={() => handleRenew(acc.userId)}
                             className="btn btn-secondary"
-                            style={{ minHeight: "44px", fontSize: "0.75rem", padding: "0.25rem 0.5rem" }}
-                            title={t("userMgmt.renewButton")}
+                            style={{ minHeight: "44px", fontSize: "0.75rem" }}
                           >
                             🔄 {t("userMgmt.renewButton")}
                           </button>
@@ -299,7 +406,6 @@ export function UserManagementCenter({ currentAccount, snapshot }: UserManagemen
                             style={{
                               minHeight: "44px",
                               fontSize: "0.75rem",
-                              padding: "0.25rem 0.5rem",
                               borderColor: acc.isActive ? "#ef4444" : "#22c55e",
                               color: acc.isActive ? "#fca5a5" : "#4ade80",
                             }}
@@ -309,15 +415,12 @@ export function UserManagementCenter({ currentAccount, snapshot }: UserManagemen
                         </>
                       )}
                     </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
       </div>
-    </div>
-  </div>
 
       {/* User Details & Administrative Control Modal */}
       {selectedUserDetail && (

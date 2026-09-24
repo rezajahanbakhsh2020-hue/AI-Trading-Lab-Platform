@@ -84,21 +84,21 @@ export function TopBar({
           </select>
         </div>
 
-        <span className="chip">
+        <span className="chip project1-chip">
           <span className="dot ready" />
           {t("topbar.hostReady")}
         </span>
         <span className="chip market-chip">{PRIMARY_MARKET}</span>
 
         {currentAccount ? (
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <span style={{ fontSize: "0.8125rem", color: "#f8fafc", fontWeight: 600 }}>
+          <div className="role-chip-group" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <span className="chip role-chip" style={{ fontSize: "0.8125rem", color: "#f8fafc", fontWeight: 600 }}>
               👤 {currentAccount.userId} {currentAccount.isPermanentAdmin && "👑"}
             </span>
             <button
               onClick={onLogout}
               className="btn btn-secondary"
-              style={{ minHeight: "36px", padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
+              style={{ minHeight: "44px", padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
               aria-label={t("auth.logoutButton")}
             >
               {t("auth.logoutButton")}
@@ -107,8 +107,8 @@ export function TopBar({
         ) : (
           <button
             onClick={onOpenLogin}
-            className="btn btn-secondary"
-            style={{ minHeight: "36px", padding: "0.25rem 0.75rem", fontSize: "0.8125rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.375rem" }}
+            className="btn btn-secondary role-chip"
+            style={{ minHeight: "44px", padding: "0.25rem 0.75rem", fontSize: "0.8125rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.375rem" }}
             aria-label={t("auth.loginButton")}
           >
             <span>👤</span>

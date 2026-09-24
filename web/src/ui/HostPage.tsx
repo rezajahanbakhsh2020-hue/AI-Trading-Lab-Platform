@@ -584,44 +584,67 @@ function MonitoringPage({ snapshot }: { snapshot: HostSnapshot }) {
             <span className="chip ready-chip">Real-Time Observability Active</span>
           </div>
           <div className="card-body">
-            <div className="table-responsive">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Subsystem Component</th>
-                    <th>Status State</th>
-                    <th>Configured</th>
-                    <th>Dependency</th>
-                    <th>Diagnostic Details</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(obs.components).map(([key, compVal]) => {
-                    const comp = compVal as { name: string; status: string; configured: boolean; dependency: string; message: string };
-                    return (
-                      <tr key={key}>
-                        <td>
-                          <strong>{comp.name}</strong>
-                        </td>
-                        <td>
-                          <span className={`status ${comp.status === "HEALTHY" ? "ready" : comp.status === "DEGRADED" ? "warn" : comp.status === "NOT_CONFIGURED" ? "muted-chip" : "unavailable"}`}>
-                            {comp.status}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={`chip ${comp.configured ? "ready-chip" : "muted-chip"}`}>
-                            {comp.configured ? "YES" : "NO"}
-                          </span>
-                        </td>
-                        <td>
-                          <code>{comp.dependency}</code>
-                        </td>
-                        <td style={{ fontSize: 13 }}>{comp.message}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="desktop-table-wrapper">
+              <div className="table-responsive">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Subsystem Component</th>
+                      <th>Status State</th>
+                      <th>Configured</th>
+                      <th>Dependency</th>
+                      <th>Diagnostic Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(obs.components).map(([key, compVal]) => {
+                      const comp = compVal as { name: string; status: string; configured: boolean; dependency: string; message: string };
+                      return (
+                        <tr key={key}>
+                          <td>
+                            <strong>{comp.name}</strong>
+                          </td>
+                          <td>
+                            <span className={`status ${comp.status === "HEALTHY" ? "ready" : comp.status === "DEGRADED" ? "warn" : comp.status === "NOT_CONFIGURED" ? "muted-chip" : "unavailable"}`}>
+                              {comp.status}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={`chip ${comp.configured ? "ready-chip" : "muted-chip"}`}>
+                              {comp.configured ? "YES" : "NO"}
+                            </span>
+                          </td>
+                          <td>
+                            <code>{comp.dependency}</code>
+                          </td>
+                          <td style={{ fontSize: 13 }}>{comp.message}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="mobile-card-list">
+              {Object.entries(obs.components).map(([key, compVal]) => {
+                const comp = compVal as { name: string; status: string; configured: boolean; dependency: string; message: string };
+                return (
+                  <div key={key} className="card p-3 space-y-2" style={{ background: "var(--bg-2)" }}>
+                    <div className="flex justify-between items-center flex-wrap gap-2">
+                      <strong>{comp.name}</strong>
+                      <span className={`status ${comp.status === "HEALTHY" ? "ready" : comp.status === "DEGRADED" ? "warn" : comp.status === "NOT_CONFIGURED" ? "muted-chip" : "unavailable"}`}>
+                        {comp.status}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs text-slate-400 gap-2 flex-wrap">
+                      <span>Configured: <strong style={{ color: "var(--text)" }}>{comp.configured ? "YES" : "NO"}</strong></span>
+                      <span>Dep: <code>{comp.dependency}</code></span>
+                    </div>
+                    <p className="hint text-xs" style={{ margin: 0 }}>{comp.message}</p>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </section>
@@ -644,50 +667,88 @@ function ProvidersPage({ snapshot }: { snapshot: HostSnapshot }) {
           </span>
         </div>
         <div className="card-body">
-          <div className="table-responsive">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Slot Category</th>
-                  <th>Status</th>
-                  <th>Adapter Source</th>
-                  <th>Capabilities / Details</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>Project 1 Integration Port</td>
-                  <td>
-                    <span className={`status ${snapshot.project1.connected ? "ready" : "disconnected"}`}>
-                      {snapshot.project1.connected ? t("status.connected") : t("status.disconnected")}
-                    </span>
-                  </td>
-                  <td>{snapshot.project1.adapterName}</td>
-                  <td>Project1IntegrationPort</td>
-                </tr>
-                <tr>
-                  <td>Market Data Feed (OHLC)</td>
-                  <td>
-                    <span className={`status ${snapshot.market.status === "connected" ? "ready" : snapshot.market.status}`}>
-                      {snapshot.market.status}
-                    </span>
-                  </td>
-                  <td>{providerName}</td>
-                  <td>Supported Timeframes: 1m, 5m, 15m, 30m, 1h, 4h, 1d</td>
-                </tr>
-                <tr>
-                  <td>Real-Time Quotes</td>
-                  <td>
-                    <span className={`status ${snapshot.market.quote ? "ready" : snapshot.market.status}`}>
-                      {snapshot.market.quote ? t("status.connected") : snapshot.market.status}
-                    </span>
-                  </td>
-                  <td>BiQuoteQuoteProvider</td>
-                  <td>Public REST quote feed</td>
-                </tr>
-              </tbody>
-            </table>
+          <div className="desktop-table-wrapper">
+            <div className="table-responsive">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Slot Category</th>
+                    <th>Status</th>
+                    <th>Adapter Source</th>
+                    <th>Capabilities / Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Project 1 Integration Port</td>
+                    <td>
+                      <span className={`status ${snapshot.project1.connected ? "ready" : "disconnected"}`}>
+                        {snapshot.project1.connected ? t("status.connected") : t("status.disconnected")}
+                      </span>
+                    </td>
+                    <td>{snapshot.project1.adapterName}</td>
+                    <td>Project1IntegrationPort</td>
+                  </tr>
+                  <tr>
+                    <td>Market Data Feed (OHLC)</td>
+                    <td>
+                      <span className={`status ${snapshot.market.status === "connected" ? "ready" : snapshot.market.status}`}>
+                        {snapshot.market.status}
+                      </span>
+                    </td>
+                    <td>{providerName}</td>
+                    <td>Supported Timeframes: 1m, 5m, 15m, 30m, 1h, 4h, 1d</td>
+                  </tr>
+                  <tr>
+                    <td>Real-Time Quotes</td>
+                    <td>
+                      <span className={`status ${snapshot.market.quote ? "ready" : snapshot.market.status}`}>
+                        {snapshot.market.quote ? t("status.connected") : snapshot.market.status}
+                      </span>
+                    </td>
+                    <td>BiQuoteQuoteProvider</td>
+                    <td>Public REST quote feed</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
+
+          <div className="mobile-card-list">
+            <div className="card p-3 space-y-2" style={{ background: "var(--bg-2)" }}>
+              <div className="flex justify-between items-center">
+                <strong>Project 1 Integration Port</strong>
+                <span className={`status ${snapshot.project1.connected ? "ready" : "disconnected"}`}>
+                  {snapshot.project1.connected ? t("status.connected") : t("status.disconnected")}
+                </span>
+              </div>
+              <div className="text-xs text-slate-400">Adapter: <strong style={{ color: "var(--text)" }}>{snapshot.project1.adapterName}</strong></div>
+              <div className="text-xs text-slate-400">Capabilities: Project1IntegrationPort</div>
+            </div>
+
+            <div className="card p-3 space-y-2" style={{ background: "var(--bg-2)" }}>
+              <div className="flex justify-between items-center">
+                <strong>Market Data Feed (OHLC)</strong>
+                <span className={`status ${snapshot.market.status === "connected" ? "ready" : snapshot.market.status}`}>
+                  {snapshot.market.status}
+                </span>
+              </div>
+              <div className="text-xs text-slate-400">Adapter: <strong style={{ color: "var(--text)" }}>{providerName}</strong></div>
+              <div className="text-xs text-slate-400">Timeframes: 1m, 5m, 15m, 30m, 1h, 4h, 1d</div>
+            </div>
+
+            <div className="card p-3 space-y-2" style={{ background: "var(--bg-2)" }}>
+              <div className="flex justify-between items-center">
+                <strong>Real-Time Quotes</strong>
+                <span className={`status ${snapshot.market.quote ? "ready" : snapshot.market.status}`}>
+                  {snapshot.market.quote ? t("status.connected") : snapshot.market.status}
+                </span>
+              </div>
+              <div className="text-xs text-slate-400">Adapter: <strong style={{ color: "var(--text)" }}>BiQuoteQuoteProvider</strong></div>
+              <div className="text-xs text-slate-400">Feed: Public REST quote feed</div>
+            </div>
+          </div>
+
           <p className="hint" style={{ marginTop: 12 }}>
             {snapshot.providers.message}
           </p>

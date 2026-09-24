@@ -21,11 +21,11 @@ from src.platform.domain.user_authorization import UserAuthorization
 
 
 @pytest.fixture
-def server():
+def server(tmp_path):
     cfg = PlatformConfig(
         app_env="testing",
         session_secret="test_session_secret_key_32_bytes_long_testing!",
-        persistence_dir="/tmp/test_market_terminal_pers",
+        persistence_dir=str(tmp_path / "test_market_terminal_pers"),
     )
     srv = create_server(host="127.0.0.1", port=0, config=cfg)
     yield srv

@@ -25,7 +25,9 @@ export const MarketHeatmap: React.FC<MarketHeatmapProps> = ({
       {tiles.map((tile) => {
         const isSelected = selectedSymbol === tile.symbol;
         const bgOpacity = Math.max(0.2, Math.min(0.9, tile.intensity));
-        const colorClass = tile.isPositive
+        const colorClass = tile.change24hPercent == null
+          ? 'bg-slate-900/80 border-slate-800 text-slate-400'
+          : tile.isPositive
           ? `bg-emerald-950/${Math.round(bgOpacity * 100)} border-emerald-500/40 text-emerald-300`
           : `bg-rose-950/${Math.round(bgOpacity * 100)} border-rose-500/40 text-rose-300`;
 
@@ -37,11 +39,11 @@ export const MarketHeatmap: React.FC<MarketHeatmapProps> = ({
               isSelected ? 'ring-2 ring-amber-400 border-amber-400 shadow-lg' : ''
             }`}
           >
-            <div className="flex items-center justify-between w-full">
-              <span className="font-bold text-sm tracking-wide text-white">{tile.symbol}</span>
+            <div className="flex items-center justify-between w-full min-w-0">
+              <span className="font-bold text-sm tracking-wide text-white truncate min-w-0">{tile.symbol}</span>
               {tile.signalAction && (
                 <span
-                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 ${
                     tile.signalAction === 'BUY'
                       ? 'bg-emerald-500/30 text-emerald-200 border border-emerald-500/50'
                       : tile.signalAction === 'SELL'
@@ -54,10 +56,11 @@ export const MarketHeatmap: React.FC<MarketHeatmapProps> = ({
               )}
             </div>
 
-            <div>
-              <div className="text-lg font-extrabold tracking-tight">
-                {tile.isPositive ? '+' : ''}
-                {tile.change24hPercent.toFixed(2)}%
+            <div className="min-w-0">
+              <div className="text-lg font-extrabold tracking-tight truncate" dir="ltr">
+                {tile.change24hPercent != null
+                  ? `${tile.isPositive ? '+' : ''}${tile.change24hPercent.toFixed(2)}%`
+                  : '—'}
               </div>
               <div className="text-[11px] text-slate-400 truncate mt-0.5">{tile.displayName}</div>
             </div>

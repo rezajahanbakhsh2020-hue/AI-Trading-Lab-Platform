@@ -21,13 +21,27 @@ class MarketScreenerItem:
     symbol: str
     display_name: str
     category: AssetCategory
-    price: float
-    change_24h_percent: float
-    volume_24h_usd: float
-    volatility_percent: float
+    price: Optional[float] = None
+    change_24h_percent: Optional[float] = None
+    volume_24h_usd: Optional[float] = None
+    volatility_percent: Optional[float] = None
     signal_action: Optional[str] = None
     signal_confidence: Optional[float] = None
     extra_metadata: Dict[str, str] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Optional[object]]:
+        return {
+            "symbol": self.symbol,
+            "display_name": self.display_name,
+            "category": self.category.value,
+            "price": self.price,
+            "change_24h_percent": self.change_24h_percent,
+            "volume_24h_usd": self.volume_24h_usd,
+            "volatility_percent": self.volatility_percent,
+            "signal_action": self.signal_action,
+            "signal_confidence": self.signal_confidence,
+            "extra_metadata": dict(self.extra_metadata),
+        }
 
 
 @dataclass(frozen=True)
@@ -37,10 +51,21 @@ class HeatmapTile:
     symbol: str
     display_name: str
     category: AssetCategory
-    change_24h_percent: float
-    intensity: float  # Normalized 0.0 to 1.0 performance magnitude
-    is_positive: bool
+    change_24h_percent: Optional[float] = None
+    intensity: float = 0.0  # Normalized 0.0 to 1.0 performance magnitude
+    is_positive: bool = True
     signal_action: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Optional[object]]:
+        return {
+            "symbol": self.symbol,
+            "display_name": self.display_name,
+            "category": self.category.value,
+            "change_24h_percent": self.change_24h_percent,
+            "intensity": self.intensity,
+            "is_positive": self.is_positive,
+            "signal_action": self.signal_action,
+        }
 
 
 @dataclass(frozen=True)
@@ -64,3 +89,12 @@ class MarketScreenerResult:
     total_count: int
     applied_category: Optional[AssetCategory] = None
     applied_search: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Optional[object]]:
+        return {
+            "items": [item.to_dict() for item in self.items],
+            "heatmap_tiles": [tile.to_dict() for tile in self.heatmap_tiles],
+            "total_count": self.total_count,
+            "applied_category": self.applied_category.value if self.applied_category else None,
+            "applied_search": self.applied_search,
+        }

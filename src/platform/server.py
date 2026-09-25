@@ -33,6 +33,7 @@ from src.platform.services.project1_gateway import Project1IntegrationGatewaySer
 from src.platform.services.order_intent import OrderIntentService
 from src.platform.services.execution_gateway import ExecutionGatewayService
 from src.platform.domain.order_intent import OrderLifecycleState
+from src.platform.services.market_screener import MarketScreenerService
 from src.platform.services.notification import NotificationService
 from src.platform.services.notification_delivery import NotificationDeliveryService
 from src.platform.services.audit_control import PlatformAuditControlService
@@ -73,6 +74,7 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
     provider_inspection_service: ProviderInspectionService
     provider_operations: ProviderOperations
     market_overview_service: MarketOverviewService
+    market_screener_service: MarketScreenerService
     static_dir: str
 
     def log_message(self, format: str, *args: Any) -> None:
@@ -534,6 +536,63 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                     return
                 except Exception as err:
                     self._send_error_response(500, "Market Quote Error", str(err), "Try again or contact support.", origin=origin)
+                    return
+
+            if path == "/api/v1/screener":
+                token = self._extract_bearer_token()
+                user = None
+                if token:
+                    _, user = self.server_user_auth_service.validate_session_token(token)
+
+                query_params = urllib.parse.parse_qs(parsed_url.query)
+                category_str = query_params.get("category", [None])[0]
+                min_volume_str = query_params.get("min_volume_usd", [None])[0]
+                signal_filter = query_params.get("signal_filter", [None])[0]
+                search_query = query_params.get("search_query", [None])[0]
+                sort_by = query_params.get("sort_by", ["change_24h_percent"])[0]
+                sort_desc = query_params.get("sort_descending", ["true"])[0].lower() == "true"
+
+                cat_enum = None
+                if category_str and category_str.upper() != "ALL":
+                    try:
+                        from src.platform.domain.screener import AssetCategory
+                        cat_enum = AssetCategory(category_str.upper())
+                    except ValueError:
+                        cat_enum = None
+
+                min_vol = None
+                if min_volume_str:
+                    try:
+                        min_vol = float(min_volume_str)
+                    except ValueError:
+                        min_vol = None
+
+                from src.platform.domain.screener import MarketScreenerFilter
+                criteria = MarketScreenerFilter(
+                    category=cat_enum,
+                    min_volume_usd=min_vol,
+                    signal_filter=signal_filter,
+                    search_query=search_query,
+                    sort_by=sort_by,
+                    sort_descending=sort_desc,
+                )
+
+                try:
+                    res = self.market_screener_service.screen_markets(
+                        filter_criteria=criteria,
+                        user_context=user,
+                    )
+                    self._send_json_response(
+                        200,
+                        {
+                            "success": True,
+                            "data": res.to_dict(),
+                        },
+                        origin=origin,
+                    )
+                    return
+                except Exception as err:
+                    self._send_error_response(500, "Market Screener Error", str(err), "Failed to screen markets.", origin=origin)
                     return
 
             if path == "/api/v1/market/overview":
@@ -1572,6 +1631,12 @@ def create_server(
         market_overview_service=market_overview_service,
     )
 
+    market_screener_service = MarketScreenerService(
+        security_service=security_service,
+        provider_operations=provider_operations,
+        signal_presenter=presenter,
+    )
+
     # Perform startup recovery and persistence integrity validation
     recovery_status = health_service.validate_persistence_integrity()
     log_operational_event(
@@ -1605,6 +1670,7 @@ def create_server(
     CustomHandler.provider_inspection_service = provider_inspection_service
     CustomHandler.provider_operations = provider_operations
     CustomHandler.market_overview_service = market_overview_service
+    CustomHandler.market_screener_service = market_screener_service
     CustomHandler.static_dir = resolved_static_dir
 
     server = ThreadingHTTPServer((host, port), CustomHandler)

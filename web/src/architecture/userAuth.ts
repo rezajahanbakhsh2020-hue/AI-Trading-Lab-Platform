@@ -332,6 +332,83 @@ export function renewCustomerAccount(
   };
 }
 
+export interface LoginResult {
+  success: boolean;
+  message: string;
+  session?: AuthSession;
+}
+
+export async function loginWithPasswordApi(
+  userId: string,
+  plaintextPassword: string
+): Promise<LoginResult> {
+  try {
+    const res = await fetch("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: userId.trim(),
+        password: plaintextPassword.trim(),
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success || !data.token || !data.user) {
+      return {
+        success: false,
+        message: data.error?.why || data.message || "Invalid credentials",
+      };
+    }
+
+    const userAccount: UserAccount = {
+      userId: data.user.user_id,
+      role: data.user.role,
+      isActive: data.user.is_active ?? true,
+      isPermanentAdmin: data.user.is_permanent_admin ?? false,
+      activationTimestamp: data.user.activation_timestamp ?? null,
+      expirationTimestamp: data.user.expiration_timestamp ?? null,
+      allowedSymbols: data.user.allowed_symbols || ["XAUUSD"],
+      allowedStrategies: data.user.allowed_strategies || [],
+      detail: data.user.detail,
+      permissions: data.user.permissions || [],
+    };
+
+    const session: AuthSession = {
+      token: data.token,
+      user: userAccount,
+      loginTime: Math.floor(Date.now() / 1000),
+    };
+
+    saveSession(session);
+
+    return {
+      success: true,
+      message: "Login successful",
+      session,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err.message || "Network error logging in.",
+    };
+  }
+}
+
+export async function logoutApi(sessionToken: string | null): Promise<void> {
+  clearSession();
+  if (!sessionToken) return;
+  try {
+    await fetch("/api/v1/auth/logout", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${sessionToken}`,
+      },
+    });
+  } catch {
+    // Session cleared client-side even if network fails
+  }
+}
+
 export async function requestPasswordRecoveryApi(
   userId: string,
   recoveryEmail: string

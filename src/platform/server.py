@@ -953,14 +953,14 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                 try:
                     req_data = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
                 except Exception:
-                    self._send_error_response(400, "Invalid JSON Request", "Request body was not valid JSON.", "Provide valid JSON with user_id and recovery_email.", origin=origin)
+                    self._send_error_response(400, "Invalid JSON Request", "Request body was not valid JSON.", "Provide valid JSON with user_id or recovery_email.", origin=origin)
                     return
 
-                user_id = str(req_data.get("user_id", "")).strip()
+                user_id = str(req_data.get("user_id", "")).strip() if "user_id" in req_data else None
                 email = str(req_data.get("recovery_email", "")).strip()
 
-                if not user_id or not email:
-                    self._send_error_response(400, "Missing Parameters", "Both 'user_id' and 'recovery_email' fields are required.", "Provide user_id and recovery_email.", origin=origin)
+                if not user_id and not email:
+                    self._send_error_response(400, "Missing Parameters", "At least 'recovery_email' or 'user_id' field is required.", "Provide recovery_email or user_id.", origin=origin)
                     return
 
                 res = self.server_user_auth_service.request_password_recovery(user_id, email)

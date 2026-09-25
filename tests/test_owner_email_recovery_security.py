@@ -273,3 +273,31 @@ def test_secret_redaction_and_enumeration_defense():
     assert res_fake["message"] == res_real["message"]
     assert res_fake["success"] is True
     assert res_real["success"] is True
+
+
+def test_server_email_service_wiring_integration():
+    """Verify create_server wires EmailDeliveryService into UserAuthorizationService and NotificationDeliveryService."""
+    from src.platform.server import create_server
+    cfg = PlatformConfig(
+        app_env="development",
+        email_provider="mock",
+        email_from="server_auth@platform.local",
+    )
+
+    server = create_server(host="127.0.0.1", port=0, config=cfg)
+    handler_cls = server.RequestHandlerClass
+
+    assert handler_cls.server_user_auth_service._email_service is not None
+    assert handler_cls.notification_delivery_service._email_service is not None
+
+    # Test recovery request through server user auth service
+    res = handler_cls.server_user_auth_service.request_password_recovery(
+        "admin_owner", "reza.jahanbakhsh2020@gmail.com"
+    )
+    assert res["success"] is True
+    assert res["delivery_status"] == "SENT"
+    assert res["recovery_token"] is None  # Omitted when sent via mock adapter
+
+    mock_adapter = handler_cls.server_user_auth_service._email_service.adapter
+    assert len(mock_adapter.sent_messages) == 1
+    assert mock_adapter.sent_messages[0]["to_email"] == "reza.jahanbakhsh2020@gmail.com"

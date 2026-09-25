@@ -36,6 +36,7 @@ from src.platform.domain.order_intent import OrderLifecycleState
 from src.platform.services.market_screener import MarketScreenerService
 from src.platform.services.notification import NotificationService
 from src.platform.services.notification_delivery import NotificationDeliveryService
+from src.platform.services.email_delivery import EmailDeliveryService
 from src.platform.services.audit_control import PlatformAuditControlService
 from src.platform.services.ai_gateway import AIGatewayService
 from src.platform.services.persistence_recovery import PersistenceRecoveryEngine
@@ -1550,9 +1551,10 @@ def create_server(
         if not cfg.session_secret or cfg.session_secret == "dev_session_secret_key_change_in_production_2026" or len(cfg.session_secret) < 32:
             raise RuntimeError("CRITICAL PRODUCTION SECURITY FAILURE: SESSION_SECRET is unset or too weak.")
 
+    email_delivery_service = EmailDeliveryService(config=cfg)
     user_repo = FileBackedUserRepository(storage_dir=cfg.persistence_dir)
     ws_repo = FileBackedWorkspaceRepository(storage_dir=cfg.persistence_dir)
-    user_auth_service = UserAuthorizationService(repository=user_repo, config=cfg)
+    user_auth_service = UserAuthorizationService(repository=user_repo, config=cfg, email_service=email_delivery_service)
     security_service = SecurityBoundaryService()
     workspace_service = WorkspaceService(repository=ws_repo, security_service=security_service)
     notification_service = NotificationService(security_service=security_service, workspace_service=workspace_service)
@@ -1561,6 +1563,7 @@ def create_server(
         delivery_port=delivery_adapter,
         user_auth_service=user_auth_service,
         security_service=security_service,
+        email_service=email_delivery_service,
     )
 
     health_service = SystemHealthService(config=cfg)

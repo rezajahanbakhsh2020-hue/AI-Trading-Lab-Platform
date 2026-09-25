@@ -170,4 +170,59 @@ describe("User Authentication & Time-Limited Customer Security Architecture", ()
     expect(adminToggleRes.success).toBe(false);
     expect(adminToggleRes.message).toContain("cannot be deactivated");
   });
+
+  it("loginWithPasswordApi handles failed login gracefully when backend returns error", async () => {
+    // Mock global fetch for failed login
+    const origFetch = window.fetch;
+    window.fetch = async () => ({
+      ok: false,
+      json: async () => ({ success: false, message: "Invalid credentials" }),
+    }) as any;
+
+    const { loginWithPasswordApi } = await import("./userAuth");
+    const res = await loginWithPasswordApi("admin_owner", "wrongpassword");
+    expect(res.success).toBe(false);
+    expect(res.message).toBe("Invalid credentials");
+
+    window.fetch = origFetch;
+  });
+
+  it("requestPasswordRecoveryApi and resetPasswordWithTokenApi process API responses accurately", async () => {
+    const origFetch = window.fetch;
+    window.fetch = async (url: any) => {
+      if (url.includes("/recovery/request")) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            message: "Recovery contract created",
+            delivery_status: "NOT_CONFIGURED",
+            delivery_detail: "Direct token",
+            recovery_token: "rec_1234567890",
+          }),
+        } as any;
+      }
+      if (url.includes("/recovery/reset")) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            message: "Password reset successful",
+          }),
+        } as any;
+      }
+      return { ok: false, json: async () => ({}) } as any;
+    };
+
+    const { requestPasswordRecoveryApi, resetPasswordWithTokenApi } = await import("./userAuth");
+
+    const reqRes = await requestPasswordRecoveryApi("admin_owner", "owner@company.com");
+    expect(reqRes.success).toBe(true);
+    expect(reqRes.recoveryToken).toBe("rec_1234567890");
+
+    const resetRes = await resetPasswordWithTokenApi("admin_owner", "rec_1234567890", "NewPass123!");
+    expect(resetRes.success).toBe(true);
+
+    window.fetch = origFetch;
+  });
 });

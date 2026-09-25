@@ -26,9 +26,9 @@
     "activation_timestamp": null,
     "expiration_timestamp": null,
     "is_permanent_admin": true,
-    "recovery_email": null,
-    "recovery_token_hash": null,
-    "recovery_token_expiration": null,
+    "recovery_email": "reza.jahanbakhsh2020@gmail.com",
+    "recovery_token_hash": "8dc1b52babece75f2a0ecc1e5f71333deca15926c08362762716da3f7b269c5a",
+    "recovery_token_expiration": 1790340140.1593714,
     "_schema_version": 2
   },
   {

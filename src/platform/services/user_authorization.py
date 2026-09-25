@@ -290,17 +290,29 @@ class UserAuthorizationService:
         return True, user
 
     def request_password_recovery(
-        self, user_id: str, recovery_email: str
+        self, user_id: Optional[str], recovery_email: str
     ) -> Dict[str, Any]:
         """Initiate password recovery flow. Generates a token contract and dispatches via EmailDeliveryService if configured.
 
+        Supports lookup by explicit user_id OR recovery_email for account resolution.
         Exposes honest delivery state ('SENT', 'NOT_CONFIGURED', 'DELIVERY_FAILED') and supports user enumeration defense.
 
         Returns:
             Dict containing success, message, delivery_status, and recovery_token (omitted/None if email is sent externally).
         """
-        user = self.get_user_authorization(user_id)
         generic_msg = "If the user account and recovery email match our records, a recovery token contract has been created."
+        clean_email = recovery_email.strip().lower() if recovery_email else ""
+
+        user: Optional[UserAuthorization] = None
+        if user_id and user_id.strip():
+            user = self.get_user_authorization(user_id.strip())
+
+        # If user not found by ID or user_id not supplied, attempt lookup by recovery email
+        if not user and clean_email:
+            for candidate in self._users_by_id.values():
+                if candidate.recovery_email and candidate.recovery_email.lower() == clean_email:
+                    user = candidate
+                    break
 
         if not user or not user.is_account_valid():
             self._audit_logger.log(
@@ -315,12 +327,12 @@ class UserAuthorizationService:
                 "success": True,
                 "message": generic_msg,
                 "delivery_status": "NOT_CONFIGURED",
-                "delivery_detail": "External email provider is not configured. Token generated for direct operator/modal presentation.",
+                "delivery_detail": "External email provider is not configured.",
                 "recovery_token": None,
             }
 
-        # Validate recovery_email if account has one configured, otherwise set it
-        if user.recovery_email and user.recovery_email.lower() != recovery_email.strip().lower():
+        # Validate recovery_email if account has one configured and email was provided
+        if user.recovery_email and clean_email and user.recovery_email.lower() != clean_email:
             self._audit_logger.log(
                 user_id=user.user_id,
                 event_type="AUTH_RECOVERY_REQUESTED",

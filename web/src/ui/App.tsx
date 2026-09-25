@@ -307,12 +307,21 @@ export function App() {
   };
 
   const handleLogout = () => {
+    const token = authState.sessionToken;
     clearSession();
     setAuthState({
       isLoggedIn: false,
       sessionToken: null,
       userAccount: null,
     });
+    if (token) {
+      fetch("/api/v1/auth/logout", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {
+        // Ignore unhandled logout network error since client session is invalidated
+      });
+    }
   };
 
   return (

@@ -193,7 +193,7 @@ export async function updateProject1Lifecycle(
  * Test-only fixture helper. Strictly forbidden from entering production runtime paths.
  */
 export function getTestOnlySampleProject1GatewaySummary(): Project1GatewayMonitoringSummary {
-  if (process.env.NODE_ENV === "production") {
+  if (import.meta.env?.MODE === "production") {
     throw new Error("TEST-ONLY FIXTURE: getTestOnlySampleProject1GatewaySummary cannot be called in production.");
   }
   return {

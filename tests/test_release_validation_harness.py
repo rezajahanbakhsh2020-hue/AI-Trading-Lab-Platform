@@ -53,6 +53,7 @@ def release_validation_env(tmp_path):
         allowed_origins=("https://release.yourdomain.com", "http://127.0.0.1:8000"),
         session_secret="release_validation_super_secret_session_key_32_chars_2026!",
         initial_admin_password="ReleaseAdminPassword2026!",
+        project1_service_key="release_harness_p1_key_16bytes_2026!",
         public_base_url="https://trade.yourdomain.com",
         persistence_dir=p_dir,
     )
@@ -356,7 +357,7 @@ def test_persistence_restart_integrity(release_validation_env):
 
 def test_project1_integration_gateway_contract(running_release_server):
     """F. Verify Project 1 Gateway capabilities, contract version checks, and signal ingestion."""
-    base_url, _, _, _, _ = running_release_server
+    base_url, cfg, _, _, _ = running_release_server
 
     # Admin Login
     _, _, body_adm = _http_request(
@@ -374,26 +375,32 @@ def test_project1_integration_gateway_contract(running_release_server):
     assert caps["guarantees"]["non_calculation"] is True
 
     # 2. Ingest signal with valid contract v1.0
+    from datetime import datetime, timezone
     signal_payload = {
         "contract_version": "1.0",
-        "command_type": "EMIT_SIGNAL",
-        "integration_id": "int_rel_1001",
-        "signal_id": "sig_rel_1001",
-        "user_id": "admin_owner",
-        "symbol": "BTC/USDT",
-        "signal_type": "buy",
-        "timeframe": "1h",
-        "entry_price": 65000.0,
-        "stop_loss": 64000.0,
-        "take_profit_1": 67000.0,
-        "take_profit_2": 69000.0,
-        "take_profit_3": 72000.0,
-        "timestamp": time.time(),
+        "event_id": "int_rel_1001",
+        "event_type": "TRADING_SIGNAL",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "instrument": {"symbol": "BTC/USDT", "interval": "1h"},
+        "signal": {
+            "publication_id": "int_rel_1001",
+            "signal_id": "sig_rel_1001",
+            "decision": "buy",
+            "strategy": "RelStrategy",
+        },
+        "trade_setup": {
+            "entry_price": 65000.0,
+            "stop_loss": 64000.0,
+            "tp1": 67000.0,
+            "tp2": 69000.0,
+            "tp3": 72000.0,
+        },
+        "provenance": {"provenance_type": "live_signal"},
     }
     status_ing, _, body_ing = _http_request(
         f"{base_url}/api/v1/integration/project1/ingest",
         method="POST",
-        headers={"Authorization": "Bearer dev_project1_service_key_2026"},
+        headers={"Authorization": f"Bearer {cfg.project1_service_key}"},
         payload=signal_payload,
     )
     assert status_ing == 200
@@ -405,7 +412,7 @@ def test_project1_integration_gateway_contract(running_release_server):
     status_unsupported, _, body_unsupported = _http_request(
         f"{base_url}/api/v1/integration/project1/ingest",
         method="POST",
-            headers={"Authorization": "Bearer dev_project1_service_key_2026"},
+        headers={"Authorization": f"Bearer {cfg.project1_service_key}"},
         payload=unsupported_payload,
     )
     assert status_unsupported == 422

@@ -64,6 +64,41 @@ def mock_users():
     }
 
 
+def _make_canonical_v1_payload(
+    publication_id="pub_001",
+    signal_id="sig_cust_101",
+    symbol="XAUUSD",
+    decision="buy",
+    timestamp="2026-03-30T12:00:00Z",
+    user_id=None,
+    entry_price=2650.0,
+    stop_loss=2635.0,
+    take_profit_1=2680.0,
+):
+    p = {
+        "contract_version": "1.0",
+        "event_id": publication_id,
+        "event_type": "TRADING_SIGNAL",
+        "timestamp": timestamp,
+        "instrument": {"symbol": symbol, "interval": "1h"},
+        "signal": {
+            "publication_id": publication_id,
+            "signal_id": signal_id,
+            "decision": decision,
+            "strategy": "GoldTrendv1",
+        },
+        "trade_setup": {
+            "entry_price": entry_price,
+            "stop_loss": stop_loss,
+            "take_profit_1": take_profit_1,
+        },
+        "provenance": {"provenance_type": "live_signal"},
+    }
+    if user_id:
+        p["user_id"] = user_id
+    return p
+
+
 def test_contract_capabilities():
     caps = get_project1_contract_capabilities()
     assert caps["gateway_name"] == "Project1IntegrationGateway"
@@ -72,53 +107,24 @@ def test_contract_capabilities():
 
 
 def test_payload_validation_valid_signal():
-    payload = {
-        "integration_id": "int_001",
-        "signal_id": "sig_xau_001",
-        "symbol": "XAUUSD",
-        "signal_type": "buy",
-        "timestamp": 1700000000.0,
-        "contract_version": "1.0",
-        "entry_price": 2650.5,
-        "stop_loss": 2635.0,
-        "take_profit_1": 2670.0,
-        "confidence": 0.85,
-        "trailing_stop": {
-            "distance": 15.0,
-            "is_active": True,
-        },
-    }
+    payload = _make_canonical_v1_payload()
     val = validate_project1_contract_payload(payload)
     assert val.is_valid is True
     assert val.sanitized_payload["symbol"] == "XAUUSD"
     assert val.sanitized_payload["signal_type"] == "buy"
-    assert val.sanitized_payload["trailing_stop"]["distance"] == 15.0
 
 
 def test_payload_validation_unsupported_version():
-    payload = {
-        "integration_id": "int_001",
-        "signal_id": "sig_xau_001",
-        "symbol": "XAUUSD",
-        "signal_type": "buy",
-        "timestamp": 1700000000.0,
-        "contract_version": "2.0",
-    }
+    payload = _make_canonical_v1_payload()
+    payload["contract_version"] = "2.0"
     val = validate_project1_contract_payload(payload)
     assert val.is_valid is False
     assert any("Unsupported contract version" in e for e in val.errors)
 
 
 def test_payload_validation_invalid_prices():
-    payload = {
-        "integration_id": "int_001",
-        "signal_id": "sig_xau_001",
-        "symbol": "XAUUSD",
-        "signal_type": "buy",
-        "timestamp": 1700000000.0,
-        "contract_version": "1.0",
-        "entry_price": -100.0,
-    }
+    payload = _make_canonical_v1_payload()
+    payload["trade_setup"]["entry_price"] = -100.0
     val = validate_project1_contract_payload(payload)
     assert val.is_valid is False
     assert any("entry_price must be a positive finite number" in e for e in val.errors)
@@ -141,17 +147,7 @@ def test_gateway_ingest_and_retrieve(temp_repo_path, mock_users):
     )
 
     cust = mock_users["customer"]
-    payload = {
-        "integration_id": "int_cust_001",
-        "signal_id": "sig_cust_101",
-        "symbol": "XAUUSD",
-        "signal_type": "buy",
-        "timestamp": 1700000000.0,
-        "contract_version": "1.0",
-        "entry_price": 2650.0,
-        "stop_loss": 2635.0,
-        "take_profit_1": 2680.0,
-    }
+    payload = _make_canonical_v1_payload()
 
     res = service.ingest_signal_payload(user=cust, payload=payload)
     assert res["success"] is True
@@ -170,15 +166,7 @@ def test_gateway_customer_isolation_idor(temp_repo_path, mock_users):
     service = Project1IntegrationGatewayService(repository=repo)
 
     cust = mock_users["customer"]
-    payload = {
-        "integration_id": "int_cust_001",
-        "signal_id": "sig_cust_101",
-        "symbol": "XAUUSD",
-        "signal_type": "buy",
-        "timestamp": 1700000000.0,
-        "contract_version": "1.0",
-        "user_id": "usr_customer_202",  # Attempt IDOR to target user 202
-    }
+    payload = _make_canonical_v1_payload(user_id="usr_customer_202")
 
     res = service.ingest_signal_payload(user=cust, payload=payload)
     assert res["success"] is False
@@ -195,14 +183,7 @@ def test_gateway_replay_protection_idempotency(temp_repo_path, mock_users):
     service = Project1IntegrationGatewayService(repository=repo)
 
     cust = mock_users["customer"]
-    payload = {
-        "integration_id": "int_cust_001",
-        "signal_id": "sig_idemp_101",
-        "symbol": "XAUUSD",
-        "signal_type": "sell",
-        "timestamp": 1700000000.0,
-        "contract_version": "1.0",
-    }
+    payload = _make_canonical_v1_payload()
 
     res1 = service.ingest_signal_payload(user=cust, payload=payload)
     assert res1["success"] is True
@@ -220,14 +201,7 @@ def test_gateway_lifecycle_update(temp_repo_path, mock_users):
     service = Project1IntegrationGatewayService(repository=repo)
 
     cust = mock_users["customer"]
-    payload = {
-        "integration_id": "int_cust_001",
-        "signal_id": "sig_life_101",
-        "symbol": "XAUUSD",
-        "signal_type": "buy",
-        "timestamp": 1700000000.0,
-        "contract_version": "1.0",
-    }
+    payload = _make_canonical_v1_payload(signal_id="sig_life_101")
 
     service.ingest_signal_payload(user=cust, payload=payload)
 
@@ -253,14 +227,7 @@ def test_persistence_reload_across_restart(temp_repo_path, mock_users):
     # Session 1: Ingest record
     repo1 = FileBackedProject1IntegrationRepository(temp_repo_path)
     service1 = Project1IntegrationGatewayService(repository=repo1)
-    payload = {
-        "integration_id": "int_restart_001",
-        "signal_id": "sig_restart_001",
-        "symbol": "EURUSD",
-        "signal_type": "buy",
-        "timestamp": 1700000000.0,
-        "contract_version": "1.0",
-    }
+    payload = _make_canonical_v1_payload(signal_id="sig_restart_001", symbol="EURUSD")
     service1.ingest_signal_payload(user=cust, payload=payload)
 
     # Session 2: Reload repository from file path

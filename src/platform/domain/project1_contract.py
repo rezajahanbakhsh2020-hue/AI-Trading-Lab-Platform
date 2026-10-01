@@ -406,21 +406,23 @@ def validate_project1_contract_payload(
     if command_type not in ALLOWED_COMMAND_TYPES and event_type not in ALLOWED_EVENT_TYPES:
         errors.append(f"Invalid command_type/event_type '{command_type}'. Allowed: {list(ALLOWED_COMMAND_TYPES)}")
 
-    # 3. Lineage Identity Extraction
-    publication_id = (
-        raw_payload.get("publication_id")
-        or signal_obj.get("publication_id")
-        or raw_payload.get("event_id")
-        or raw_payload.get("integration_id")
-    )
-    event_id = raw_payload.get("event_id") or raw_payload.get("integration_id") or publication_id
+    # 3. Strict Canonical Boundary Layout Check: Reject flat legacy payloads or mixed ambiguous payloads on Contract v1
+    if command_type in ("EMIT_SIGNAL", "TRADING_SIGNAL"):
+        if not is_nested_v1:
+            errors.append("Flat legacy payloads are rejected at the canonical P1 service boundary. Canonical Contract v1 requires nested payload structure.")
+        elif not signal_obj or not instrument_obj or not trade_setup_obj:
+            errors.append("Missing canonical nested sections ('signal', 'instrument', 'trade_setup').")
+
+    # 4. Strict Lineage Identity Extraction (Never synthesize decision_id = signal_id or publication_id = event_id)
+    publication_id = raw_payload.get("publication_id") or signal_obj.get("publication_id") or raw_payload.get("event_id") or raw_payload.get("integration_id")
+    event_id = raw_payload.get("event_id") or raw_payload.get("integration_id")
     signal_id = signal_obj.get("signal_id") or raw_payload.get("signal_id")
-    decision_id = signal_obj.get("decision_id") or raw_payload.get("decision_id") or signal_id
-    candidate_id = signal_obj.get("candidate_id") or raw_payload.get("candidate_id")
-    research_evidence_id = signal_obj.get("research_evidence_id") or raw_payload.get("research_evidence_id") or provenance_obj.get("research_evidence_id")
-    research_fingerprint = signal_obj.get("research_fingerprint") or raw_payload.get("research_fingerprint") or provenance_obj.get("research_fingerprint")
-    canonical_live_decision_fingerprint = signal_obj.get("canonical_live_decision_fingerprint") or raw_payload.get("canonical_live_decision_fingerprint") or provenance_obj.get("canonical_live_decision_fingerprint")
-    runtime_authorization_fingerprint = signal_obj.get("runtime_authorization_fingerprint") or raw_payload.get("runtime_authorization_fingerprint") or provenance_obj.get("runtime_authorization_fingerprint")
+    decision_id = signal_obj.get("decision_id") if "decision_id" in signal_obj else raw_payload.get("decision_id")
+    candidate_id = signal_obj.get("candidate_id") if "candidate_id" in signal_obj else raw_payload.get("candidate_id")
+    research_evidence_id = signal_obj.get("research_evidence_id") or provenance_obj.get("research_evidence_id") or raw_payload.get("research_evidence_id")
+    research_fingerprint = signal_obj.get("research_fingerprint") or provenance_obj.get("research_fingerprint") or raw_payload.get("research_fingerprint")
+    canonical_live_decision_fingerprint = signal_obj.get("canonical_live_decision_fingerprint") or provenance_obj.get("canonical_live_decision_fingerprint") or raw_payload.get("canonical_live_decision_fingerprint")
+    runtime_authorization_fingerprint = signal_obj.get("runtime_authorization_fingerprint") or provenance_obj.get("runtime_authorization_fingerprint") or raw_payload.get("runtime_authorization_fingerprint")
 
     integration_id = publication_id or event_id or signal_id
     if not isinstance(integration_id, str) or not integration_id.strip():
@@ -558,10 +560,10 @@ def validate_project1_contract_payload(
     # Construct canonical P2 internal integration record
     sanitized: Dict[str, Any] = {
         "integration_id": str(integration_id).strip(),
-        "publication_id": str(publication_id).strip() if publication_id else str(integration_id).strip(),
-        "event_id": str(event_id).strip() if event_id else str(integration_id).strip(),
+        "publication_id": str(publication_id).strip() if publication_id else None,
+        "event_id": str(event_id).strip() if event_id else None,
         "signal_id": str(signal_id).strip(),
-        "decision_id": str(decision_id).strip() if decision_id else str(signal_id).strip(),
+        "decision_id": str(decision_id).strip() if decision_id else None,
         "candidate_id": str(candidate_id).strip() if candidate_id else None,
         "research_evidence_id": str(research_evidence_id).strip() if research_evidence_id else None,
         "research_fingerprint": str(research_fingerprint).strip() if research_fingerprint else None,

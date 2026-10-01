@@ -79,6 +79,14 @@ class PlatformConfig:
             ):
                 raise ValueError("INITIAL_ADMIN_PASSWORD must be explicitly set to a strong custom password in production.")
 
+            if self.project1_service_key in (
+                "dev_project1_service_key_2026",
+                "secret",
+                "changeme",
+                "service_key",
+            ) or len(self.project1_service_key) < 16:
+                raise ValueError("PROJECT1_SERVICE_KEY must be explicitly set to a strong custom service key (at least 16 chars) in production.")
+
             clean_pub_url = self.public_base_url.lower()
             if any(local in clean_pub_url for local in ("localhost", "127.0.0.1", "0.0.0.0", "::1")):
                 raise ValueError("PUBLIC_BASE_URL must be explicitly set to a valid non-localhost external public URL in production.")

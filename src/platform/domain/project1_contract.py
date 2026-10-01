@@ -406,11 +406,9 @@ def validate_project1_contract_payload(
     if command_type not in ALLOWED_COMMAND_TYPES and event_type not in ALLOWED_EVENT_TYPES:
         errors.append(f"Invalid command_type/event_type '{command_type}'. Allowed: {list(ALLOWED_COMMAND_TYPES)}")
 
-    # 3. Strict Canonical Boundary Layout Check: Reject flat legacy payloads or mixed ambiguous payloads on Contract v1
+    # 3. Canonical Boundary Layout Check
     if command_type in ("EMIT_SIGNAL", "TRADING_SIGNAL"):
-        if not is_nested_v1:
-            errors.append("Flat legacy payloads are rejected at the canonical P1 service boundary. Canonical Contract v1 requires nested payload structure.")
-        elif not signal_obj or not instrument_obj or not trade_setup_obj:
+        if is_nested_v1 and (not signal_obj or not instrument_obj or not trade_setup_obj):
             errors.append("Missing canonical nested sections ('signal', 'instrument', 'trade_setup').")
 
     # 4. Strict Lineage Identity Extraction (Never synthesize decision_id = signal_id or publication_id = event_id)

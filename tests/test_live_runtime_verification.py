@@ -94,7 +94,7 @@ def test_live_runtime_http_isolation(running_runtime_server, tmp_path):
     ingest_req = urllib.request.Request(
         f"{base_url}/api/v1/integration/project1/ingest",
         data=json.dumps(hist_payload).encode("utf-8"),
-        headers=auth_headers,
+        headers={"Content-Type": "application/json", "Authorization": "Bearer dev_project1_service_key_2026"},
         method="POST",
     )
     with urllib.request.urlopen(ingest_req) as resp:
@@ -138,7 +138,7 @@ def test_live_runtime_http_isolation(running_runtime_server, tmp_path):
     ingest_live_req = urllib.request.Request(
         f"{base_url}/api/v1/integration/project1/ingest",
         data=json.dumps(live_payload).encode("utf-8"),
-        headers=auth_headers,
+            headers={"Content-Type": "application/json", "Authorization": "Bearer dev_project1_service_key_2026"},
         method="POST",
     )
     with urllib.request.urlopen(ingest_live_req) as resp:

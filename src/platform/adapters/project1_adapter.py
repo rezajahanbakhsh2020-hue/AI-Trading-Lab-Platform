@@ -281,6 +281,18 @@ class Project1GatewayAdapter(Project1IntegrationPort):
         meta["signal_timestamp"] = sig_event_ts
         meta["ingested_at"] = ingested_ts
 
+        # Preserve complete P1 publication lineage
+        meta["publication_id"] = target_rec.get("publication_id")
+        meta["event_id"] = target_rec.get("event_id")
+        meta["decision_id"] = target_rec.get("decision_id")
+        meta["candidate_id"] = target_rec.get("candidate_id")
+        meta["research_evidence_id"] = target_rec.get("research_evidence_id")
+        meta["research_fingerprint"] = target_rec.get("research_fingerprint")
+        meta["canonical_live_decision_fingerprint"] = target_rec.get("canonical_live_decision_fingerprint")
+        meta["runtime_authorization_fingerprint"] = target_rec.get("runtime_authorization_fingerprint")
+        meta["operational_stability_score"] = target_rec.get("operational_stability_score")
+        meta["strategy_version"] = target_rec.get("strategy_version")
+
         target_sym = str(target_rec.get("symbol") or symbol).strip().upper()
         return PresentedSignal(
             signal_id=str(target_rec.get("signal_id") or f"p1_{target_sym.lower()}_{int(sig_event_ts)}"),

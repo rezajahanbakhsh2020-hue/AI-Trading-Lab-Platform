@@ -18,11 +18,11 @@ describe("Project 1 Integration Gateway Architecture Suite", () => {
 
   it("returns sample Project 1 Gateway summary with non-calculation guarantees", () => {
     const summary = getSampleProject1GatewaySummary();
-    expect(summary.connected).toBe(true);
+    expect(summary.connected).toBe(false);
     expect(summary.contractVersion).toBe("1.0");
     expect(summary.supportedVersions).toContain("1.0");
     expect(summary.capabilities?.guarantees.non_calculation).toBe(true);
-    expect(summary.recentRecords.length).toBeGreaterThan(0);
+    expect(summary.recentRecords.length).toBe(0);
   });
 
   it("fetches Project 1 capabilities from API endpoint", async () => {

@@ -42,15 +42,23 @@ def test_platform_config_production_rejects_default_initial_admin_password():
 
 def test_platform_config_production_public_base_url_required():
     valid_secret = "a_very_long_secure_production_secret_key_32bytes"
+    valid_p1_key = "a_very_long_secure_project1_service_key_16bytes"
     with pytest.raises(ValueError, match="PUBLIC_BASE_URL must be explicitly set to a valid non-localhost"):
-        PlatformConfig(app_env="production", session_secret=valid_secret, public_base_url="http://localhost:3000")
+        PlatformConfig(
+            app_env="production",
+            session_secret=valid_secret,
+            project1_service_key=valid_p1_key,
+            public_base_url="http://localhost:3000",
+        )
 
 
 def test_platform_config_production_valid():
     valid_secret = "a_very_long_secure_production_secret_key_32bytes"
+    valid_p1_key = "a_very_long_secure_project1_service_key_16bytes"
     config = PlatformConfig(
         app_env="production",
         session_secret=valid_secret,
+        project1_service_key=valid_p1_key,
         public_base_url="https://trade.yourdomain.com",
     )
     assert config.is_production

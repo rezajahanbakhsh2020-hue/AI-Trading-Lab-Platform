@@ -59,6 +59,7 @@ def running_prod_server(temp_smoke_dir):
         allowed_origins=("https://trade.yourdomain.com", "http://127.0.0.1:8000"),
         session_secret="prod_smoke_test_valid_session_secret_key_32bytes!",
         initial_admin_password="ProdSmokeAdminPassword2026!",
+        project1_service_key="prod_smoke_p1_key_16bytes_2026!",
         public_base_url="https://trade.yourdomain.com",
         persistence_dir=p_dir,
     )

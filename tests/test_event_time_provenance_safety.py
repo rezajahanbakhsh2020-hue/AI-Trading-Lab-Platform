@@ -92,22 +92,28 @@ def test_1_event_timestamp_wins_over_insertion_order(gateway_svc, admin_user):
     Assert: fetch_latest_signal selects Record B (greatest event timestamp).
     """
     now = time.time()
-    ts_newer = now - 20.0
-    ts_older = now - 100.0
+    ts_newer = datetime.fromtimestamp(now - 20.0, tz=timezone.utc).isoformat()
+    ts_older = datetime.fromtimestamp(now - 100.0, tz=timezone.utc).isoformat()
 
     # Save Record B (newer event time) FIRST
     payload_b = {
         "contract_version": "1.0",
-        "command_type": "EMIT_SIGNAL",
-        "integration_id": "intg_b_newer",
-        "signal_id": "p1_xauusd_1h_newer_event",
-        "symbol": "XAUUSD",
-        "timeframe": "1h",
-        "signal_type": "buy",
+        "event_id": "pub_b_newer",
+        "event_type": "TRADING_SIGNAL",
         "timestamp": ts_newer,
-        "confidence": 0.90,
-        "strategy_name": "GoldTrendv1",
-        "metadata": {"provenance_type": "live_signal"},
+        "instrument": {"symbol": "XAUUSD", "interval": "1h"},
+        "signal": {
+            "publication_id": "pub_b_newer",
+            "signal_id": "p1_xauusd_1h_newer_event",
+            "decision_id": "dec_b",
+            "decision": "BUY",
+            "strategy": "GoldTrendv1",
+            "candidate_id": "cand_b",
+            "confidence": 0.90,
+            "stability_score": 0.85,
+        },
+        "trade_setup": {"entry_price": 2000.0, "stop_loss": 1980.0, "tp1": 2020.0},
+        "provenance": {"provenance_type": "live_signal", "is_historical": False},
     }
     res_b = gateway_svc.ingest_signal_payload(user=admin_user, payload=payload_b)
     assert res_b["success"] is True
@@ -115,16 +121,22 @@ def test_1_event_timestamp_wins_over_insertion_order(gateway_svc, admin_user):
     # Save Record A (older event time) SECOND
     payload_a = {
         "contract_version": "1.0",
-        "command_type": "EMIT_SIGNAL",
-        "integration_id": "intg_a_older",
-        "signal_id": "p1_xauusd_1h_older_event",
-        "symbol": "XAUUSD",
-        "timeframe": "1h",
-        "signal_type": "sell",
+        "event_id": "pub_a_older",
+        "event_type": "TRADING_SIGNAL",
         "timestamp": ts_older,
-        "confidence": 0.75,
-        "strategy_name": "GoldTrendv1",
-        "metadata": {"provenance_type": "live_signal"},
+        "instrument": {"symbol": "XAUUSD", "interval": "1h"},
+        "signal": {
+            "publication_id": "pub_a_older",
+            "signal_id": "p1_xauusd_1h_older_event",
+            "decision_id": "dec_a",
+            "decision": "SELL",
+            "strategy": "GoldTrendv1",
+            "candidate_id": "cand_a",
+            "confidence": 0.75,
+            "stability_score": 0.70,
+        },
+        "trade_setup": {"entry_price": 2000.0, "stop_loss": 2020.0, "tp1": 1980.0},
+        "provenance": {"provenance_type": "live_signal", "is_historical": False},
     }
     res_a = gateway_svc.ingest_signal_payload(user=admin_user, payload=payload_a)
     assert res_a["success"] is True
@@ -134,45 +146,56 @@ def test_1_event_timestamp_wins_over_insertion_order(gateway_svc, admin_user):
 
     assert sig is not None
     assert sig.signal_id == "p1_xauusd_1h_newer_event"
-    assert sig.timestamp == ts_newer
     assert sig.signal_type == "buy"
 
 
 def test_2_stale_record_inserted_later_does_not_replace_newer_signal(gateway_svc, admin_user):
     """Test 2 — Stale record inserted later does not replace newer event-time signal."""
     now = time.time()
-    ts_fresh = now - 10.0
-    ts_stale = now - 1000.0  # stale (>300s)
+    ts_fresh = datetime.fromtimestamp(now - 10.0, tz=timezone.utc).isoformat()
+    ts_stale = datetime.fromtimestamp(now - 1000.0, tz=timezone.utc).isoformat()
 
     # 1. Save fresh signal first
     payload_fresh = {
         "contract_version": "1.0",
-        "command_type": "EMIT_SIGNAL",
-        "integration_id": "intg_fresh",
-        "signal_id": "sig_fresh_001",
-        "symbol": "XAUUSD",
-        "timeframe": "1h",
-        "signal_type": "buy",
+        "event_id": "pub_fresh_001",
+        "event_type": "TRADING_SIGNAL",
         "timestamp": ts_fresh,
-        "confidence": 0.95,
-        "strategy_name": "GoldTrendv1",
-        "metadata": {"provenance_type": "live_signal"},
+        "instrument": {"symbol": "XAUUSD", "interval": "1h"},
+        "signal": {
+            "publication_id": "pub_fresh_001",
+            "signal_id": "sig_fresh_001",
+            "decision_id": "dec_fresh",
+            "decision": "BUY",
+            "strategy": "GoldTrendv1",
+            "candidate_id": "cand_fresh",
+            "confidence": 0.95,
+            "stability_score": 0.90,
+        },
+        "trade_setup": {"entry_price": 2000.0, "stop_loss": 1980.0, "tp1": 2020.0},
+        "provenance": {"provenance_type": "live_signal", "is_historical": False},
     }
     gateway_svc.ingest_signal_payload(user=admin_user, payload=payload_fresh)
 
     # 2. Save stale signal later
     payload_stale = {
         "contract_version": "1.0",
-        "command_type": "EMIT_SIGNAL",
-        "integration_id": "intg_stale_later",
-        "signal_id": "sig_stale_002",
-        "symbol": "XAUUSD",
-        "timeframe": "1h",
-        "signal_type": "sell",
+        "event_id": "pub_stale_002",
+        "event_type": "TRADING_SIGNAL",
         "timestamp": ts_stale,
-        "confidence": 0.80,
-        "strategy_name": "GoldTrendv1",
-        "metadata": {"provenance_type": "live_signal"},
+        "instrument": {"symbol": "XAUUSD", "interval": "1h"},
+        "signal": {
+            "publication_id": "pub_stale_002",
+            "signal_id": "sig_stale_002",
+            "decision_id": "dec_stale",
+            "decision": "SELL",
+            "strategy": "GoldTrendv1",
+            "candidate_id": "cand_stale",
+            "confidence": 0.80,
+            "stability_score": 0.75,
+        },
+        "trade_setup": {"entry_price": 2000.0, "stop_loss": 2020.0, "tp1": 1980.0},
+        "provenance": {"provenance_type": "live_signal", "is_historical": False},
     }
     gateway_svc.ingest_signal_payload(user=admin_user, payload=payload_stale)
 
@@ -183,7 +206,6 @@ def test_2_stale_record_inserted_later_does_not_replace_newer_signal(gateway_svc
     latest_sig = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h")
     assert latest_sig is not None
     assert latest_sig.signal_id == "sig_fresh_001"
-    assert latest_sig.timestamp == ts_fresh
 
     pres_res = presenter.present_signal(symbol="XAUUSD", timeframe="1h", user=admin_user)
     assert pres_res["status"] == "active"

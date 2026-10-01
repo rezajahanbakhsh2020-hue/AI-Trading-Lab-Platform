@@ -62,33 +62,38 @@ def _login(base_url, user_id="demo_user", password="DevCustomerPass2026!"):
 
 def test_positive_end_to_end_project1_live_signal_path(running_server):
     """Prove authorized Project 1 live signal flows through HTTP Gateway to Snapshot preserving exact values."""
-    base_url, _, _ = running_server
+    base_url, cfg, _ = running_server
     token = _login(base_url)
 
-    now = time.time()
+    from datetime import datetime, timezone
+    now_iso = datetime.now(timezone.utc).isoformat()
     payload = {
         "contract_version": "1.0",
-        "command_type": "EMIT_SIGNAL",
-        "integration_id": "intg_e2e_live_001",
-        "signal_id": "sig_e2e_live_001",
-        "symbol": "XAUUSD",
-        "timeframe": "1h",
-        "signal_type": "buy",
-        "timestamp": now - 15.0,
-        "entry_price": 2765.50,
-        "stop_loss": 2748.00,
-        "take_profit_1": 2788.00,
-        "take_profit_2": 2810.00,
-        "confidence": 0.93,
-        "strategy_name": "E2ELiveGoldStrategy",
-        "metadata": {"provenance_type": "live_signal"},
+        "event_id": "pub_e2e_live_001",
+        "event_type": "TRADING_SIGNAL",
+        "timestamp": now_iso,
+        "instrument": {"symbol": "XAUUSD", "interval": "1h"},
+        "signal": {
+            "publication_id": "pub_e2e_live_001",
+            "signal_id": "sig_e2e_live_001",
+            "decision": "buy",
+            "strategy": "E2ELiveGoldStrategy",
+            "confidence": 0.93,
+        },
+        "trade_setup": {
+            "entry_price": 2765.50,
+            "stop_loss": 2748.00,
+            "tp1": 2788.00,
+            "tp2": 2810.00,
+        },
+        "provenance": {"provenance_type": "live_signal"},
     }
 
-    # 1. Ingest signal via POST /api/v1/integration/project1/ingest
+    # 1. Ingest signal via POST /api/v1/integration/project1/ingest using service credential
     req_ingest = urllib.request.Request(
         f"{base_url}/api/v1/integration/project1/ingest",
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {cfg.project1_service_key}", "Content-Type": "application/json"},
         method="POST",
     )
     with urllib.request.urlopen(req_ingest) as resp:
@@ -161,31 +166,36 @@ def test_negative_zero_records_produces_no_signal(running_server):
 
 def test_negative_stale_signal_produces_no_signal(running_server):
     """Prove HTTP ingestion of a stale signal (>300s) produces NO SIGNAL in host snapshot."""
-    base_url, _, _ = running_server
+    base_url, cfg, _ = running_server
     token = _login(base_url)
 
-    now = time.time()
+    from datetime import datetime, timezone, timedelta
+    stale_iso = (datetime.now(timezone.utc) - timedelta(seconds=400)).isoformat()
     payload_stale = {
         "contract_version": "1.0",
-        "command_type": "EMIT_SIGNAL",
-        "integration_id": "intg_e2e_stale_002",
-        "signal_id": "sig_e2e_stale_002",
-        "symbol": "XAUUSD",
-        "timeframe": "1h",
-        "signal_type": "buy",
-        "timestamp": now - 400.0,  # 400s old (> 300s)
-        "entry_price": 2700.00,
-        "stop_loss": 2680.00,
-        "take_profit_1": 2720.00,
-        "confidence": 0.88,
-        "strategy_name": "StaleStrategy",
-        "metadata": {"provenance_type": "live_signal"},
+        "event_id": "pub_e2e_stale_002",
+        "event_type": "TRADING_SIGNAL",
+        "timestamp": stale_iso,
+        "instrument": {"symbol": "XAUUSD", "interval": "1h"},
+        "signal": {
+            "publication_id": "pub_e2e_stale_002",
+            "signal_id": "sig_e2e_stale_002",
+            "decision": "buy",
+            "strategy": "StaleStrategy",
+            "confidence": 0.88,
+        },
+        "trade_setup": {
+            "entry_price": 2700.00,
+            "stop_loss": 2680.00,
+            "tp1": 2720.00,
+        },
+        "provenance": {"provenance_type": "live_signal"},
     }
 
     req_ingest = urllib.request.Request(
         f"{base_url}/api/v1/integration/project1/ingest",
         data=json.dumps(payload_stale).encode("utf-8"),
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {cfg.project1_service_key}", "Content-Type": "application/json"},
         method="POST",
     )
     with urllib.request.urlopen(req_ingest) as resp:
@@ -205,31 +215,36 @@ def test_negative_stale_signal_produces_no_signal(running_server):
 
 def test_negative_mismatched_symbol_produces_no_signal(running_server):
     """Prove HTTP ingestion of EURUSD signal produces NO SIGNAL when querying XAUUSD snapshot."""
-    base_url, _, _ = running_server
+    base_url, cfg, _ = running_server
     token = _login(base_url)
 
-    now = time.time()
+    from datetime import datetime, timezone
+    now_iso = datetime.now(timezone.utc).isoformat()
     payload_eur = {
         "contract_version": "1.0",
-        "command_type": "EMIT_SIGNAL",
-        "integration_id": "intg_e2e_eur_003",
-        "signal_id": "sig_e2e_eur_003",
-        "symbol": "EURUSD",
-        "timeframe": "1h",
-        "signal_type": "sell",
-        "timestamp": now - 10.0,
-        "entry_price": 1.0850,
-        "stop_loss": 1.0900,
-        "take_profit_1": 1.0800,
-        "confidence": 0.85,
-        "strategy_name": "EuroTrend",
-        "metadata": {"provenance_type": "live_signal"},
+        "event_id": "pub_e2e_eur_003",
+        "event_type": "TRADING_SIGNAL",
+        "timestamp": now_iso,
+        "instrument": {"symbol": "EURUSD", "interval": "1h"},
+        "signal": {
+            "publication_id": "pub_e2e_eur_003",
+            "signal_id": "sig_e2e_eur_003",
+            "decision": "sell",
+            "strategy": "EuroTrend",
+            "confidence": 0.85,
+        },
+        "trade_setup": {
+            "entry_price": 1.0850,
+            "stop_loss": 1.0900,
+            "tp1": 1.0800,
+        },
+        "provenance": {"provenance_type": "live_signal"},
     }
 
     req_ingest = urllib.request.Request(
         f"{base_url}/api/v1/integration/project1/ingest",
         data=json.dumps(payload_eur).encode("utf-8"),
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {cfg.project1_service_key}", "Content-Type": "application/json"},
         method="POST",
     )
     with urllib.request.urlopen(req_ingest) as resp:

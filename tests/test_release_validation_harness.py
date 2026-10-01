@@ -393,7 +393,7 @@ def test_project1_integration_gateway_contract(running_release_server):
     status_ing, _, body_ing = _http_request(
         f"{base_url}/api/v1/integration/project1/ingest",
         method="POST",
-        headers={"Authorization": f"Bearer {admin_token}"},
+        headers={"Authorization": "Bearer dev_project1_service_key_2026"},
         payload=signal_payload,
     )
     assert status_ing == 200
@@ -405,7 +405,7 @@ def test_project1_integration_gateway_contract(running_release_server):
     status_unsupported, _, body_unsupported = _http_request(
         f"{base_url}/api/v1/integration/project1/ingest",
         method="POST",
-        headers={"Authorization": f"Bearer {admin_token}"},
+            headers={"Authorization": "Bearer dev_project1_service_key_2026"},
         payload=unsupported_payload,
     )
     assert status_unsupported == 422

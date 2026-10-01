@@ -20,6 +20,7 @@ import urllib.parse
 
 from src.platform.config import PlatformConfig
 from src.platform.adapters.user_repository import FileBackedUserRepository
+from src.platform.domain.user_authorization import UserAuthorization, UserRole
 from src.platform.adapters.workspace_repository import FileBackedWorkspaceRepository
 from src.platform.adapters.order_intent_repository import FileBackedOrderIntentRepository
 from src.platform.adapters.project1_adapter import DisconnectedProject1Adapter, Project1GatewayAdapter
@@ -1115,11 +1116,27 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                         self._send_error_response(400, "Session Revocation Failed", str(err), "Check target user ID.", origin=origin)
                         return
 
-            if path == "/api/v1/integration/project1/ingest":
-                valid, user = self._authenticate_request_user()
-                if not valid or not user:
-                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to ingest Project 1 signals.", origin=origin)
+            if path in ("/api/v1/integration/project1/ingest", "/api/v1/integration/project1/lifecycle"):
+                # Service-to-service authentication domain separation (Requirement D: browser session alone is NOT sufficient)
+                service_cred = self._extract_bearer_token() or self.headers.get("X-API-Key", "").strip()
+                is_valid_service = self.gateway_service.authenticate_service_credential(service_cred)
+
+                if not is_valid_service:
+                    self._send_error_response(
+                        401,
+                        "Service Authentication Failed",
+                        "Valid service credential required for service-to-service ingest boundary.",
+                        "Provide valid service key in Authorization: Bearer <key> or X-API-Key header.",
+                        origin=origin,
+                    )
                     return
+
+                # Construct system authorization context for authenticated service call
+                user = UserAuthorization(
+                    user_id="p1_service_ingest",
+                    auth_code="ac_p1_service",
+                    role=UserRole.ADMIN,
+                )
 
                 try:
                     req_data = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
@@ -1127,41 +1144,31 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                     self._send_error_response(400, "Invalid JSON Request", "Request body was not valid JSON.", "Provide valid JSON payload.", origin=origin)
                     return
 
-                res = self.gateway_service.ingest_signal_payload(user=user, payload=req_data)
-                if res.get("success"):
-                    self._send_json_response(200, res, origin=origin)
-                else:
-                    err_code = res.get("error_code", "INGESTION_FAILED")
-                    status_code = 400
-                    if err_code == "UNAUTHORIZED":
+                if path == "/api/v1/integration/project1/ingest":
+                    res = self.gateway_service.ingest_signal_payload(user=user, payload=req_data)
+                    if res.get("success"):
+                        self._send_json_response(200, res, origin=origin)
+                    else:
+                        err_code = res.get("error_code", "INGESTION_FAILED")
+                        status_code = 400
+                        if err_code in ("UNAUTHORIZED", "FORBIDDEN_USER_MISMATCH"):
+                            status_code = 403
+                        elif err_code == "UNSUPPORTED_CONTRACT_VERSION":
+                            status_code = 422
+                        elif err_code == "INTEGRITY_CONFLICT":
+                            status_code = 409
+                        self._send_json_response(status_code, res, origin=origin)
+                    return
+
+                if path == "/api/v1/integration/project1/lifecycle":
+                    res = self.gateway_service.update_lifecycle(user=user, payload=req_data)
+                    status_code = 200 if res.get("success") else 400
+                    if res.get("error_code") == "UNAUTHORIZED":
                         status_code = 403
-                    elif err_code == "FORBIDDEN_USER_MISMATCH":
-                        status_code = 403
-                    elif err_code == "UNSUPPORTED_CONTRACT_VERSION":
-                        status_code = 422
+                    elif res.get("error_code") == "RECORD_NOT_FOUND":
+                        status_code = 404
                     self._send_json_response(status_code, res, origin=origin)
-                return
-
-            if path == "/api/v1/integration/project1/lifecycle":
-                valid, user = self._authenticate_request_user()
-                if not valid or not user:
-                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to update lifecycle.", origin=origin)
                     return
-
-                try:
-                    req_data = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
-                except Exception:
-                    self._send_error_response(400, "Invalid JSON Request", "Request body was not valid JSON.", "Provide valid JSON payload.", origin=origin)
-                    return
-
-                res = self.gateway_service.update_lifecycle(user=user, payload=req_data)
-                status_code = 200 if res.get("success") else 400
-                if res.get("error_code") == "UNAUTHORIZED":
-                    status_code = 403
-                elif res.get("error_code") == "RECORD_NOT_FOUND":
-                    status_code = 404
-                self._send_json_response(status_code, res, origin=origin)
-                return
 
             if path == "/api/v1/execution/intent/update":
                 valid, user = self._authenticate_request_user()
@@ -1583,6 +1590,7 @@ def create_server(
         security_boundary=security_service,
         audit_control=audit_control_service,
         notification_service=notification_service,
+        service_key=cfg.project1_service_key,
     )
     ai_gateway_service = AIGatewayService(
         security_boundary=security_service,

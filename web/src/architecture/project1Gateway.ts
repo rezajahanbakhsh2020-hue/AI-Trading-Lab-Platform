@@ -189,13 +189,19 @@ export async function updateProject1Lifecycle(
   }
 }
 
-export function getSampleProject1GatewaySummary(): Project1GatewayMonitoringSummary {
+/**
+ * Test-only fixture helper. Strictly forbidden from entering production runtime paths.
+ */
+export function getTestOnlySampleProject1GatewaySummary(): Project1GatewayMonitoringSummary {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("TEST-ONLY FIXTURE: getTestOnlySampleProject1GatewaySummary cannot be called in production.");
+  }
   return {
-    connected: true,
+    connected: false,
     contractVersion: "1.0",
     supportedVersions: ["1.0", "1.0.0", "v1.0"],
-    ingestedRecordsCount: 1,
-    lastCommunicatedAt: new Date(1700000000 * 1000).toUTCString(),
+    ingestedRecordsCount: 0,
+    lastCommunicatedAt: null,
     capabilities: {
       gateway_name: "Project1IntegrationGateway",
       supported_contract_versions: ["1.0", "1.0.0", "v1.0"],
@@ -212,27 +218,9 @@ export function getSampleProject1GatewaySummary(): Project1GatewayMonitoringSumm
         secret_sanitized: true,
       },
     },
-    recentRecords: [
-      {
-        integration_id: "int_rec_p1_xauusd_100",
-        source_id: "project1_engine",
-        contract_version: "1.0",
-        command_type: "EMIT_SIGNAL",
-        signal_id: "p1_xauusd_1h_1700000000",
-        symbol: "XAUUSD",
-        signal_type: "buy",
-        lifecycle_state: "STAGED",
-        timestamp: 1700000000,
-        timeframe: "1h",
-        strategy_name: "GoldTrendv1",
-        entry_price: 2650.5,
-        stop_loss: 2635.0,
-        take_profit_1: 2670.0,
-        take_profit_2: 2690.0,
-        take_profit_3: 2710.0,
-        confidence: 0.88,
-        correlation_id: "p1_corr_1700000000_p1_xauusd_1h_1700000000",
-      },
-    ],
+    recentRecords: [],
   };
 }
+
+/** @deprecated Use getTestOnlySampleProject1GatewaySummary for isolated unit tests. */
+export const getSampleProject1GatewaySummary = getTestOnlySampleProject1GatewaySummary;

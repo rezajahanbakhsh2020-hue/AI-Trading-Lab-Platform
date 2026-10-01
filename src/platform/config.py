@@ -29,6 +29,7 @@ class PlatformConfig:
     session_max_age_seconds: int = 86400
     enable_https_redirect: bool = False
     initial_admin_password: Optional[str] = None
+    project1_service_key: str = "dev_project1_service_key_2026"
 
     # Transactional Email Delivery configuration
     email_provider: str = "none"
@@ -54,6 +55,10 @@ class PlatformConfig:
         if not isinstance(self.session_secret, str) or not self.session_secret.strip():
             raise ValueError("session_secret must be a non-empty string")
         object.__setattr__(self, "session_secret", self.session_secret.strip())
+
+        if not isinstance(self.project1_service_key, str) or not self.project1_service_key.strip():
+            raise ValueError("project1_service_key must be a non-empty string")
+        object.__setattr__(self, "project1_service_key", self.project1_service_key.strip())
 
         # Enforce fail-closed security for production
         if clean_env == "production":
@@ -159,6 +164,7 @@ class PlatformConfig:
             "allowed_origins": list(self.allowed_origins),
             "session_secret": "[REDACTED]",
             "initial_admin_password": "[REDACTED]" if self.initial_admin_password else None,
+            "project1_service_key": "[REDACTED]",
             "recovery_email": self.recovery_email,
             "owner_user_id": self.owner_user_id,
             "owner_email": self.owner_email,
@@ -205,6 +211,7 @@ class PlatformConfig:
 
         https_redirect = os.getenv("ENABLE_HTTPS_REDIRECT", "false").lower() in ("true", "1", "yes")
         admin_pwd = os.getenv("INITIAL_ADMIN_PASSWORD", None)
+        p1_key = os.getenv("PROJECT1_SERVICE_KEY", "dev_project1_service_key_2026")
 
         e_provider = os.getenv("EMAIL_PROVIDER", "none")
         e_host = os.getenv("EMAIL_HOST", "localhost")
@@ -229,6 +236,7 @@ class PlatformConfig:
             session_max_age_seconds=max_age,
             enable_https_redirect=https_redirect,
             initial_admin_password=admin_pwd,
+            project1_service_key=p1_key,
             email_provider=e_provider,
             email_host=e_host,
             email_port=e_port,

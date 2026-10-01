@@ -62,7 +62,7 @@ def _login(base_url, user_id="demo_user", password="DevCustomerPass2026!"):
 
 def test_positive_end_to_end_project1_live_signal_path(running_server):
     """Prove authorized Project 1 live signal flows through HTTP Gateway to Snapshot preserving exact values."""
-    base_url, _, _ = running_server
+    base_url, cfg, _ = running_server
     token = _login(base_url)
 
     now = time.time()
@@ -84,11 +84,11 @@ def test_positive_end_to_end_project1_live_signal_path(running_server):
         "metadata": {"provenance_type": "live_signal"},
     }
 
-    # 1. Ingest signal via POST /api/v1/integration/project1/ingest
+    # 1. Ingest signal via POST /api/v1/integration/project1/ingest using service credential
     req_ingest = urllib.request.Request(
         f"{base_url}/api/v1/integration/project1/ingest",
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {cfg.project1_service_key}", "Content-Type": "application/json"},
         method="POST",
     )
     with urllib.request.urlopen(req_ingest) as resp:
@@ -161,7 +161,7 @@ def test_negative_zero_records_produces_no_signal(running_server):
 
 def test_negative_stale_signal_produces_no_signal(running_server):
     """Prove HTTP ingestion of a stale signal (>300s) produces NO SIGNAL in host snapshot."""
-    base_url, _, _ = running_server
+    base_url, cfg, _ = running_server
     token = _login(base_url)
 
     now = time.time()
@@ -185,7 +185,7 @@ def test_negative_stale_signal_produces_no_signal(running_server):
     req_ingest = urllib.request.Request(
         f"{base_url}/api/v1/integration/project1/ingest",
         data=json.dumps(payload_stale).encode("utf-8"),
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {cfg.project1_service_key}", "Content-Type": "application/json"},
         method="POST",
     )
     with urllib.request.urlopen(req_ingest) as resp:
@@ -205,7 +205,7 @@ def test_negative_stale_signal_produces_no_signal(running_server):
 
 def test_negative_mismatched_symbol_produces_no_signal(running_server):
     """Prove HTTP ingestion of EURUSD signal produces NO SIGNAL when querying XAUUSD snapshot."""
-    base_url, _, _ = running_server
+    base_url, cfg, _ = running_server
     token = _login(base_url)
 
     now = time.time()
@@ -229,7 +229,7 @@ def test_negative_mismatched_symbol_produces_no_signal(running_server):
     req_ingest = urllib.request.Request(
         f"{base_url}/api/v1/integration/project1/ingest",
         data=json.dumps(payload_eur).encode("utf-8"),
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {cfg.project1_service_key}", "Content-Type": "application/json"},
         method="POST",
     )
     with urllib.request.urlopen(req_ingest) as resp:

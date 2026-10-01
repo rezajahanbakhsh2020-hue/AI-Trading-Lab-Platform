@@ -49,6 +49,13 @@ class Project1IntegrationRepositoryPort(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def find_authoritative_record(
+        self, record: Dict[str, Any], user_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Find existing record matching authoritative publication/event/signal identity."""
+        raise NotImplementedError
+
+    @abstractmethod
     def update_lifecycle_state(
         self,
         signal_id: str,
@@ -163,7 +170,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
     ) -> Optional[Dict[str, Any]]:
         for rec in self._records:
             if rec.get("integration_id") == integration_id:
-                if user_id is not None and rec.get("user_id") not in (user_id, None, "system"):
+                if user_id is not None and rec.get("user_id") not in (user_id, None, "system", "p1_service_ingest"):
                     return None
                 return dict(rec)
         return None
@@ -177,7 +184,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
     ) -> List[Dict[str, Any]]:
         filtered = []
         for rec in reversed(self._records):
-            if user_id is not None and rec.get("user_id") not in (user_id, None, "system"):
+            if user_id is not None and rec.get("user_id") not in (user_id, None, "system", "p1_service_ingest"):
                 continue
             if symbol is not None and rec.get("symbol") != symbol.strip().upper():
                 continue
@@ -188,12 +195,38 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                 break
         return filtered
 
+    def find_authoritative_record(
+        self, record: Dict[str, Any], user_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        if not isinstance(record, dict):
+            return None
+
+        pub_id = record.get("publication_id") or record.get("event_id") or record.get("integration_id")
+        event_id = record.get("event_id") or record.get("integration_id")
+        sig_id = record.get("signal_id")
+
+        for rec in self._records:
+            if user_id is not None and rec.get("user_id") not in (user_id, None, "system", "p1_service_ingest"):
+                continue
+
+            # Check publication identity match first
+            if pub_id and (rec.get("publication_id") == pub_id or rec.get("event_id") == pub_id or rec.get("integration_id") == pub_id):
+                return dict(rec)
+
+            if event_id and (rec.get("event_id") == event_id or rec.get("integration_id") == event_id):
+                return dict(rec)
+
+            if sig_id and rec.get("signal_id") == sig_id:
+                return dict(rec)
+
+        return None
+
     def is_duplicate_request(
         self, signal_id: str, user_id: Optional[str] = None, timestamp: Optional[float] = None
     ) -> bool:
         for rec in self._records:
-            if rec.get("signal_id") == signal_id:
-                if user_id is not None and rec.get("user_id") not in (user_id, None, "system"):
+            if rec.get("signal_id") == signal_id or rec.get("publication_id") == signal_id or rec.get("event_id") == signal_id:
+                if user_id is not None and rec.get("user_id") not in (user_id, None, "system", "p1_service_ingest"):
                     continue
                 return True
         return False
@@ -208,8 +241,13 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
         updated = False
         ls_upper = lifecycle_state.strip().upper()
         for i, rec in enumerate(self._records):
-            if rec.get("signal_id") == signal_id:
-                if user_id is not None and rec.get("user_id") not in (user_id, None, "system"):
+            # Match by signal_id, publication_id, or event_id lineage
+            if (
+                rec.get("signal_id") == signal_id
+                or rec.get("publication_id") == signal_id
+                or rec.get("event_id") == signal_id
+            ):
+                if user_id is not None and rec.get("user_id") not in (user_id, None, "system", "p1_service_ingest"):
                     continue
                 updated_rec = dict(rec)
                 updated_rec["lifecycle_state"] = ls_upper

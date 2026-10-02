@@ -90,6 +90,11 @@ describe("connected Project 1 host snapshot", () => {
     expect(snapshot.strategy.name).toBe("GoldTrendv1");
     expect(snapshot.strategy.stability).toBe(88);
     expect(snapshot.strategy.status).toBe("active");
+
+    expect(snapshot.orderIntents).toEqual([]);
+    expect(snapshot.signal.publicationId).toBe(
+      SAMPLE_REAL_PROJECT1_SIGNAL.metadata?.publication_id ?? null
+    );
   });
 
   it("handles connected Project 1 emitting no active signal (empty signal state)", () => {

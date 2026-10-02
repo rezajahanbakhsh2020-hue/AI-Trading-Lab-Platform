@@ -6,11 +6,35 @@ import { createHostSnapshotFromProject1 } from "../../architecture/hostView";
 import { SAMPLE_CONNECTED_PORT, SAMPLE_REAL_PROJECT1_SIGNAL } from "../../architecture/testFixtures";
 import { I18nProvider } from "../../i18n";
 
+const sampleIntent = {
+  order_intent_id: "ord_intent_p1_xauusd_1h_live_current",
+  authorization_id: "auth_test",
+  user_id: "user_test",
+  symbol: "XAUUSD",
+  direction: "buy" as const,
+  order_type: "market" as const,
+  requested_price: 2650.5,
+  requested_quantity: 1.0,
+  stop_loss: 2635.0,
+  take_profit_1: 2670.0,
+  take_profit_2: 2690.0,
+  take_profit_3: 2710.0,
+  time_in_force: "GTC" as const,
+  idempotency_key: "idemp_test",
+  creation_timestamp: Math.floor(Date.now() / 1000),
+  lifecycle_state: "STAGED" as const,
+  is_staged: true,
+  is_terminal: false,
+};
+
 const snapshot = createHostSnapshotFromProject1(
   SAMPLE_CONNECTED_PORT,
   SAMPLE_REAL_PROJECT1_SIGNAL,
   "XAUUSD",
-  "1h"
+  "1h",
+  undefined,
+  undefined,
+  [sampleIntent]
 );
 
 describe("OrderIntentViewer component", () => {

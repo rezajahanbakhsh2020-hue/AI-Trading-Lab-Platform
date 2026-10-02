@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   isExternallyExecuted,
   requestExecutionApi,
+  requestCanonicalOrderIntentApi,
   reconcileExecutionApi,
   fetchExecutionBoundaryStatusApi,
   fetchOrderIntentsApi,
@@ -160,6 +161,61 @@ describe("Execution Gateway Architecture Domain Contract", () => {
     const res = await updateOrderIntentStateApi("ord_100", "CANCELLED", "User cancelled", "mock_token");
     expect(res.success).toBe(true);
     expect(res.order_intent?.lifecycle_state).toBe("CANCELLED");
+    vi.unstubAllGlobals();
+  });
+
+  it("requests canonical order intent via requestCanonicalOrderIntentApi helper without client trading parameters", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        order_intent: {
+          order_intent_id: "ord_canonical_100",
+          publication_id: "pub_100",
+          symbol: "XAUUSD",
+          direction: "buy",
+          requested_price: 2650.5,
+          stop_loss: 2635.0,
+          take_profit_1: 2670.0,
+          lifecycle_state: "STAGED",
+        },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const pubId = "pub_100";
+    const idempKey = "ui_user_1_pub_100";
+    const token = "mock_session_token";
+
+    const res = await requestCanonicalOrderIntentApi(pubId, idempKey, token);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, options] = fetchSpy.mock.calls[0];
+
+    expect(url).toBe("/api/v1/execution/canonical-intent");
+    expect(options.method).toBe("POST");
+    expect(options.headers["Authorization"]).toBe("Bearer mock_session_token");
+
+    const parsedBody = JSON.parse(options.body);
+    expect(parsedBody).toEqual({
+      publication_id: "pub_100",
+      idempotency_key: "ui_user_1_pub_100",
+    });
+
+    // Explicitly verify no trading or pricing parameters are sent in the request payload
+    expect(parsedBody.entry_price).toBeUndefined();
+    expect(parsedBody.requested_price).toBeUndefined();
+    expect(parsedBody.stop_loss).toBeUndefined();
+    expect(parsedBody.take_profit_1).toBeUndefined();
+    expect(parsedBody.symbol).toBeUndefined();
+    expect(parsedBody.direction).toBeUndefined();
+    expect(parsedBody.requested_quantity).toBeUndefined();
+
+    expect(res.success).toBe(true);
+    expect(res.order_intent?.order_intent_id).toBe("ord_canonical_100");
+    expect(res.order_intent?.publication_id).toBe("pub_100");
+    expect(res.order_intent?.requested_price).toBe(2650.5);
+
     vi.unstubAllGlobals();
   });
 });

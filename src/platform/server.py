@@ -1182,7 +1182,7 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                     self._send_error_response(400, "Invalid JSON Request", "Request body was not valid JSON.", "Provide valid JSON payload with publication_id.", origin=origin)
                     return
 
-                publication_id = str(req_data.get("publication_id", req_data.get("signal_id", ""))).strip()
+                publication_id = str(req_data.get("publication_id", "")).strip()
                 idempotency_key = req_data.get("idempotency_key")
 
                 # REJECT client-supplied trading values, authorization decision objects, or arbitrary quantities

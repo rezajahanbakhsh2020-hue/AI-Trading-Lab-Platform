@@ -82,12 +82,12 @@ class OrderIntent:
     """Immutable domain representation of an authorized order intent."""
 
     order_intent_id: str
-    authorization_id: str
-    user_id: str
-    symbol: str
-    direction: str
-    idempotency_key: str
-    creation_timestamp: float
+    authorization_id: Optional[str] = None
+    user_id: str = ""
+    symbol: str = ""
+    direction: str = "buy"
+    idempotency_key: str = ""
+    creation_timestamp: float = 0.0
     lifecycle_state: OrderLifecycleState = OrderLifecycleState.STAGED
     order_type: str = "market"
     requested_price: Optional[float] = None
@@ -116,9 +116,10 @@ class OrderIntent:
             raise ValueError("order_intent_id must be a non-empty string")
         object.__setattr__(self, "order_intent_id", self.order_intent_id.strip())
 
-        if not isinstance(self.authorization_id, str) or not self.authorization_id.strip():
-            raise ValueError("authorization_id must be a non-empty string")
-        object.__setattr__(self, "authorization_id", self.authorization_id.strip())
+        if self.authorization_id is not None:
+            if not isinstance(self.authorization_id, str) or not self.authorization_id.strip():
+                raise ValueError("authorization_id must be a non-empty string if provided")
+            object.__setattr__(self, "authorization_id", self.authorization_id.strip())
 
         if not isinstance(self.user_id, str) or not self.user_id.strip():
             raise ValueError("user_id must be a non-empty string")
@@ -316,7 +317,7 @@ class OrderIntent:
 
         return cls(
             order_intent_id=d["order_intent_id"],
-            authorization_id=d["authorization_id"],
+            authorization_id=d.get("authorization_id"),
             user_id=d["user_id"],
             symbol=d["symbol"],
             direction=d["direction"],

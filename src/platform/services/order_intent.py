@@ -49,6 +49,41 @@ class OrderIntentService:
         # Store idempotency map: (user_id, idempotency_key) -> order_intent_id
         self._idempotency_map: Dict[Tuple[str, str], str] = {}
 
+    def _extract_canonical_content_tuple(self, source: Any) -> Tuple[Any, ...]:
+        """Extract a deterministic tuple of all 19 authoritative trade & lineage fields for integrity comparisons."""
+        if isinstance(source, OrderIntent):
+            d = source.to_dict()
+        elif isinstance(source, dict):
+            d = source
+        else:
+            return ()
+
+        trailing = d.get("trailing_stop")
+        trailing_tuple = tuple(sorted(trailing.items())) if isinstance(trailing, dict) else None
+
+        return (
+            d.get("publication_id"),
+            d.get("signal_id"),
+            d.get("decision_id"),
+            d.get("canonical_live_decision_fingerprint"),
+            d.get("candidate_id"),
+            d.get("research_evidence_id"),
+            d.get("strategy_id") or d.get("strategy_name"),
+            d.get("research_fingerprint"),
+            d.get("runtime_authorization_fingerprint"),
+            d.get("strategy_version"),
+            d.get("symbol"),
+            d.get("direction") or d.get("signal_type"),
+            d.get("requested_price") if "requested_price" in d else d.get("entry_price"),
+            d.get("stop_loss"),
+            d.get("take_profit_1"),
+            d.get("take_profit_2"),
+            d.get("take_profit_3"),
+            d.get("requested_quantity") if "requested_quantity" in d else d.get("quantity"),
+            trailing_tuple,
+            d.get("invalidation_condition"),
+        )
+
     def create_canonical_order_intent_from_publication(
         self,
         user: Optional[UserAuthorization],
@@ -94,28 +129,12 @@ class OrderIntentService:
         clean_pub_id = publication_id.strip()
         user_id = user.user_id
 
-        # 2. Resolve authoritative Project 1 integration record server-side
+        # 2. Resolve authoritative Project 1 integration record server-side via public Gateway API
         gw_svc = project1_gateway_service or self.project1_gateway_service
         p1_record: Optional[Dict[str, Any]] = None
 
-        if gw_svc is not None:
-            if hasattr(gw_svc, "_repo") and gw_svc._repo is not None:
-                p1_record = gw_svc._repo.find_authoritative_record(
-                    {"publication_id": clean_pub_id, "signal_id": clean_pub_id, "event_id": clean_pub_id},
-                    user_id=None if user.is_admin else user_id,
-                )
-            if p1_record is None and hasattr(gw_svc, "list_records"):
-                recs_res = gw_svc.list_records(user=user, limit=500)
-                if isinstance(recs_res, dict) and recs_res.get("success"):
-                    for r in recs_res.get("records", []):
-                        if (
-                            r.get("publication_id") == clean_pub_id
-                            or r.get("signal_id") == clean_pub_id
-                            or r.get("event_id") == clean_pub_id
-                            or r.get("integration_id") == clean_pub_id
-                        ):
-                            p1_record = r
-                            break
+        if gw_svc is not None and hasattr(gw_svc, "resolve_authoritative_publication"):
+            p1_record = gw_svc.resolve_authoritative_publication(user, clean_pub_id)
 
         if p1_record is None:
             reason = f"No authoritative Project 1 integration record found for publication_id '{clean_pub_id}'"
@@ -199,15 +218,37 @@ class OrderIntentService:
         p1_quantity = p1_record.get("requested_quantity") or p1_record.get("quantity")
         requested_quantity = float(p1_quantity) if p1_quantity is not None else None
 
-        auth_id = f"auth_p1_{runtime_auth_fp}_{canon_fp}"
-
         clean_idemp_key = (
             idempotency_key.strip()
             if idempotency_key and isinstance(idempotency_key, str) and idempotency_key.strip()
             else f"idemp_pub_{user_id}_{pub_id}"
         )
 
-        # 5. Idempotency & Integrity Conflict Checks
+        # Build candidate dict for content comparison
+        calculated_p1_dict = {
+            "publication_id": pub_id,
+            "signal_id": sig_id,
+            "decision_id": dec_id,
+            "canonical_live_decision_fingerprint": canon_fp,
+            "candidate_id": cand_id,
+            "research_evidence_id": rese_id,
+            "strategy_id": strat_id,
+            "research_fingerprint": rese_fp,
+            "runtime_authorization_fingerprint": runtime_auth_fp,
+            "strategy_version": strat_ver,
+            "symbol": clean_symbol,
+            "direction": clean_dir,
+            "requested_price": entry_price,
+            "stop_loss": stop_loss,
+            "take_profit_1": tp1,
+            "take_profit_2": tp2,
+            "take_profit_3": tp3,
+            "requested_quantity": requested_quantity,
+            "trailing_stop": trailing_stop,
+            "invalidation_condition": invalidation,
+        }
+
+        # 5. Idempotency & Integrity Conflict Checks (strictly publication_id based)
         existing_intent: Optional[OrderIntent] = None
         all_intents = self._intents_by_id.values()
         if self.repository is not None:
@@ -216,27 +257,15 @@ class OrderIntentService:
         for candidate_intent in all_intents:
             if not user.is_admin and candidate_intent.user_id != user_id:
                 continue
-            if (
-                candidate_intent.publication_id == pub_id
-                or candidate_intent.idempotency_key == clean_idemp_key
-            ):
+            if candidate_intent.publication_id == pub_id:
                 existing_intent = candidate_intent
                 break
 
         if existing_intent is not None:
-            auth_content_matches = (
-                existing_intent.symbol == clean_symbol
-                and existing_intent.direction == clean_dir
-                and existing_intent.requested_price == entry_price
-                and existing_intent.stop_loss == stop_loss
-                and existing_intent.take_profit_1 == tp1
-                and existing_intent.take_profit_2 == tp2
-                and existing_intent.take_profit_3 == tp3
-                and existing_intent.strategy_id == strat_id
-                and existing_intent.runtime_authorization_fingerprint == runtime_auth_fp
-                and existing_intent.canonical_live_decision_fingerprint == canon_fp
-            )
-            if auth_content_matches:
+            existing_content = self._extract_canonical_content_tuple(existing_intent)
+            p1_content = self._extract_canonical_content_tuple(calculated_p1_dict)
+
+            if existing_content == p1_content:
                 self.audit_control.record_event(
                     user_id=user_id,
                     category=AuditCategory.ORDER_INTENT,
@@ -265,14 +294,23 @@ class OrderIntentService:
                 )
                 return False, reason, None
 
-        # 6. Construct and persist canonical OrderIntent
+        # Also verify that caller-supplied idempotency key does not belong to a different publication intent
+        idempotency_pair = (user_id, clean_idemp_key)
+        if idempotency_pair in self._idempotency_map:
+            key_intent_id = self._idempotency_map[idempotency_pair]
+            key_intent = self._intents_by_id.get(key_intent_id)
+            if key_intent and key_intent.publication_id != pub_id:
+                reason = f"Idempotency key '{clean_idemp_key}' is already bound to a different publication intent"
+                return False, reason, None
+
+        # 6. Construct and persist canonical OrderIntent (authorization_id is None)
         order_intent_id = f"ord_intent_{uuid.uuid4().hex[:12]}"
         creation_ts = float(p1_record.get("timestamp") or time.time())
 
         try:
             intent = OrderIntent(
                 order_intent_id=order_intent_id,
-                authorization_id=auth_id,
+                authorization_id=None,  # Canonical P1 intents have no synthetic authorization_id
                 user_id=user_id,
                 symbol=clean_symbol,
                 direction=clean_dir,

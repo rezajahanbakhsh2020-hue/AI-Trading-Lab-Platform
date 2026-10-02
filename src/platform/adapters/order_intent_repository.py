@@ -183,6 +183,8 @@ class FileBackedOrderIntentRepository(OrderIntentRepositoryPort):
         with self._lock:
             if intent.publication_id:
                 pub_key = (intent.user_id, intent.publication_id)
+                if pub_key in self._ambiguous_publication_keys:
+                    raise ValueError("OrderIntent publication identity is ambiguous")
                 existing_pub_id = self._publication_map.get(pub_key)
                 if existing_pub_id is not None and existing_pub_id != intent.order_intent_id:
                     raise ValueError("OrderIntent publication identity already exists")

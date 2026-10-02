@@ -1211,7 +1211,6 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                     user=user,
                     publication_id=publication_id,
                     idempotency_key=idempotency_key,
-                    project1_gateway_service=self.gateway_service,
                 )
 
                 if not ok or intent is None:

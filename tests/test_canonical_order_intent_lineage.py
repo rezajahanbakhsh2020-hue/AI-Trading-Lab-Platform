@@ -296,3 +296,80 @@ def test_scenario_s_client_payload_cannot_override_server_resolved_authority(set
     ok, _, intent = order_svc.create_canonical_order_intent_from_publication(user, "pub_s")
     assert ok is True
     assert intent.requested_price == 2650.50
+
+
+class TrustedGateway:
+    def resolve_authoritative_publication(self, user, publication_id):
+        return {
+            "publication_id": publication_id,
+            "signal_id": "trusted-signal",
+            "decision_id": "trusted-decision",
+            "canonical_live_decision_fingerprint": "trusted-canon",
+            "candidate_id": "trusted-candidate",
+            "research_evidence_id": "trusted-evidence",
+            "strategy_id": "trusted-strategy",
+            "research_fingerprint": "trusted-research",
+            "runtime_authorization_fingerprint": "trusted-runtime-auth",
+            "strategy_version": "1.0",
+            "symbol": "XAUUSD",
+            "signal_type": "buy",
+            "entry_price": 100.0,
+            "stop_loss": 90.0,
+            "take_profit_1": 110.0,
+            "take_profit_2": 120.0,
+            "take_profit_3": 130.0,
+            "trailing_stop": {"distance": 5.0},
+            "invalidation_condition": "close below 85",
+        }
+
+
+class AttackerGateway:
+    def resolve_authoritative_publication(self, user, publication_id):
+        return {
+            "publication_id": publication_id,
+            "signal_id": "ATTACKER-SIGNAL",
+            "decision_id": "ATTACKER-DECISION",
+            "canonical_live_decision_fingerprint": "ATTACKER-CANON",
+            "candidate_id": "ATTACKER-CANDIDATE",
+            "research_evidence_id": "ATTACKER-EVIDENCE",
+            "strategy_id": "ATTACKER-STRATEGY",
+            "research_fingerprint": "ATTACKER-RESEARCH",
+            "runtime_authorization_fingerprint": "ATTACKER-RUNTIME",
+            "strategy_version": "999",
+            "symbol": "BTCUSD",
+            "signal_type": "sell",
+            "entry_price": 999999.0,
+            "stop_loss": 1.0,
+            "take_profit_1": 2.0,
+            "take_profit_2": 3.0,
+            "take_profit_3": 4.0,
+            "trailing_stop": {"distance": 999.0},
+            "invalidation_condition": "ATTACKER",
+        }
+
+
+def test_caller_cannot_inject_attacker_gateway():
+    user = UserAuthorization(user_id="user_test", auth_code="ac_123", role=UserRole.USER)
+    order_svc = OrderIntentService(project1_gateway_service=TrustedGateway())
+
+    # Passing project1_gateway_service to create_canonical_order_intent_from_publication must raise TypeError
+    with pytest.raises(TypeError):
+        order_svc.create_canonical_order_intent_from_publication(
+            user=user,
+            publication_id="pub_test",
+            project1_gateway_service=AttackerGateway(),  # type: ignore
+        )
+
+    # Normal call uses constructor-injected TrustedGateway
+    ok, msg, intent = order_svc.create_canonical_order_intent_from_publication(
+        user=user,
+        publication_id="pub_test",
+    )
+
+    assert ok is True
+    assert intent is not None
+    assert intent.signal_id == "trusted-signal"
+    assert intent.decision_id == "trusted-decision"
+    assert intent.symbol == "XAUUSD"
+    assert intent.direction == "buy"
+    assert intent.requested_price == 100.0

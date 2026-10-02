@@ -89,7 +89,6 @@ class OrderIntentService:
         user: Optional[UserAuthorization],
         publication_id: str,
         idempotency_key: Optional[str] = None,
-        project1_gateway_service: Optional[Any] = None,
     ) -> Tuple[bool, str, Optional[OrderIntent]]:
         """Authoritative server-side creation of canonical OrderIntent from Project 1 publication record."""
         if user is None:
@@ -130,7 +129,7 @@ class OrderIntentService:
         user_id = user.user_id
 
         # 2. Resolve authoritative Project 1 integration record server-side via public Gateway API
-        gw_svc = project1_gateway_service or self.project1_gateway_service
+        gw_svc = self.project1_gateway_service
         p1_record: Optional[Dict[str, Any]] = None
 
         if gw_svc is not None and hasattr(gw_svc, "resolve_authoritative_publication"):

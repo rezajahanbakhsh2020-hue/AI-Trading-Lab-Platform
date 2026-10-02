@@ -79,3 +79,13 @@ def test_platform_config_load_from_env(monkeypatch):
     assert config.recovery_email == "owner@mydomain.com"
     assert config.is_origin_allowed("https://app.mydomain.com")
     assert not config.is_origin_allowed("http://localhost:5173")
+
+
+def test_docker_compose_wires_project1_service_key():
+    from pathlib import Path
+
+    compose = Path("docker-compose.yml").read_text(encoding="utf-8")
+    env_example = Path(".env.example").read_text(encoding="utf-8")
+
+    assert "PROJECT1_SERVICE_KEY=${PROJECT1_SERVICE_KEY:?PROJECT1_SERVICE_KEY environment variable is required in production}" in compose
+    assert "PROJECT1_SERVICE_KEY=" in env_example

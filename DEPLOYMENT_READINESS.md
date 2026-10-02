@@ -23,6 +23,7 @@ APP_ENV=production \
 PUBLIC_BASE_URL="https://trade.yourdomain.com" \
 SESSION_SECRET="<YOUR_32_CHAR_RANDOM_SESSION_SECRET>" \
 INITIAL_ADMIN_PASSWORD="<YOUR_SECURE_INITIAL_ADMIN_PASSWORD>" \
+PROJECT1_SERVICE_KEY="<YOUR_PROJECT1_SERVICE_KEY>" \
 ALLOWED_ORIGINS="https://trade.yourdomain.com" \
 python -m src.platform.server
 ```
@@ -45,6 +46,7 @@ In production (`APP_ENV=production`), missing critical secrets or unprovisioned 
 | `PUBLIC_BASE_URL` | **YES** | Explicit public HTTPS/HTTP base URL of the Project 2 deployment reachable by external Project 1 producers (e.g., `https://trade.yourdomain.com`). Rejects `localhost` in production. |
 | `SESSION_SECRET` | **YES** | Strong random secret string (min 32 characters). Default dev secret is rejected in production. |
 | `INITIAL_ADMIN_PASSWORD` | **YES** | Operator-supplied bootstrap password for initial Owner account (`admin_owner`). Production fails startup if unprovisioned and this is missing. |
+| `PROJECT1_SERVICE_KEY` | **YES** | Shared secret service key required for authenticated Project 1 → Project 2 signal ingestion (`/api/v1/integration/project1/ingest`). |
 | `ALLOWED_ORIGINS` | **YES** | Comma-separated trusted origin URLs (e.g., `https://trade.yourdomain.com`). |
 | `RECOVERY_EMAIL` | Optional | Designated permanent Owner/Admin recovery email contact. |
 | `PERSISTENCE_DIR` | Optional | Directory path for file-backed JSON user/session repository (default `.data`). |

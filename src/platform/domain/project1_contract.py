@@ -611,6 +611,15 @@ def validate_project1_contract_payload(
     if ts_config is not None:
         sanitized["trailing_stop"] = ts_config.to_dict()
 
+    # Invalidation condition extraction
+    invalidation = (
+        trade_setup_obj.get("invalidation_condition")
+        or raw_payload.get("invalidation_condition")
+        or (raw_payload.get("metadata") or {}).get("invalidation_condition")
+    )
+    if invalidation:
+        sanitized["invalidation_condition"] = str(invalidation).strip()
+
     # Provenance metadata construction
     meta = dict(raw_payload.get("metadata")) if isinstance(raw_payload.get("metadata"), dict) else {}
     if provenance_obj:

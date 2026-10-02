@@ -1170,6 +1170,72 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                     self._send_json_response(status_code, res, origin=origin)
                     return
 
+            if path == "/api/v1/execution/canonical-intent":
+                valid, user = self._authenticate_request_user()
+                if not valid or not user:
+                    self._send_error_response(401, "Unauthenticated", "Missing or invalid session token.", "Login to create canonical order intent.", origin=origin)
+                    return
+
+                try:
+                    req_data = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                except Exception:
+                    self._send_error_response(400, "Invalid JSON Request", "Request body was not valid JSON.", "Provide valid JSON payload with publication_id.", origin=origin)
+                    return
+
+                publication_id = str(req_data.get("publication_id", req_data.get("signal_id", ""))).strip()
+                idempotency_key = req_data.get("idempotency_key")
+
+                # REJECT client-supplied trading values, authorization decision objects, or arbitrary quantities
+                forbidden_fields = (
+                    "entry", "entry_price", "stop_loss", "take_profit_1", "take_profit_2", "take_profit_3",
+                    "tp1", "tp2", "tp3", "trailing_stop", "invalidation", "confidence", "stability",
+                    "authorization", "autonomous_authorization", "requested_quantity", "quantity",
+                    "direction", "symbol", "runtime_authorization_fingerprint"
+                )
+                supplied_forbidden = [f for f in forbidden_fields if f in req_data]
+                if supplied_forbidden:
+                    self._send_error_response(
+                        400,
+                        "Forbidden Parameter Injection",
+                        f"Client-supplied authoritative values/objects forbidden: {', '.join(supplied_forbidden)}.",
+                        "Provide only 'publication_id' and optional 'idempotency_key'. Authoritative values are resolved server-side from Project 1.",
+                        origin=origin,
+                    )
+                    return
+
+                if not publication_id:
+                    self._send_error_response(400, "Missing Parameters", "'publication_id' parameter is required.", "Provide publication_id.", origin=origin)
+                    return
+
+                ok, msg, intent = self.order_intent_service.create_canonical_order_intent_from_publication(
+                    user=user,
+                    publication_id=publication_id,
+                    idempotency_key=idempotency_key,
+                    project1_gateway_service=self.gateway_service,
+                )
+
+                if not ok or intent is None:
+                    status_code = 400
+                    if "Unauthorized" in msg:
+                        status_code = 403
+                    elif "Integrity conflict" in msg:
+                        status_code = 409
+                    elif "No authoritative Project 1 integration record found" in msg:
+                        status_code = 404
+                    self._send_error_response(status_code, "Canonical Creation Failed", msg, "Check publication_id and lineage completeness.", origin=origin)
+                    return
+
+                self._send_json_response(
+                    200,
+                    {
+                        "success": True,
+                        "message": msg,
+                        "order_intent": intent.to_dict(),
+                    },
+                    origin=origin,
+                )
+                return
+
             if path == "/api/v1/execution/intent/update":
                 valid, user = self._authenticate_request_user()
                 if not valid or not user:
@@ -1607,6 +1673,7 @@ def create_server(
         audit_control=audit_control_service,
         repository=order_intent_repo,
         notification_service=notification_service,
+        project1_gateway_service=gateway_service,
     )
     execution_gateway_service = ExecutionGatewayService(
         order_intent_service=order_intent_service,

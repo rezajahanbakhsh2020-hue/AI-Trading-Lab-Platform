@@ -660,18 +660,6 @@ class Project1SignalPresenter:
                 "reason": live_reason,
             })
 
-        # Stage OrderIntent if authorized, genuinely live, and user is provided
-        if is_live and auth_obj.is_authorized and user is not None:
-            sig_id = signal_dict.get("signal_id") or f"sig_{int(sig_ts)}"
-            idemp_key = f"snap_idemp_{user.user_id}_{symbol.lower()}_{sig_id}"
-            self._order_intent_service.create_order_intent(
-                user=user,
-                authorization=auth_obj,
-                idempotency_key=idemp_key,
-                symbol=symbol,
-                timestamp=sig_ts,
-            )
-
         # Process optional backtest assessment if available
         perf_payload: Dict[str, Any] = {
             "status": "unavailable",

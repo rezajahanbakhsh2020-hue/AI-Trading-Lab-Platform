@@ -1147,6 +1147,26 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                 if path == "/api/v1/integration/project1/ingest":
                     res = self.gateway_service.ingest_signal_payload(user=user, payload=req_data)
                     if res.get("success"):
+                        record = res.get("record") if isinstance(res.get("record"), dict) else {}
+                        event_id = req_data.get("event_id") or record.get("event_id") or record.get("publication_id")
+                        pub_id = req_data.get("publication_id") or record.get("publication_id") or record.get("event_id") or event_id
+                        sig_id = record.get("signal_id") or (req_data.get("signal") if isinstance(req_data.get("signal"), dict) else {}).get("signal_id") or req_data.get("signal_id")
+
+                        if not event_id or not str(event_id).strip():
+                            self._send_error_response(
+                                400,
+                                "Missing Acknowledgement Identity",
+                                "Payload missing authoritative event_id required for acknowledgement.",
+                                "Ensure contract payload includes valid event_id.",
+                                origin=origin,
+                            )
+                            return
+
+                        res["event_id"] = str(event_id).strip()
+                        res["publication_id"] = str(pub_id).strip() if pub_id else str(event_id).strip()
+                        if sig_id and str(sig_id).strip():
+                            res["signal_id"] = str(sig_id).strip()
+
                         self._send_json_response(200, res, origin=origin)
                     else:
                         err_code = res.get("error_code", "INGESTION_FAILED")

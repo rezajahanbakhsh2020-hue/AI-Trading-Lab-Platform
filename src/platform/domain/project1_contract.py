@@ -611,11 +611,23 @@ def validate_project1_contract_payload(
     if ts_config is not None:
         sanitized["trailing_stop"] = ts_config.to_dict()
 
-    # Invalidation condition extraction
+    # Quantity extraction (preserve if present in raw_payload or trade_setup)
+    qty = (
+        trade_setup_obj.get("requested_quantity") if "requested_quantity" in trade_setup_obj
+        else (trade_setup_obj.get("quantity") if "quantity" in trade_setup_obj
+        else (raw_payload.get("requested_quantity") if "requested_quantity" in raw_payload
+        else raw_payload.get("quantity")))
+    )
+    if qty is not None:
+        try:
+            sanitized["requested_quantity"] = float(qty)
+        except (ValueError, TypeError):
+            pass
+
+    # Invalidation condition extraction (strictly top-level/trade_setup, never metadata)
     invalidation = (
         trade_setup_obj.get("invalidation_condition")
         or raw_payload.get("invalidation_condition")
-        or (raw_payload.get("metadata") or {}).get("invalidation_condition")
     )
     if invalidation:
         sanitized["invalidation_condition"] = str(invalidation).strip()

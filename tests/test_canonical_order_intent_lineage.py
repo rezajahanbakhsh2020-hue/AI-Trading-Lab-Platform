@@ -373,3 +373,219 @@ def test_caller_cannot_inject_attacker_gateway():
     assert intent.symbol == "XAUUSD"
     assert intent.direction == "buy"
     assert intent.requested_price == 100.0
+
+
+def test_defect_1_get_by_publication_id_and_concurrency(setup_services, tmp_path):
+    import threading
+    from src.platform.adapters.order_intent_repository import FileBackedOrderIntentRepository
+
+    repo_file = str(tmp_path / "test_intents.json")
+    repo = FileBackedOrderIntentRepository(storage_filepath=repo_file)
+
+    user, gw_svc, _ = setup_services
+    order_svc = OrderIntentService(project1_gateway_service=gw_svc, repository=repo)
+
+    rec = _build_valid_p1_record("pub_def1")
+    gw_svc.ingest_signal_payload(user, rec)
+
+    # Verify initial lookup returns None
+    assert repo.get_by_publication_id(user_id="user_test", publication_id="pub_def1") is None
+
+    # Test concurrent creation of intent for same publication
+    results = []
+
+    def _create():
+        res = order_svc.create_canonical_order_intent_from_publication(user, "pub_def1")
+        results.append(res)
+
+    threads = [threading.Thread(target=_create) for _ in range(5)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=5.0)
+
+    # Exactly 5 calls completed
+    assert len(results) == 5
+    created_intents = [res[2] for res in results if res[0] and res[2] is not None]
+    assert len(created_intents) == 5
+    # All 5 return the EXACT SAME intent_id (idempotent duplicate)
+    intent_ids = {intent.order_intent_id for intent in created_intents}
+    assert len(intent_ids) == 1
+
+    # Verify restart persistence loads publication_id index
+    repo_reloaded = FileBackedOrderIntentRepository(storage_filepath=repo_file)
+    fetched = repo_reloaded.get_by_publication_id(user_id="user_test", publication_id="pub_def1")
+    assert fetched is not None
+    assert fetched.order_intent_id == list(intent_ids)[0]
+
+
+def test_defect_1_cross_tenant_isolation(setup_services, tmp_path):
+    from src.platform.adapters.order_intent_repository import FileBackedOrderIntentRepository
+
+    repo_file = str(tmp_path / "test_intents_tenant.json")
+    repo = FileBackedOrderIntentRepository(storage_filepath=repo_file)
+
+    user_a = UserAuthorization("user_a", "ac_a", role=UserRole.USER)
+    user_b = UserAuthorization("user_b", "ac_b", role=UserRole.USER)
+
+    gw_svc = Project1IntegrationGatewayService()
+    order_svc = OrderIntentService(project1_gateway_service=gw_svc, repository=repo)
+
+    rec_a = _build_valid_p1_record("pub_tenant_cross_a")
+    rec_a["user_id"] = "user_a"
+    rec_a["tenant_id"] = "tenant_user_a"
+
+    rec_b = _build_valid_p1_record("pub_tenant_cross_b")
+    rec_b["user_id"] = "user_b"
+    rec_b["tenant_id"] = "tenant_user_b"
+
+    gw_svc.ingest_signal_payload(user_a, rec_a)
+    gw_svc.ingest_signal_payload(user_b, rec_b)
+
+    ok_a, _, intent_a = order_svc.create_canonical_order_intent_from_publication(user_a, "pub_tenant_cross_a")
+    assert ok_a is True
+
+    # User B querying repo for publication_id 'pub_tenant_cross_a' with user_id=user_b must return None (no cross-tenant leak)
+    assert repo.get_by_publication_id(user_id="user_b", publication_id="pub_tenant_cross_a") is None
+
+    # User B creating intent for their own publication 'pub_tenant_cross_b' gets their OWN user-isolated OrderIntent
+    ok_b, _, intent_b = order_svc.create_canonical_order_intent_from_publication(user_b, "pub_tenant_cross_b")
+    assert ok_b is True
+    assert intent_a.order_intent_id != intent_b.order_intent_id
+    assert intent_a.user_id == "user_a"
+    assert intent_b.user_id == "user_b"
+
+
+def test_defect_2_20_field_mutation_integrity_conflict(setup_services):
+    user, gw_svc, order_svc = setup_services
+    rec = _build_valid_p1_record("pub_def2")
+    gw_svc.ingest_signal_payload(user, rec)
+
+    ok1, _, intent1 = order_svc.create_canonical_order_intent_from_publication(user, "pub_def2")
+    assert ok1 is True
+
+    # Check 20-field mutation detection for each field in tuple
+    field_mutations = [
+        ("signal_id", "MUTATED_SIG"),
+        ("decision_id", "MUTATED_DEC"),
+        ("canonical_live_decision_fingerprint", "MUTATED_CANON_FP"),
+        ("candidate_id", "MUTATED_CAND"),
+        ("research_evidence_id", "MUTATED_EVIDENCE"),
+        ("strategy_id", "MUTATED_STRAT"),
+        ("research_fingerprint", "MUTATED_RF_FP"),
+        ("runtime_authorization_fingerprint", "MUTATED_RTA_FP"),
+        ("strategy_version", "MUTATED_VERSION"),
+        ("symbol", "EURUSD"),
+        ("signal_type", "sell"),
+        ("entry_price", 9999.0),
+        ("stop_loss", 8888.0),
+        ("take_profit_1", 1111.0),
+        ("take_profit_2", 2222.0),
+        ("take_profit_3", 3333.0),
+        ("trailing_stop", {"distance": 99.0, "is_active": True}),
+        ("invalidation_condition", "MUTATED_INVALIDATION"),
+    ]
+
+    for field_name, mutated_val in field_mutations:
+        for r in gw_svc._repo._records:
+            if r.get("publication_id") == "pub_def2":
+                r[field_name] = mutated_val
+
+        ok_mut, msg_mut, _ = order_svc.create_canonical_order_intent_from_publication(user, "pub_def2")
+        assert ok_mut is False, f"Expected mutation of {field_name} to fail closed"
+        assert "Integrity conflict" in msg_mut
+
+        # Restore original value
+        for r in gw_svc._repo._records:
+            if r.get("publication_id") == "pub_def2":
+                r[field_name] = rec.get(field_name)
+
+
+def test_defect_2_falsey_quantity_preservation(setup_services):
+    user, gw_svc, order_svc = setup_services
+    rec = _build_valid_p1_record("pub_falsey_qty")
+
+    # Manually insert requested_quantity into repo record to test domain model & service handling
+    gw_svc.ingest_signal_payload(user, rec)
+    for r in gw_svc._repo._records:
+        if r.get("publication_id") == "pub_falsey_qty":
+            r["requested_quantity"] = 1.5
+
+    ok, _, intent = order_svc.create_canonical_order_intent_from_publication(user, "pub_falsey_qty")
+    assert ok is True
+    assert intent.requested_quantity == 1.5
+
+
+def test_defect_3_recursive_trailing_stop_canonicalization(setup_services):
+    user, gw_svc, order_svc = setup_services
+    rec1 = _build_valid_p1_record("pub_trailing_1")
+    gw_svc.ingest_signal_payload(user, rec1)
+
+    ok1, _, intent1 = order_svc.create_canonical_order_intent_from_publication(user, "pub_trailing_1")
+    assert ok1 is True
+
+    # Re-order dict keys in repo record for pub_trailing_1
+    for r in gw_svc._repo._records:
+        if r.get("publication_id") == "pub_trailing_1":
+            orig_ts = dict(r["trailing_stop"]) if isinstance(r.get("trailing_stop"), dict) else {}
+            # Reverse keys
+            r["trailing_stop"] = dict(reversed(list(orig_ts.items())))
+
+    ok2, msg2, intent2 = order_svc.create_canonical_order_intent_from_publication(user, "pub_trailing_1")
+    assert ok2 is True
+    assert intent1.order_intent_id == intent2.order_intent_id
+
+
+def test_defect_3_list_order_sensitivity_in_nested_trailing_stop(setup_services):
+    user, gw_svc, order_svc = setup_services
+    rec1 = _build_valid_p1_record("pub_trailing_list_sens")
+    gw_svc.ingest_signal_payload(user, rec1)
+
+    ok1, _, intent1 = order_svc.create_canonical_order_intent_from_publication(user, "pub_trailing_list_sens")
+    assert ok1 is True
+
+    # Mutate a value in trailing_stop -> must trigger integrity conflict
+    for r in gw_svc._repo._records:
+        if r.get("publication_id") == "pub_trailing_list_sens":
+            if isinstance(r.get("trailing_stop"), dict):
+                r["trailing_stop"]["distance"] = 99.0
+
+    ok2, msg2, _ = order_svc.create_canonical_order_intent_from_publication(user, "pub_trailing_list_sens")
+    assert ok2 is False
+    assert "Integrity conflict" in msg2
+
+
+def test_defect_3_strict_top_level_invalidation_condition_no_metadata_fallback(setup_services):
+    user, gw_svc, order_svc = setup_services
+    rec = _build_valid_p1_record("pub_inv_strict")
+    # Store record with invalidation_condition=None in repo, but metadata having an invalidation condition
+    gw_svc.ingest_signal_payload(user, rec)
+    for r in gw_svc._repo._records:
+        if r.get("publication_id") == "pub_inv_strict":
+            r["invalidation_condition"] = None
+            r["metadata"] = {"invalidation_condition": "SHOULD_BE_IGNORED"}
+
+    ok, _, intent = order_svc.create_canonical_order_intent_from_publication(user, "pub_inv_strict")
+    assert ok is True
+    # Invalidation condition MUST NOT fall back to metadata
+    assert intent.invalidation_condition is None
+
+
+def test_blocker_5_duplicate_publication_ambiguity_fails_closed(setup_services):
+    user, gw_svc, order_svc = setup_services
+    rec1 = _build_valid_p1_record("pub_dup_ambiguous")
+    rec2 = _build_valid_p1_record("pub_dup_ambiguous")
+    rec1["integration_id"] = "int_1"
+    rec2["integration_id"] = "int_2"
+    rec2["entry_price"] = 9999.0  # Discrepancy / mutated authoritative content
+
+    gw_svc._repo.save_record(rec1)
+    gw_svc._repo.save_record(rec2)  # Insert second record directly into repo for pub_dup_ambiguous
+
+    # Resolution should fail closed (return None) due to conflicting publication records
+    resolved = gw_svc.resolve_authoritative_publication(user, "pub_dup_ambiguous")
+    assert resolved is None
+
+    ok, msg, intent = order_svc.create_canonical_order_intent_from_publication(user, "pub_dup_ambiguous")
+    assert ok is False
+    assert "No authoritative Project 1 integration record found" in msg

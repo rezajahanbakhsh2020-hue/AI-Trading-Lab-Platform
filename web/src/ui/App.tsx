@@ -27,6 +27,7 @@ import {
 } from "../architecture/marketData";
 import {
   requestExecutionApi,
+  requestCanonicalOrderIntentApi,
   updateOrderIntentStateApi,
 } from "../architecture/executionGateway";
 import type { OrderIntentPayload, OrderLifecycleState } from "../architecture/orderIntent";
@@ -215,38 +216,27 @@ export function App() {
     setSelectedSymbol(symbol);
   };
 
-  const handleStageOrderIntent = () => {
-    const sig = snapshot.signal;
-    const isBuy = (sig.action || "BUY").toUpperCase() === "BUY";
-    const intentId = `ord_intent_${sig.signalId || "staged_" + Date.now()}`;
-    const newIntent: OrderIntentPayload = {
-      order_intent_id: intentId,
-      authorization_id: `auth_${Date.now()}_${sig.strategyName || "Project1"}`,
-      user_id: snapshot.security?.userId || "guest_user",
-      symbol: selectedSymbol,
-      direction: isBuy ? "buy" : "sell",
-      order_type: "market",
-      requested_price: snapshot.risk.entry ?? null,
-      requested_quantity: 1.0,
-      stop_loss: snapshot.risk.stopLoss ?? null,
-      take_profit_1: snapshot.risk.takeProfits[0] ?? null,
-      take_profit_2: snapshot.risk.takeProfits[1] ?? null,
-      take_profit_3: snapshot.risk.takeProfits[2] ?? null,
-      time_in_force: "GTC",
-      idempotency_key: `idemp_${selectedSymbol.toLowerCase()}_${Date.now()}`,
-      creation_timestamp: Math.floor(Date.now() / 1000),
-      lifecycle_state: "STAGED",
-      is_staged: true,
-      is_terminal: false,
-    };
+  const handleStageOrderIntent = async () => {
+    const pubId = snapshot.signal?.publicationId;
+    if (!pubId) {
+      return;
+    }
 
-    setStagedIntents((prev) => {
-      const exists = prev.some((i) => i.order_intent_id === newIntent.order_intent_id);
-      if (exists) return prev;
-      return [newIntent, ...prev];
-    });
+    const idempotencyKey = `ui_${snapshot.security?.userId || "anonymous"}_${pubId}`;
+    const res = await requestCanonicalOrderIntentApi(
+      pubId,
+      idempotencyKey,
+      authState.sessionToken
+    );
 
-    navigate("/intents");
+    if (res.success && res.order_intent) {
+      const canonicalIntent = res.order_intent;
+      setStagedIntents((prev) => {
+        const filtered = prev.filter((i) => i.order_intent_id !== canonicalIntent.order_intent_id);
+        return [canonicalIntent, ...filtered];
+      });
+      navigate("/intents");
+    }
   };
 
   const handleTransitionIntent = async (

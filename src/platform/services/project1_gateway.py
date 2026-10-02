@@ -48,6 +48,42 @@ class Project1IntegrationGatewayService:
         self._notif_svc = notification_service
         self._service_key = service_key or "dev_project1_service_key_2026"
 
+    def resolve_authoritative_publication(
+        self,
+        user: Optional[UserAuthorization],
+        publication_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Resolve authoritative Project 1 publication record for canonical OrderIntent creation.
+
+        Strictly uses publication_id selector and enforces user/tenant isolation and RBAC authorization.
+        """
+        if user is None:
+            return None
+
+        allowed, _ = self._security.authorize(user, "signals", action="read")
+        if not allowed:
+            return None
+
+        if not isinstance(publication_id, str) or not publication_id.strip():
+            return None
+
+        clean_pub_id = publication_id.strip()
+        effective_user_id = None if user.is_admin else user.user_id
+
+        record = self._repo.find_authoritative_record(
+            {"publication_id": clean_pub_id},
+            user_id=effective_user_id,
+        )
+
+        if not record:
+            return None
+
+        # Verify that the returned record actually matches publication_id
+        if record.get("publication_id") != clean_pub_id:
+            return None
+
+        return SecretSanitizer.sanitize_data(record)
+
     def authenticate_service_credential(self, provided_credential: Optional[str]) -> bool:
         """Verify service-to-service credential supplied in Authorization or X-API-Key header."""
         if not provided_credential or not isinstance(provided_credential, str):

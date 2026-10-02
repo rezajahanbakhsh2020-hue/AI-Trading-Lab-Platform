@@ -31,6 +31,18 @@ export interface OrderIntentPayload {
   is_staged: boolean;
   is_terminal: boolean;
   rejection_reason?: string | null;
+  publication_id?: string | null;
+  signal_id?: string | null;
+  decision_id?: string | null;
+  canonical_live_decision_fingerprint?: string | null;
+  candidate_id?: string | null;
+  research_evidence_id?: string | null;
+  strategy_id?: string | null;
+  research_fingerprint?: string | null;
+  runtime_authorization_fingerprint?: string | null;
+  strategy_version?: string | null;
+  trailing_stop?: Record<string, any> | null;
+  invalidation_condition?: string | null;
   execution_attempts?: ExecutionAttemptResultPayload[];
   reconciliation?: ExecutionReconciliationRecordPayload | null;
 }

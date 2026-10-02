@@ -288,7 +288,7 @@ def test_presenter_order_intents_payload_and_isolation():
     assert snapshot_b["orderIntents"] == []
 
 
-def test_presenter_build_host_snapshot_auto_stages_authorized_signal():
+def test_presenter_build_host_snapshot_does_not_auto_stage_unauthoritative_order_intent():
     import time
     from src.platform.domain.presented_signal import PresentedSignal
     from src.platform.domain.security import Permission
@@ -322,11 +322,5 @@ def test_presenter_build_host_snapshot_auto_stages_authorized_signal():
 
     snapshot = presenter.build_host_snapshot("XAUUSD", "1h", user=user)
     assert snapshot["authorization"]["isAuthorized"] is True
-    assert len(snapshot["orderIntents"]) == 1
-
-    staged_intent = snapshot["orderIntents"][0]
-    assert staged_intent["user_id"] == "user_stage_test"
-    assert staged_intent["symbol"] == "XAUUSD"
-    assert staged_intent["direction"] == "buy"
-    assert staged_intent["requested_price"] == 2650.50
-    assert staged_intent["lifecycle_state"] == "STAGED"
+    # Presenter evaluation MUST NOT automatically synthesize an OrderIntent locally
+    assert len(snapshot["orderIntents"]) == 0

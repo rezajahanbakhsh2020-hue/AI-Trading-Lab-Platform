@@ -5,6 +5,7 @@ AutonomousAuthorization outcomes without performing price recalculations or clai
 broker execution, fills, or routing.
 """
 
+import threading
 import time
 import uuid
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -35,6 +36,7 @@ class OrderIntentService:
         audit_control: Optional[PlatformAuditControlService] = None,
         repository: Optional[OrderIntentRepositoryPort] = None,
         notification_service: Optional[Any] = None,
+        project1_gateway_service: Optional[Any] = None,
     ) -> None:
         self.security_boundary = security_boundary or SecurityBoundaryService()
         self.audit_control = audit_control or PlatformAuditControlService(
@@ -42,10 +44,338 @@ class OrderIntentService:
         )
         self.repository = repository
         self.notification_service = notification_service
+        self.project1_gateway_service = project1_gateway_service
+        self._lock = threading.RLock()
         # Store in-memory indexed by order_intent_id
         self._intents_by_id: Dict[str, OrderIntent] = {}
         # Store idempotency map: (user_id, idempotency_key) -> order_intent_id
         self._idempotency_map: Dict[Tuple[str, str], str] = {}
+
+    def _canonicalize_value(self, val: Any) -> Any:
+        """Recursively canonicalize nested data structures (sorting dict keys) for deterministic comparison."""
+        if isinstance(val, dict):
+            return tuple(sorted((str(k), self._canonicalize_value(v)) for k, v in val.items()))
+        elif isinstance(val, list):
+            return tuple(self._canonicalize_value(x) for x in val)
+        return val
+
+    def _extract_canonical_content_tuple(self, source: Any) -> Tuple[Any, ...]:
+        """Extract a deterministic 20-field tuple of authoritative trade & lineage fields for integrity comparisons."""
+        if isinstance(source, OrderIntent):
+            d = source.to_dict()
+        elif isinstance(source, dict):
+            d = source
+        else:
+            return ()
+
+        trailing = d.get("trailing_stop")
+        trailing_canonical = self._canonicalize_value(trailing) if trailing is not None else None
+
+        return (
+            d.get("publication_id"),
+            d.get("signal_id"),
+            d.get("decision_id"),
+            d.get("canonical_live_decision_fingerprint"),
+            d.get("candidate_id"),
+            d.get("research_evidence_id"),
+            d.get("strategy_id"),
+            d.get("research_fingerprint"),
+            d.get("runtime_authorization_fingerprint"),
+            d.get("strategy_version"),
+            d.get("symbol"),
+            d.get("direction"),
+            d.get("requested_price"),
+            d.get("stop_loss"),
+            d.get("take_profit_1"),
+            d.get("take_profit_2"),
+            d.get("take_profit_3"),
+            d.get("requested_quantity"),
+            trailing_canonical,
+            d.get("invalidation_condition"),
+        )
+
+    def create_canonical_order_intent_from_publication(
+        self,
+        user: Optional[UserAuthorization],
+        publication_id: str,
+        idempotency_key: Optional[str] = None,
+    ) -> Tuple[bool, str, Optional[OrderIntent]]:
+        """Authoritative server-side creation of canonical OrderIntent from Project 1 publication record."""
+        if user is None:
+            self.audit_control.record_event(
+                user_id="anonymous",
+                category=AuditCategory.ORDER_INTENT,
+                event_type="ORDER_INTENT_CREATION_DENIED",
+                lifecycle_state=OperationalLifecycleState.REJECTED,
+                action="CREATE_CANONICAL_ORDER_INTENT",
+                outcome="FAILURE",
+                severity=AuditEventSeverity.WARNING,
+                details="Unauthorized canonical order intent creation attempt: No user provided",
+            )
+            return False, "Unauthorized: Access denied: unauthenticated access", None
+
+        authorized, sec_msg = self.security_boundary.authorize(
+            user=user,
+            resource="signals",
+            action="create",
+        )
+        if not authorized:
+            self.audit_control.record_event(
+                user_id=user.user_id,
+                category=AuditCategory.ORDER_INTENT,
+                event_type="ORDER_INTENT_CREATION_DENIED",
+                lifecycle_state=OperationalLifecycleState.REJECTED,
+                action="CREATE_CANONICAL_ORDER_INTENT",
+                outcome="FAILURE",
+                severity=AuditEventSeverity.WARNING,
+                details=f"Unauthorized canonical order intent creation attempt: {sec_msg}",
+            )
+            return False, f"Unauthorized: {sec_msg}", None
+
+        if not isinstance(publication_id, str) or not publication_id.strip():
+            return False, "publication_id must be a non-empty string", None
+
+        clean_pub_id = publication_id.strip()
+        user_id = user.user_id
+
+        with self._lock:
+            # 2. Resolve authoritative Project 1 integration record server-side via public Gateway API
+            gw_svc = self.project1_gateway_service
+            p1_record: Optional[Dict[str, Any]] = None
+
+            if gw_svc is not None and hasattr(gw_svc, "resolve_authoritative_publication"):
+                p1_record = gw_svc.resolve_authoritative_publication(user, clean_pub_id)
+
+            if p1_record is None:
+                reason = f"No authoritative Project 1 integration record found for publication_id '{clean_pub_id}'"
+                self.audit_control.record_event(
+                    user_id=user_id,
+                    category=AuditCategory.ORDER_INTENT,
+                    event_type="ORDER_INTENT_RECORD_NOT_FOUND",
+                    lifecycle_state=OperationalLifecycleState.FAILED,
+                    action="CREATE_CANONICAL_ORDER_INTENT",
+                    outcome="FAILURE",
+                    severity=AuditEventSeverity.WARNING,
+                    correlation_id=clean_pub_id,
+                    details=reason,
+                )
+                return False, reason, None
+
+            # 3. Verify complete mandatory lineage identity (Fail closed if missing)
+            pub_id = p1_record.get("publication_id")
+            sig_id = p1_record.get("signal_id")
+            dec_id = p1_record.get("decision_id")
+            canon_fp = p1_record.get("canonical_live_decision_fingerprint")
+            cand_id = p1_record.get("candidate_id")
+            rese_id = p1_record.get("research_evidence_id")
+            strat_id = p1_record.get("strategy_id") or p1_record.get("strategy_name")
+            rese_fp = p1_record.get("research_fingerprint")
+            runtime_auth_fp = p1_record.get("runtime_authorization_fingerprint")
+            strat_ver = p1_record.get("strategy_version")
+
+            lineage_checks = {
+                "publication_id": pub_id,
+                "signal_id": sig_id,
+                "decision_id": dec_id,
+                "canonical_live_decision_fingerprint": canon_fp,
+                "candidate_id": cand_id,
+                "research_evidence_id": rese_id,
+                "strategy_id": strat_id,
+                "research_fingerprint": rese_fp,
+                "runtime_authorization_fingerprint": runtime_auth_fp,
+            }
+
+            for field_key, val in lineage_checks.items():
+                if not val or not isinstance(val, str) or not val.strip():
+                    reason = f"Missing mandatory authoritative lineage field '{field_key}' in Project 1 record"
+                    self.audit_control.record_event(
+                        user_id=user_id,
+                        category=AuditCategory.ORDER_INTENT,
+                        event_type="ORDER_INTENT_LINEAGE_MISSING",
+                        lifecycle_state=OperationalLifecycleState.FAILED,
+                        action="CREATE_CANONICAL_ORDER_INTENT",
+                        outcome="FAILURE",
+                        severity=AuditEventSeverity.ERROR,
+                        correlation_id=clean_pub_id,
+                        details=reason,
+                    )
+                    return False, reason, None
+
+            # 4. Extract trade values strictly from P1 record without calculation, modification, or invention
+            symbol = p1_record.get("symbol")
+            if not symbol or not isinstance(symbol, str) or not symbol.strip():
+                return False, "Missing or invalid symbol in Project 1 record", None
+            clean_symbol = symbol.strip().upper()
+
+            raw_direction = p1_record.get("signal_type") or p1_record.get("direction")
+            if not raw_direction or not isinstance(raw_direction, str):
+                return False, "Missing or invalid signal_type/direction in Project 1 record", None
+            clean_dir = raw_direction.strip().lower()
+            if clean_dir not in ("buy", "sell"):
+                return False, f"Non-actionable or unsupported signal decision '{raw_direction}' in Project 1 record", None
+
+            entry_price = p1_record.get("entry_price")
+            stop_loss = p1_record.get("stop_loss")
+            tp1 = p1_record.get("take_profit_1")
+            tp2 = p1_record.get("take_profit_2")
+            tp3 = p1_record.get("take_profit_3")
+            trailing_stop = p1_record.get("trailing_stop")
+            invalidation = p1_record.get("invalidation_condition")
+
+            # Quantity must NOT be invented or caller-supplied. Only preserve if present in authoritative P1 record.
+            p1_quantity = p1_record.get("requested_quantity") if "requested_quantity" in p1_record else p1_record.get("quantity")
+            requested_quantity = float(p1_quantity) if p1_quantity is not None else None
+
+            clean_idemp_key = (
+                idempotency_key.strip()
+                if idempotency_key and isinstance(idempotency_key, str) and idempotency_key.strip()
+                else f"idemp_pub_{user_id}_{pub_id}"
+            )
+
+            # Build candidate dict for content comparison (matching OrderIntent schema)
+            calculated_p1_dict = {
+                "publication_id": pub_id,
+                "signal_id": sig_id,
+                "decision_id": dec_id,
+                "canonical_live_decision_fingerprint": canon_fp,
+                "candidate_id": cand_id,
+                "research_evidence_id": rese_id,
+                "strategy_id": strat_id,
+                "research_fingerprint": rese_fp,
+                "runtime_authorization_fingerprint": runtime_auth_fp,
+                "strategy_version": strat_ver,
+                "symbol": clean_symbol,
+                "direction": clean_dir,
+                "requested_price": entry_price,
+                "stop_loss": stop_loss,
+                "take_profit_1": tp1,
+                "take_profit_2": tp2,
+                "take_profit_3": tp3,
+                "requested_quantity": requested_quantity,
+                "trailing_stop": trailing_stop if isinstance(trailing_stop, dict) else None,
+                "invalidation_condition": invalidation if isinstance(invalidation, str) else None,
+            }
+
+            # 5. Idempotency & Integrity Conflict Checks (strictly publication_id based via repository primitive)
+            existing_intent: Optional[OrderIntent] = None
+            if self.repository is not None:
+                existing_intent = self.repository.get_by_publication_id(
+                    user_id=user_id, publication_id=pub_id
+                )
+            else:
+                for candidate in self._intents_by_id.values():
+                    if candidate.user_id != user_id:
+                        continue
+                    if candidate.publication_id == pub_id:
+                        existing_intent = candidate
+                        break
+
+            if existing_intent is not None:
+                existing_content = self._extract_canonical_content_tuple(existing_intent)
+                p1_content = self._extract_canonical_content_tuple(calculated_p1_dict)
+
+                if existing_content == p1_content:
+                    self.audit_control.record_event(
+                        user_id=user_id,
+                        category=AuditCategory.ORDER_INTENT,
+                        event_type="ORDER_INTENT_IDEMPOTENT_DUPLICATE",
+                        lifecycle_state=existing_intent.lifecycle_state,
+                        action="CREATE_CANONICAL_ORDER_INTENT",
+                        outcome="SUCCESS",
+                        severity=AuditEventSeverity.INFO,
+                        resource_id=existing_intent.order_intent_id,
+                        correlation_id=clean_idemp_key,
+                        details="Returned existing canonical order intent for idempotent publication without duplication.",
+                    )
+                    return True, "Existing canonical order intent returned (idempotent)", existing_intent
+                else:
+                    reason = "Integrity conflict: Existing order intent for publication identity contains mutated authoritative content"
+                    self.audit_control.record_event(
+                        user_id=user_id,
+                        category=AuditCategory.ORDER_INTENT,
+                        event_type="ORDER_INTENT_INTEGRITY_CONFLICT",
+                        lifecycle_state=OperationalLifecycleState.REJECTED,
+                        action="CREATE_CANONICAL_ORDER_INTENT",
+                        outcome="FAILURE",
+                        severity=AuditEventSeverity.ERROR,
+                        correlation_id=clean_idemp_key,
+                        details=reason,
+                    )
+                    return False, reason, None
+
+            # Also verify that caller-supplied idempotency key does not belong to a different publication intent
+            idempotency_pair = (user_id, clean_idemp_key)
+            if idempotency_pair in self._idempotency_map:
+                key_intent_id = self._idempotency_map[idempotency_pair]
+                key_intent = self._intents_by_id.get(key_intent_id)
+                if key_intent and key_intent.publication_id != pub_id:
+                    reason = f"Idempotency key '{clean_idemp_key}' is already bound to a different publication intent"
+                    return False, reason, None
+
+            # 6. Construct and persist canonical OrderIntent (authorization_id is None)
+            order_intent_id = f"ord_intent_{uuid.uuid4().hex[:12]}"
+            creation_ts = float(p1_record.get("timestamp") or time.time())
+
+            try:
+                intent = OrderIntent(
+                    order_intent_id=order_intent_id,
+                    authorization_id=None,  # Canonical P1 intents have no synthetic authorization_id
+                    user_id=user_id,
+                    symbol=clean_symbol,
+                    direction=clean_dir,
+                    idempotency_key=clean_idemp_key,
+                    creation_timestamp=creation_ts,
+                    lifecycle_state=OrderLifecycleState.STAGED,
+                    order_type="market",
+                    requested_price=entry_price,
+                    requested_quantity=requested_quantity,
+                    stop_loss=stop_loss,
+                    take_profit_1=tp1,
+                    take_profit_2=tp2,
+                    take_profit_3=tp3,
+                    publication_id=pub_id,
+                    signal_id=sig_id,
+                    decision_id=dec_id,
+                    canonical_live_decision_fingerprint=canon_fp,
+                    candidate_id=cand_id,
+                    research_evidence_id=rese_id,
+                    strategy_id=strat_id,
+                    research_fingerprint=rese_fp,
+                    runtime_authorization_fingerprint=runtime_auth_fp,
+                    strategy_version=strat_ver,
+                    trailing_stop=trailing_stop if isinstance(trailing_stop, dict) else None,
+                    invalidation_condition=invalidation if isinstance(invalidation, str) else None,
+                )
+            except ValueError as e:
+                reason = f"Failed constructing canonical OrderIntent: {e}"
+                return False, reason, None
+
+            self._intents_by_id[intent.order_intent_id] = intent
+            self._idempotency_map[(user_id, clean_idemp_key)] = intent.order_intent_id
+            if self.repository is not None:
+                self.repository.save_order_intent(intent)
+
+            self.audit_control.record_event(
+                user_id=user_id,
+                category=AuditCategory.ORDER_INTENT,
+                event_type="CANONICAL_ORDER_INTENT_STAGED",
+                lifecycle_state=OperationalLifecycleState.STAGED,
+                action="CREATE_CANONICAL_ORDER_INTENT",
+                outcome="SUCCESS",
+                severity=AuditEventSeverity.INFO,
+                resource_id=intent.order_intent_id,
+                correlation_id=clean_idemp_key,
+                details=f"Canonical OrderIntent staged for publication {pub_id} ({clean_symbol} {clean_dir.upper()})",
+                metadata={
+                    "order_intent_id": intent.order_intent_id,
+                    "publication_id": pub_id,
+                    "signal_id": sig_id,
+                    "strategy_id": strat_id,
+                    "runtime_authorization_fingerprint": runtime_auth_fp,
+                },
+            )
+
+            return True, "Canonical order intent staged successfully", intent
 
     def create_order_intent(
         self,

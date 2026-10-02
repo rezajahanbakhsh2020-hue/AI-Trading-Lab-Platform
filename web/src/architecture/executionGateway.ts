@@ -116,6 +116,35 @@ export async function requestExecutionApi(
   }
 }
 
+export async function requestCanonicalOrderIntentApi(
+  publicationId: string,
+  idempotencyKey?: string,
+  token?: string | null
+): Promise<{
+  success: boolean;
+  message?: string;
+  order_intent?: OrderIntentPayload;
+}> {
+  try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    const resp = await fetch("/api/v1/execution/canonical-intent", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        publication_id: publicationId,
+        idempotency_key: idempotencyKey,
+      }),
+    });
+    const data = await resp.json();
+    return data;
+  } catch (err) {
+    return { success: false, message: (err as Error).message };
+  }
+}
+
 export async function reconcileExecutionApi(
   orderIntentId: string,
   token?: string | null

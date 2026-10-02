@@ -82,12 +82,12 @@ class OrderIntent:
     """Immutable domain representation of an authorized order intent."""
 
     order_intent_id: str
-    authorization_id: str
-    user_id: str
-    symbol: str
-    direction: str
-    idempotency_key: str
-    creation_timestamp: float
+    authorization_id: Optional[str] = None
+    user_id: str = ""
+    symbol: str = ""
+    direction: str = "buy"
+    idempotency_key: str = ""
+    creation_timestamp: float = 0.0
     lifecycle_state: OrderLifecycleState = OrderLifecycleState.STAGED
     order_type: str = "market"
     requested_price: Optional[float] = None
@@ -98,15 +98,28 @@ class OrderIntent:
     take_profit_3: Optional[float] = None
     time_in_force: Optional[str] = None
     rejection_reason: Optional[str] = None
+    publication_id: Optional[str] = None
+    signal_id: Optional[str] = None
+    decision_id: Optional[str] = None
+    canonical_live_decision_fingerprint: Optional[str] = None
+    candidate_id: Optional[str] = None
+    research_evidence_id: Optional[str] = None
+    strategy_id: Optional[str] = None
+    research_fingerprint: Optional[str] = None
+    runtime_authorization_fingerprint: Optional[str] = None
+    strategy_version: Optional[str] = None
+    trailing_stop: Optional[Dict[str, Any]] = None
+    invalidation_condition: Optional[str] = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.order_intent_id, str) or not self.order_intent_id.strip():
             raise ValueError("order_intent_id must be a non-empty string")
         object.__setattr__(self, "order_intent_id", self.order_intent_id.strip())
 
-        if not isinstance(self.authorization_id, str) or not self.authorization_id.strip():
-            raise ValueError("authorization_id must be a non-empty string")
-        object.__setattr__(self, "authorization_id", self.authorization_id.strip())
+        if self.authorization_id is not None:
+            if not isinstance(self.authorization_id, str) or not self.authorization_id.strip():
+                raise ValueError("authorization_id must be a non-empty string if provided")
+            object.__setattr__(self, "authorization_id", self.authorization_id.strip())
 
         if not isinstance(self.user_id, str) or not self.user_id.strip():
             raise ValueError("user_id must be a non-empty string")
@@ -186,6 +199,29 @@ class OrderIntent:
                 raise ValueError("rejection_reason must be a non-empty string if provided")
             object.__setattr__(self, "rejection_reason", self.rejection_reason.strip())
 
+        # Lineage string fields validation
+        for line_field in (
+            "publication_id",
+            "signal_id",
+            "decision_id",
+            "canonical_live_decision_fingerprint",
+            "candidate_id",
+            "research_evidence_id",
+            "strategy_id",
+            "research_fingerprint",
+            "runtime_authorization_fingerprint",
+            "strategy_version",
+            "invalidation_condition",
+        ):
+            val = getattr(self, line_field)
+            if val is not None:
+                if not isinstance(val, str) or not val.strip():
+                    raise ValueError(f"{line_field} must be a non-empty string if provided")
+                object.__setattr__(self, line_field, val.strip())
+
+        if self.trailing_stop is not None and not isinstance(self.trailing_stop, dict):
+            raise ValueError("trailing_stop must be a dictionary if provided")
+
     @property
     def is_staged(self) -> bool:
         """Return True if in STAGED lifecycle state."""
@@ -223,6 +259,18 @@ class OrderIntent:
             take_profit_3=self.take_profit_3,
             time_in_force=self.time_in_force,
             rejection_reason=reason if reason else self.rejection_reason,
+            publication_id=self.publication_id,
+            signal_id=self.signal_id,
+            decision_id=self.decision_id,
+            canonical_live_decision_fingerprint=self.canonical_live_decision_fingerprint,
+            candidate_id=self.candidate_id,
+            research_evidence_id=self.research_evidence_id,
+            strategy_id=self.strategy_id,
+            research_fingerprint=self.research_fingerprint,
+            runtime_authorization_fingerprint=self.runtime_authorization_fingerprint,
+            strategy_version=self.strategy_version,
+            trailing_stop=dict(self.trailing_stop) if self.trailing_stop else None,
+            invalidation_condition=self.invalidation_condition,
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -247,6 +295,18 @@ class OrderIntent:
             "is_staged": self.is_staged,
             "is_terminal": self.is_terminal,
             "rejection_reason": self.rejection_reason,
+            "publication_id": self.publication_id,
+            "signal_id": self.signal_id,
+            "decision_id": self.decision_id,
+            "canonical_live_decision_fingerprint": self.canonical_live_decision_fingerprint,
+            "candidate_id": self.candidate_id,
+            "research_evidence_id": self.research_evidence_id,
+            "strategy_id": self.strategy_id,
+            "research_fingerprint": self.research_fingerprint,
+            "runtime_authorization_fingerprint": self.runtime_authorization_fingerprint,
+            "strategy_version": self.strategy_version,
+            "trailing_stop": dict(self.trailing_stop) if self.trailing_stop else None,
+            "invalidation_condition": self.invalidation_condition,
         }
 
     @classmethod
@@ -257,7 +317,7 @@ class OrderIntent:
 
         return cls(
             order_intent_id=d["order_intent_id"],
-            authorization_id=d["authorization_id"],
+            authorization_id=d.get("authorization_id"),
             user_id=d["user_id"],
             symbol=d["symbol"],
             direction=d["direction"],
@@ -273,4 +333,16 @@ class OrderIntent:
             take_profit_3=float(d["take_profit_3"]) if d.get("take_profit_3") is not None else None,
             time_in_force=d.get("time_in_force"),
             rejection_reason=d.get("rejection_reason"),
+            publication_id=d.get("publication_id"),
+            signal_id=d.get("signal_id"),
+            decision_id=d.get("decision_id"),
+            canonical_live_decision_fingerprint=d.get("canonical_live_decision_fingerprint"),
+            candidate_id=d.get("candidate_id"),
+            research_evidence_id=d.get("research_evidence_id"),
+            strategy_id=d.get("strategy_id"),
+            research_fingerprint=d.get("research_fingerprint"),
+            runtime_authorization_fingerprint=d.get("runtime_authorization_fingerprint"),
+            strategy_version=d.get("strategy_version"),
+            trailing_stop=dict(d["trailing_stop"]) if isinstance(d.get("trailing_stop"), dict) else None,
+            invalidation_condition=d.get("invalidation_condition"),
         )

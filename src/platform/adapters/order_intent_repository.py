@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 import json
 import os
 import shutil
+import threading
 import time
 from typing import Any, Dict, List, Optional
 
@@ -40,6 +41,13 @@ class OrderIntentRepositoryPort(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def get_by_publication_id(
+        self, user_id: str, publication_id: str
+    ) -> Optional[OrderIntent]:
+        """Retrieve canonical OrderIntent by user/publication identity."""
+        raise NotImplementedError
+
+    @abstractmethod
     def list_order_intents(
         self,
         user_id: Optional[str] = None,
@@ -61,51 +69,77 @@ class FileBackedOrderIntentRepository(OrderIntentRepositoryPort):
     ) -> None:
         self._storage_filepath = storage_filepath
         self._audit_control = audit_control
+        self._lock = threading.RLock()
         self._intents_by_id: Dict[str, OrderIntent] = {}
         self._idempotency_map: Dict[str, str] = {}  # "user_id:idempotency_key" -> order_intent_id
+        self._publication_map: Dict[Tuple[str, str], str] = {}  # (user_id, publication_id) -> order_intent_id
+        self._ambiguous_publication_keys: set = set()  # set of (user_id, publication_id) with duplicate persisted intents
         self._load_from_storage()
 
+    @property
+    def lock(self) -> threading.RLock:
+        """Expose lock context for thread-safe atomic check-and-create operations."""
+        return self._lock
+
     def _load_from_storage(self) -> None:
-        if not os.path.exists(self._storage_filepath):
-            self._intents_by_id = {}
-            self._idempotency_map = {}
-            return
+        with self._lock:
+            if not os.path.exists(self._storage_filepath):
+                self._intents_by_id = {}
+                self._idempotency_map = {}
+                self._publication_map = {}
+                self._ambiguous_publication_keys = set()
+                return
 
-        try:
-            with open(self._storage_filepath, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                intents_raw = []
-                if isinstance(data, dict) and "intents" in data:
-                    intents_raw = data.get("intents", [])
-                elif isinstance(data, list):
-                    intents_raw = data
-
-                loaded_by_id: Dict[str, OrderIntent] = {}
-                loaded_idemp: Dict[str, str] = {}
-
-                for raw in intents_raw:
-                    if isinstance(raw, dict):
-                        try:
-                            intent = OrderIntent.from_dict(raw)
-                            loaded_by_id[intent.order_intent_id] = intent
-                            if intent.idempotency_key:
-                                key = f"{intent.user_id}:{intent.idempotency_key}"
-                                loaded_idemp[key] = intent.order_intent_id
-                        except Exception:
-                            continue
-
-                self._intents_by_id = loaded_by_id
-                self._idempotency_map = loaded_idemp
-
-        except Exception as exc:
-            # Corrupt file handling: backup corrupt file and start fresh
-            backup_path = f"{self._storage_filepath}.corrupt.{int(time.time())}"
             try:
-                shutil.copy2(self._storage_filepath, backup_path)
-            except Exception:
-                pass
-            self._intents_by_id = {}
-            self._idempotency_map = {}
+                with open(self._storage_filepath, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    intents_raw = []
+                    if isinstance(data, dict) and "intents" in data:
+                        intents_raw = data.get("intents", [])
+                    elif isinstance(data, list):
+                        intents_raw = data
+
+                    loaded_by_id: Dict[str, OrderIntent] = {}
+                    loaded_idemp: Dict[str, str] = {}
+                    loaded_pub: Dict[Tuple[str, str], str] = {}
+                    ambiguous_pub: set = set()
+
+                    for raw in intents_raw:
+                        if isinstance(raw, dict):
+                            try:
+                                intent = OrderIntent.from_dict(raw)
+                                loaded_by_id[intent.order_intent_id] = intent
+                                if intent.idempotency_key:
+                                    key = f"{intent.user_id}:{intent.idempotency_key}"
+                                    loaded_idemp[key] = intent.order_intent_id
+                                if intent.publication_id:
+                                    pub_key = (intent.user_id, intent.publication_id)
+                                    if pub_key in loaded_pub and loaded_pub[pub_key] != intent.order_intent_id:
+                                        ambiguous_pub.add(pub_key)
+                                    else:
+                                        loaded_pub[pub_key] = intent.order_intent_id
+                            except Exception:
+                                continue
+
+                    # Remove ambiguous publication keys from loaded map so lookup fails closed
+                    for amb in ambiguous_pub:
+                        loaded_pub.pop(amb, None)
+
+                    self._intents_by_id = loaded_by_id
+                    self._idempotency_map = loaded_idemp
+                    self._publication_map = loaded_pub
+                    self._ambiguous_publication_keys = ambiguous_pub
+
+            except Exception as exc:
+                # Corrupt file handling: backup corrupt file and start fresh
+                backup_path = f"{self._storage_filepath}.corrupt.{int(time.time())}"
+                try:
+                    shutil.copy2(self._storage_filepath, backup_path)
+                except Exception:
+                    pass
+                self._intents_by_id = {}
+                self._idempotency_map = {}
+                self._publication_map = {}
             if self._audit_control is not None and hasattr(self._audit_control, "record_failure"):
                 self._audit_control.record_failure(
                     component="FileBackedOrderIntentRepository",
@@ -146,32 +180,68 @@ class FileBackedOrderIntentRepository(OrderIntentRepositoryPort):
         if not isinstance(intent, OrderIntent):
             raise ValueError("intent must be an OrderIntent instance")
 
-        self._intents_by_id[intent.order_intent_id] = intent
-        if intent.idempotency_key:
-            key = f"{intent.user_id}:{intent.idempotency_key}"
-            self._idempotency_map[key] = intent.order_intent_id
+        with self._lock:
+            if intent.publication_id:
+                pub_key = (intent.user_id, intent.publication_id)
+                if pub_key in self._ambiguous_publication_keys:
+                    raise ValueError("OrderIntent publication identity is ambiguous")
+                existing_pub_id = self._publication_map.get(pub_key)
+                if existing_pub_id is not None and existing_pub_id != intent.order_intent_id:
+                    raise ValueError("OrderIntent publication identity already exists")
 
-        self._flush_to_storage()
-        return intent
+            self._intents_by_id[intent.order_intent_id] = intent
+            if intent.idempotency_key:
+                key = f"{intent.user_id}:{intent.idempotency_key}"
+                self._idempotency_map[key] = intent.order_intent_id
+            if intent.publication_id:
+                pub_key = (intent.user_id, intent.publication_id)
+                self._publication_map[pub_key] = intent.order_intent_id
+
+            self._flush_to_storage()
+            return intent
 
     def get_order_intent(
         self, order_intent_id: str, user_id: Optional[str] = None
     ) -> Optional[OrderIntent]:
-        intent = self._intents_by_id.get(order_intent_id)
-        if intent is None:
-            return None
-        if user_id is not None and intent.user_id != user_id:
-            return None
-        return intent
+        with self._lock:
+            intent = self._intents_by_id.get(order_intent_id)
+            if intent is None:
+                return None
+            if user_id is not None and intent.user_id != user_id:
+                return None
+            return intent
 
     def get_by_idempotency_key(
         self, user_id: str, idempotency_key: str
     ) -> Optional[OrderIntent]:
-        key = f"{user_id}:{idempotency_key}"
-        intent_id = self._idempotency_map.get(key)
-        if intent_id:
-            return self._intents_by_id.get(intent_id)
-        return None
+        with self._lock:
+            key = f"{user_id}:{idempotency_key}"
+            intent_id = self._idempotency_map.get(key)
+            if intent_id:
+                return self._intents_by_id.get(intent_id)
+            return None
+
+    def get_by_publication_id(
+        self, user_id: str, publication_id: str
+    ) -> Optional[OrderIntent]:
+        with self._lock:
+            if not user_id or not isinstance(user_id, str) or not user_id.strip():
+                return None
+            if not publication_id or not isinstance(publication_id, str) or not publication_id.strip():
+                return None
+
+            clean_user_id = user_id.strip()
+            clean_pub_id = publication_id.strip()
+            pub_key = (clean_user_id, clean_pub_id)
+
+            if pub_key in self._ambiguous_publication_keys:
+                return None
+
+            intent_id = self._publication_map.get(pub_key)
+            if intent_id:
+                return self._intents_by_id.get(intent_id)
+
+            return None
 
     def list_order_intents(
         self,
@@ -180,19 +250,20 @@ class FileBackedOrderIntentRepository(OrderIntentRepositoryPort):
         lifecycle_state: Optional[str] = None,
         limit: int = 100,
     ) -> List[OrderIntent]:
-        results: List[OrderIntent] = []
-        clean_symbol = symbol.strip().upper() if symbol and symbol.strip() else None
-        clean_ls = lifecycle_state.strip().upper() if lifecycle_state and lifecycle_state.strip() else None
+        with self._lock:
+            results: List[OrderIntent] = []
+            clean_symbol = symbol.strip().upper() if symbol and symbol.strip() else None
+            clean_ls = lifecycle_state.strip().upper() if lifecycle_state and lifecycle_state.strip() else None
 
-        for intent in self._intents_by_id.values():
-            if user_id is not None and intent.user_id != user_id:
-                continue
-            if clean_symbol and intent.symbol != clean_symbol:
-                continue
-            if clean_ls and intent.lifecycle_state.value != clean_ls:
-                continue
-            results.append(intent)
+            for intent in self._intents_by_id.values():
+                if user_id is not None and intent.user_id != user_id:
+                    continue
+                if clean_symbol and intent.symbol != clean_symbol:
+                    continue
+                if clean_ls and intent.lifecycle_state.value != clean_ls:
+                    continue
+                results.append(intent)
 
-        # Sort descending by creation timestamp
-        results.sort(key=lambda x: x.creation_timestamp, reverse=True)
-        return results[:limit]
+            # Sort descending by creation timestamp
+            results.sort(key=lambda x: x.creation_timestamp, reverse=True)
+            return results[:limit]

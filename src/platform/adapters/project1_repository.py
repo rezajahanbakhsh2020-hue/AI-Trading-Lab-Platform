@@ -201,10 +201,11 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
         if not isinstance(record, dict):
             return None
 
-        # Build exact complete lineage key for target record
         target_pub_id = record.get("publication_id")
         target_event_id = record.get("event_id")
         target_sig_id = record.get("signal_id")
+
+        matches: List[Dict[str, Any]] = []
 
         for rec in self._records:
             if user_id is not None and rec.get("user_id") not in (user_id, None, "system", "p1_service_ingest"):
@@ -214,23 +215,35 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
             rec_event_id = rec.get("event_id")
             rec_sig_id = rec.get("signal_id")
 
-            # Require exact match on complete publication lineage if publication_id is present
-            if target_pub_id and rec_pub_id:
-                if target_pub_id == rec_pub_id:
-                    return dict(rec)
-                continue
+            if target_pub_id and rec_pub_id and target_pub_id == rec_pub_id:
+                matches.append(rec)
+            elif not target_pub_id and target_event_id and rec_event_id and target_event_id == rec_event_id:
+                matches.append(rec)
+            elif not target_pub_id and not target_event_id and target_sig_id and rec_sig_id and target_sig_id == rec_sig_id:
+                matches.append(rec)
 
-            if target_event_id and rec_event_id:
-                if target_event_id == rec_event_id:
-                    return dict(rec)
-                continue
+        if not matches:
+            return None
 
-            if target_sig_id and rec_sig_id:
-                if target_sig_id == rec_sig_id:
-                    return dict(rec)
-                continue
+        if len(matches) == 1:
+            return dict(matches[0])
 
-        return None
+        # Multiple matching records found for the publication identity -> verify all matches have identical authoritative content
+        auth_keys = (
+            "publication_id", "signal_id", "decision_id", "canonical_live_decision_fingerprint",
+            "candidate_id", "research_evidence_id", "strategy_name", "research_fingerprint",
+            "runtime_authorization_fingerprint", "strategy_version", "symbol", "signal_type",
+            "entry_price", "stop_loss", "take_profit_1", "take_profit_2", "take_profit_3",
+            "trailing_stop", "invalidation_condition"
+        )
+        first_content = {k: matches[0].get(k) for k in auth_keys}
+        for other in matches[1:]:
+            other_content = {k: other.get(k) for k in auth_keys}
+            if first_content != other_content:
+                # Discrepancy/ambiguity in duplicate publication records -> fail closed
+                return None
+
+        return dict(matches[0])
 
     def is_duplicate_request(
         self, signal_id: str, user_id: Optional[str] = None, timestamp: Optional[float] = None

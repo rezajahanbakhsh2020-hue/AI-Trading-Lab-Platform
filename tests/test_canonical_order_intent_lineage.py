@@ -22,6 +22,7 @@ R. caller-controlled idempotency key cannot create a second canonical intent for
 S. frontend/client payload containing trade levels or quantity cannot override server-resolved P1 authority.
 """
 
+import json
 import time
 import pytest
 
@@ -204,6 +205,7 @@ def test_scenario_m_same_publication_with_mutated_content_rejected(setup_service
     for r in gw_svc._repo._records:
         if r.get("publication_id") == "pub_m":
             r["entry_price"] = 9999.99
+    gw_svc._repo._flush_to_storage_unlocked()
 
     ok2, msg2, intent2 = order_svc.create_canonical_order_intent_from_publication(
         user=user,
@@ -490,6 +492,7 @@ def test_defect_2_20_field_mutation_integrity_conflict(setup_services):
         for r in gw_svc._repo._records:
             if r.get("publication_id") == "pub_def2":
                 r[field_name] = mutated_val
+            gw_svc._repo._flush_to_storage_unlocked()
 
         ok_mut, msg_mut, _ = order_svc.create_canonical_order_intent_from_publication(user, "pub_def2")
         assert ok_mut is False, f"Expected mutation of {field_name} to fail closed"
@@ -499,6 +502,7 @@ def test_defect_2_20_field_mutation_integrity_conflict(setup_services):
         for r in gw_svc._repo._records:
             if r.get("publication_id") == "pub_def2":
                 r[field_name] = rec.get(field_name)
+            gw_svc._repo._flush_to_storage_unlocked()
 
 
 def test_defect_2_falsey_quantity_preservation(setup_services):
@@ -510,6 +514,7 @@ def test_defect_2_falsey_quantity_preservation(setup_services):
     for r in gw_svc._repo._records:
         if r.get("publication_id") == "pub_falsey_qty":
             r["requested_quantity"] = 1.5
+    gw_svc._repo._flush_to_storage_unlocked()
 
     ok, _, intent = order_svc.create_canonical_order_intent_from_publication(user, "pub_falsey_qty")
     assert ok is True
@@ -549,6 +554,7 @@ def test_defect_3_list_order_sensitivity_in_nested_trailing_stop(setup_services)
         if r.get("publication_id") == "pub_trailing_list_sens":
             if isinstance(r.get("trailing_stop"), dict):
                 r["trailing_stop"]["distance"] = 99.0
+    gw_svc._repo._flush_to_storage_unlocked()
 
     ok2, msg2, _ = order_svc.create_canonical_order_intent_from_publication(user, "pub_trailing_list_sens")
     assert ok2 is False
@@ -564,6 +570,7 @@ def test_defect_3_strict_top_level_invalidation_condition_no_metadata_fallback(s
         if r.get("publication_id") == "pub_inv_strict":
             r["invalidation_condition"] = None
             r["metadata"] = {"invalidation_condition": "SHOULD_BE_IGNORED"}
+    gw_svc._repo._flush_to_storage_unlocked()
 
     ok, _, intent = order_svc.create_canonical_order_intent_from_publication(user, "pub_inv_strict")
     assert ok is True
@@ -579,8 +586,14 @@ def test_blocker_5_duplicate_publication_ambiguity_fails_closed(setup_services):
     rec2["integration_id"] = "int_2"
     rec2["entry_price"] = 9999.0  # Discrepancy / mutated authoritative content
 
-    gw_svc._repo.save_record(rec1)
-    gw_svc._repo.save_record(rec2)  # Insert second record directly into repo for pub_dup_ambiguous
+    # Insert ambiguous records directly into storage file to test failure resolution
+    payload = {
+        "schema_version": 1,
+        "updated_at": time.time(),
+        "records": [rec1, rec2]
+    }
+    with open(gw_svc._repo._storage_filepath, "w", encoding="utf-8") as f:
+        json.dump(payload, f)
 
     # Resolution should fail closed (return None) due to conflicting publication records
     resolved = gw_svc.resolve_authoritative_publication(user, "pub_dup_ambiguous")

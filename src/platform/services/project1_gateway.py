@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 from src.platform.adapters.project1_repository import (
     FileBackedProject1IntegrationRepository,
     Project1IntegrationRepositoryPort,
+    RepositoryStatus,
 )
 from src.platform.domain.audit_control import AuditCategory, AuditEventSeverity, OperationalLifecycleState
 from src.platform.domain.project1_contract import (
@@ -78,7 +79,6 @@ class Project1IntegrationGatewayService:
         if not record:
             return None
 
-        # Verify that the returned record actually matches publication_id
         if record.get("publication_id") != clean_pub_id:
             return None
 
@@ -95,7 +95,6 @@ class Project1IntegrationGatewayService:
         """Return contract capabilities discovery payload."""
         caps = get_project1_contract_capabilities()
 
-        # Audit log discovery
         self._audit.record_event(
             user_id=user.user_id if user else "guest",
             category=AuditCategory.OPERATIONAL_SYSTEM,
@@ -241,6 +240,10 @@ class Project1IntegrationGatewayService:
         if not sanitized.get("tenant_id"):
             sanitized["tenant_id"] = f"tenant_{user.user_id}"
 
+        raw_int_id = sanitized.get("integration_id") or f"p1_{sanitized.get('publication_id')}_{sanitized.get('event_id')}"
+        if not raw_int_id.startswith(f"{user.user_id}:"):
+            sanitized["integration_id"] = f"{user.user_id}:{raw_int_id}"
+
         meta = sanitized.get("metadata")
         if not isinstance(meta, dict):
             meta = {}
@@ -252,73 +255,131 @@ class Project1IntegrationGatewayService:
             correlation_id = f"p1_corr_{int(time.time())}_{sanitized['signal_id']}"
             sanitized["correlation_id"] = correlation_id
 
-        # 6. Authoritative Replay Protection & Integrity Conflict Check
-        existing = self._repo.find_authoritative_record(sanitized, user_id=user.user_id)
-        if existing:
-            # Evaluate content equality across authoritative fields
-            auth_keys = (
-                "symbol", "signal_type", "timeframe", "strategy_name",
-                "entry_price", "stop_loss", "take_profit_1", "take_profit_2", "take_profit_3",
-                "confidence", "operational_stability_score"
-            )
-            is_identical = all(existing.get(k) == sanitized.get(k) for k in auth_keys)
-
-            if is_identical:
-                self._audit.record_event(
-                    user_id=user.user_id,
-                    category=AuditCategory.SIGNAL_INTAKE,
-                    event_type="SIGNAL_REPLAY_DETECTED",
-                    lifecycle_state=OperationalLifecycleState.COMPLETED,
-                    action="INTAKE_PROJECT1_SIGNAL",
-                    outcome="SUCCESS",
-                    severity=AuditEventSeverity.INFO,
-                    resource_id=sanitized["signal_id"],
-                    correlation_id=correlation_id,
-                    details="Idempotent replay detected. Returned existing record without duplicate processing.",
-                )
-                return {
-                    "success": True,
-                    "status": "DUPLICATE_ACCEPTED",
-                    "message": "Signal ingestion accepted (idempotent replay).",
-                    "record": SecretSanitizer.sanitize_data(existing),
-                    "correlation_id": correlation_id,
-                }
-            else:
-                # Same authoritative identity with mutated content -> Integrity conflict failure
-                self._audit.record_event(
-                    user_id=user.user_id,
-                    category=AuditCategory.SIGNAL_INTAKE,
-                    event_type="INTEGRITY_CONFLICT_DETECTED",
-                    lifecycle_state=OperationalLifecycleState.REJECTED,
-                    action="INTAKE_PROJECT1_SIGNAL",
-                    outcome="FAILURE",
-                    severity=AuditEventSeverity.ERROR,
-                    resource_id=sanitized["signal_id"],
-                    correlation_id=correlation_id,
-                    details="Integrity conflict: Payload with same publication identity contains mutated authoritative fields.",
-                )
-                self._audit.record_failure(
-                    component="Project1IntegrationGateway",
-                    error_type="INTEGRITY_CONFLICT",
-                    message="Payload with same authoritative publication identity contains mutated content.",
-                    severity=AuditEventSeverity.ERROR,
-                    correlation_id=correlation_id,
-                    user_id=user.user_id,
-                )
-                return {
-                    "success": False,
-                    "error_code": "INTEGRITY_CONFLICT",
-                    "message": "Same publication identity received with mutated authoritative content. Rejecting conflict.",
-                    "correlation_id": correlation_id,
-                }
-
-        # 7. Lifecycle state initialization & Persistence
         if "lifecycle_state" not in sanitized:
             sanitized["lifecycle_state"] = "STAGED"
 
-        saved_rec = self._repo.save_record(sanitized)
+        # 6. Atomic Ingest & State Resolution
+        ingest_res = self._repo.ingest_authoritative_record(sanitized, user_id=user.user_id)
+        ingest_status = ingest_res.get("status")
+        rec_payload = ingest_res.get("record") or {}
 
-        # 8. Audit Logging
+        if ingest_status == RepositoryStatus.DUPLICATE_ACCEPTED:
+            self._audit.record_event(
+                user_id=user.user_id,
+                category=AuditCategory.SIGNAL_INTAKE,
+                event_type="SIGNAL_REPLAY_DETECTED",
+                lifecycle_state=OperationalLifecycleState.COMPLETED,
+                action="INTAKE_PROJECT1_SIGNAL",
+                outcome="SUCCESS",
+                severity=AuditEventSeverity.INFO,
+                resource_id=sanitized["signal_id"],
+                correlation_id=correlation_id,
+                details="Idempotent replay detected. Returned existing record without duplicate processing.",
+            )
+            return {
+                "success": True,
+                "status": "DUPLICATE_ACCEPTED",
+                "message": "Signal ingestion accepted (idempotent replay).",
+                "record": SecretSanitizer.sanitize_data(rec_payload),
+                "correlation_id": correlation_id,
+            }
+
+        elif ingest_status == RepositoryStatus.DURABILITY_UNCERTAIN:
+            self._audit.record_event(
+                user_id=user.user_id,
+                category=AuditCategory.SIGNAL_INTAKE,
+                event_type="INGESTION_DURABILITY_UNCERTAIN",
+                lifecycle_state=OperationalLifecycleState.STAGED,
+                action="INTAKE_PROJECT1_SIGNAL",
+                outcome="DEGRADED",
+                severity=AuditEventSeverity.WARNING,
+                resource_id=sanitized["signal_id"],
+                correlation_id=correlation_id,
+                details="Signal committed to target storage file, but parent directory durability was uncertain.",
+            )
+            return {
+                "success": False,
+                "status": "DURABILITY_UNCERTAIN",
+                "error_code": "DURABILITY_UNCERTAIN",
+                "message": "Signal payload committed to file, but directory durability was uncertain.",
+                "record": SecretSanitizer.sanitize_data(rec_payload),
+                "correlation_id": correlation_id,
+            }
+
+        elif ingest_status in (
+            RepositoryStatus.INTEGRITY_CONFLICT,
+            RepositoryStatus.IDENTITY_AMBIGUOUS,
+            RepositoryStatus.STORAGE_CORRUPT,
+            RepositoryStatus.STORAGE_UNAVAILABLE,
+            RepositoryStatus.PERSISTENCE_FAILURE,
+            RepositoryStatus.IDENTITY_COLLISION,
+            RepositoryStatus.ABSENT,
+        ):
+            err_code = str(ingest_status.value)
+            msg = ingest_res.get("message", "Ingestion rejected due to repository constraint.")
+
+            self._audit.record_event(
+                user_id=user.user_id,
+                category=AuditCategory.SIGNAL_INTAKE,
+                event_type=f"INGESTION_{err_code}_REJECTED",
+                lifecycle_state=OperationalLifecycleState.REJECTED,
+                action="INTAKE_PROJECT1_SIGNAL",
+                outcome="FAILURE",
+                severity=AuditEventSeverity.ERROR,
+                resource_id=sanitized["signal_id"],
+                correlation_id=correlation_id,
+                details=f"Ingestion rejected: {msg}",
+            )
+            self._audit.record_failure(
+                component="Project1IntegrationGateway",
+                error_type=err_code,
+                message=msg,
+                severity=AuditEventSeverity.ERROR,
+                correlation_id=correlation_id,
+                user_id=user.user_id,
+            )
+            return {
+                "success": False,
+                "error_code": err_code,
+                "message": msg,
+                "correlation_id": correlation_id,
+            }
+
+        elif ingest_status != RepositoryStatus.CREATED:
+            err_code = "UNKNOWN_REPOSITORY_STATUS"
+            msg = f"Unrecognized repository status received: {ingest_status}"
+
+            self._audit.record_event(
+                user_id=user.user_id,
+                category=AuditCategory.SIGNAL_INTAKE,
+                event_type="INGESTION_UNKNOWN_STATUS_REJECTED",
+                lifecycle_state=OperationalLifecycleState.REJECTED,
+                action="INTAKE_PROJECT1_SIGNAL",
+                outcome="FAILURE",
+                severity=AuditEventSeverity.ERROR,
+                resource_id=sanitized["signal_id"],
+                correlation_id=correlation_id,
+                details=msg,
+            )
+            self._audit.record_failure(
+                component="Project1IntegrationGateway",
+                error_type=err_code,
+                message=msg,
+                severity=AuditEventSeverity.ERROR,
+                correlation_id=correlation_id,
+                user_id=user.user_id,
+            )
+            return {
+                "success": False,
+                "error_code": err_code,
+                "message": msg,
+                "correlation_id": correlation_id,
+            }
+
+        # Status is CREATED
+        saved_rec = rec_payload
+
+        # 7. Audit Logging
         self._audit.record_event(
             user_id=user.user_id,
             category=AuditCategory.SIGNAL_INTAKE,
@@ -338,7 +399,7 @@ class Project1IntegrationGatewayService:
             },
         )
 
-        # 9. User-scoped Notification Creation
+        # 8. User-scoped Notification Creation
         if self._notif_svc is not None:
             evt = NotificationEvent(
                 event_id=f"p1_ingest_{sanitized['signal_id']}",
@@ -540,6 +601,7 @@ class Project1IntegrationGatewayService:
             symbol=symbol,
             lifecycle_state=lifecycle_state,
             limit=limit,
+            allow_system=True,
         )
 
         sanitized_records = [SecretSanitizer.sanitize_data(r) for r in records]

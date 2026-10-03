@@ -75,6 +75,15 @@ export interface PresentedSignalPayload {
   confidence?: number | null;
   strategy_name?: string | null;
   timeframe?: string | null;
+  risk_reward_ratio?: number | null;
+  operational_stability_score?: number | null;
+  publication_id?: string | null;
+  event_id?: string | null;
+  decision_id?: string | null;
+  candidate_id?: string | null;
+  research_evidence_id?: string | null;
+  canonical_live_decision_fingerprint?: string | null;
+  runtime_authorization_fingerprint?: string | null;
   metadata?: Record<string, unknown>;
 }
 
@@ -193,6 +202,25 @@ export interface HostSnapshot {
     marketData: string;
     quote: string;
     message: string;
+  };
+  authorization?: {
+    authority: string;
+    status: string;
+    isAuthorized: boolean | null;
+    reason: string;
+    checks: readonly any[];
+    riskRewardRatio: number | null;
+    timestamp: number | null;
+    runtime_authorization_fingerprint?: string | null;
+    canonical_live_decision_fingerprint?: string | null;
+    decision_id?: string | null;
+    candidate_id?: string | null;
+    research_evidence_id?: string | null;
+    runtimeAuthorizationFingerprint?: string | null;
+    canonicalLiveDecisionFingerprint?: string | null;
+    decisionId?: string | null;
+    candidateId?: string | null;
+    researchEvidenceId?: string | null;
   };
   activity: readonly { timestamp: string; event: string; details: string }[];
   auditControl?: {
@@ -528,7 +556,7 @@ export function createHostSnapshotFromProject1(
     market: defaultMarketState,
     strategy: {
       name: stratName,
-      stability: conf != null ? Math.round(conf * 100) : null,
+      stability: signal?.operational_stability_score ?? (meta?.operational_stability_score as number | undefined) ?? null,
       status: "active",
       message: `Strategy '${stratName}' owned and evaluated by Project 1.`,
     },

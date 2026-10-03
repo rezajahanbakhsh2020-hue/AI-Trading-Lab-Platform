@@ -512,7 +512,19 @@ def validate_project1_contract_payload(
 
     # 6. Confidence & Operational Stability Score
     confidence = signal_obj.get("confidence") if "confidence" in signal_obj else raw_payload.get("confidence")
-    stability_score = signal_obj.get("stability_score") if "stability_score" in signal_obj else raw_payload.get("stability_score")
+    stability_score = (
+        signal_obj.get("operational_stability_score")
+        if "operational_stability_score" in signal_obj
+        else (
+            signal_obj.get("stability_score")
+            if "stability_score" in signal_obj
+            else (
+                raw_payload.get("operational_stability_score")
+                if "operational_stability_score" in raw_payload
+                else raw_payload.get("stability_score")
+            )
+        )
+    )
 
     if confidence is not None:
         if isinstance(confidence, bool) or not isinstance(confidence, numbers.Real):

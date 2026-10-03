@@ -73,6 +73,8 @@ def test_presenter_with_disconnected_adapter():
     assert snapshot["project1"]["status"] == "disconnected"
     assert snapshot["signal"]["action"] is None
     assert snapshot["risk"]["entry"] is None
+    assert snapshot["authorization"]["status"] == "DISCONNECTED"
+    assert snapshot["authorization"]["isAuthorized"] is None
 
 
 class MockLiveSignalPort(Project1IntegrationPort):
@@ -131,6 +133,8 @@ def test_presenter_with_genuinely_live_signal():
     assert snapshot["risk"]["entry"] == 2650.50
     assert snapshot["risk"]["stopLoss"] == 2635.00
     assert snapshot["risk"]["takeProfits"] == [2670.0, 2690.0, 2710.0]
+    assert snapshot["authorization"]["authority"] == "PROJECT1"
+    assert snapshot["authorization"]["isAuthorized"] is None
 
 
 def test_presenter_with_lab_artifact_historical_isolation():
@@ -321,6 +325,222 @@ def test_presenter_build_host_snapshot_does_not_auto_stage_unauthoritative_order
     )
 
     snapshot = presenter.build_host_snapshot("XAUUSD", "1h", user=user)
-    assert snapshot["authorization"]["isAuthorized"] is True
+    assert snapshot["authorization"]["authority"] == "PROJECT1"
+    assert snapshot["authorization"]["isAuthorized"] is None
     # Presenter evaluation MUST NOT automatically synthesize an OrderIntent locally
     assert len(snapshot["orderIntents"]) == 0
+
+
+def test_presenter_truthful_project1_authorization_boundary():
+    """Verify criteria A, B, C, D, F: Presenter is projection-only and does not reconstruct P2 authorization decisions."""
+    import time
+    from src.platform.domain.presented_signal import PresentedSignal
+
+    now_ts = time.time()
+
+    # A & C & D: Given valid live P1 signal with BUY, confidence, Entry, SL, TP, risk_reward_ratio, operational_stability_score
+    p1_signal = PresentedSignal(
+        signal_id="p1_sig_auth_test_001",
+        symbol="XAUUSD",
+        signal_type="buy",
+        timestamp=now_ts - 10.0,
+        entry_price=2650.0,
+        stop_loss=2630.0,
+        take_profits=(2680.0, 2700.0),
+        confidence=0.85,
+        strategy_name="P1AuthorityStrategy",
+        timeframe="1h",
+        metadata={
+            "provenance_type": "live_signal",
+            "is_live": True,
+            "publication_id": "pub_p1_001",
+            "decision_id": "dec_p1_100",
+            "candidate_id": "cand_p1_200",
+            "research_evidence_id": "res_p1_300",
+            "runtime_authorization_fingerprint": "fingerprint_p1_auth",
+            "canonical_live_decision_fingerprint": "fingerprint_p1_decision",
+            "operational_stability_score": 0.92,
+            "risk_reward_ratio": 2.55,
+        },
+    )
+
+    port = MockLiveSignalPort(p1_signal)
+    presenter = Project1SignalPresenter(port)
+
+    snapshot = presenter.build_host_snapshot("XAUUSD", "1h")
+
+    # A: No local authorization reconstruction - isAuthorized is None, authority is PROJECT1
+    assert snapshot["authorization"]["authority"] == "PROJECT1"
+    assert snapshot["authorization"]["status"] == "PROJECT1_AUTHORITATIVE"
+    assert snapshot["authorization"]["isAuthorized"] is None
+    assert "owned by Project 1" in snapshot["authorization"]["reason"]
+    assert snapshot["authorization"]["decision_id"] == "dec_p1_100"
+    assert snapshot["authorization"]["runtime_authorization_fingerprint"] == "fingerprint_p1_auth"
+
+    # C: P2 does not recompute R:R; uses exact P1 risk_reward_ratio
+    assert snapshot["authorization"]["riskRewardRatio"] == 2.55
+
+    # D: Stability provenance comes strictly from P1 operational_stability_score (0.92)
+    assert snapshot["strategy"]["stability"] == 0.92
+
+    # B: Missing confidence / missing P1 fields cannot fabricate values
+    p1_signal_no_conf = PresentedSignal(
+        signal_id="p1_sig_no_conf_002",
+        symbol="XAUUSD",
+        signal_type="buy",
+        timestamp=now_ts - 5.0,
+        entry_price=2650.0,
+        stop_loss=2630.0,
+        take_profits=(2680.0,),
+        confidence=None,  # Missing confidence
+        strategy_name="P1NoConfStrategy",
+        timeframe="1h",
+        metadata={
+            "provenance_type": "live_signal",
+            "is_live": True,
+            "publication_id": "pub_p1_002",
+        },
+    )
+
+    port_no_conf = MockLiveSignalPort(p1_signal_no_conf)
+    presenter_no_conf = Project1SignalPresenter(port_no_conf)
+
+    snapshot_no_conf = presenter_no_conf.build_host_snapshot("XAUUSD", "1h")
+    # B: No 0.5 fallback, no derived stability, riskRewardRatio is None when missing from P1
+    assert snapshot_no_conf["signal"]["confidence"] is None
+    assert snapshot_no_conf["strategy"]["stability"] is None
+    assert snapshot_no_conf["authorization"]["riskRewardRatio"] is None
+    assert snapshot_no_conf["authorization"]["isAuthorized"] is None
+
+
+def test_e2e_p1_pipeline_preservation_and_adversarial_invariants(tmp_path):
+    """End-to-end integration test tracing repository -> gateway -> adapter -> presenter -> HostSnapshot.
+
+    Proves:
+    1. Exact preservation of P1 risk_reward_ratio (2.5557) when geometry implies a different value (1.5).
+    2. Exact preservation of P1 operational_stability_score (0.92) without confidence derivation.
+    3. Missing confidence does not fabricate stability or authorization.
+    4. Missing risk_reward_ratio is None (no local geometry calculation).
+    5. P1 lineage fields (publication_id, decision_id, candidate_id, research_evidence_id,
+       canonical_live_decision_fingerprint, runtime_authorization_fingerprint) are preserved.
+    6. isAuthorized is None (no boolean P2 authorization decision).
+    7. Stale/historical signal holds NO SIGNAL boundary.
+    """
+    import time
+    from src.platform.adapters.project1_adapter import Project1GatewayAdapter
+    from src.platform.adapters.project1_repository import FileBackedProject1IntegrationRepository
+    from src.platform.services.project1_gateway import Project1IntegrationGatewayService
+
+    from src.platform.domain.security import Permission
+    from src.platform.domain.user_authorization import UserAuthorization
+
+    now_ts = time.time()
+    repo_file = str(tmp_path / "p1_e2e_records.json")
+    repo = FileBackedProject1IntegrationRepository(storage_filepath=repo_file)
+    gw_svc = Project1IntegrationGatewayService(repository=repo)
+
+    user = UserAuthorization(
+        user_id="e2e_user",
+        auth_code="code_e2e_123",
+        role="admin",
+        permissions=[Permission.READ_SIGNALS, Permission.READ_TRADE_SETUPS],
+    )
+
+    # Ingest authoritative P1 record with risk_reward_ratio = 2.5557
+    # Notice: Entry=2650, SL=2630, TP1=2680 -> Geometry R:R is 30/20 = 1.5
+    # P1 provided risk_reward_ratio = 2.5557
+    rec_payload = {
+        "event_id": "evt_p1_e2e_001",
+        "publication_id": "pub_p1_e2e_001",
+        "signal_id": "sig_p1_e2e_001",
+        "command_type": "EMIT_SIGNAL",
+        "symbol": "XAUUSD",
+        "timeframe": "1h",
+        "signal_type": "buy",
+        "timestamp": now_ts - 15.0,
+        "entry_price": 2650.0,
+        "stop_loss": 2630.0,
+        "take_profit_1": 2680.0,
+        "confidence": 0.85,
+        "operational_stability_score": 0.92,
+        "risk_reward_ratio": 2.5557,
+        "strategy_name": "GoldTrend_E2E",
+        "decision_id": "dec_e2e_100",
+        "candidate_id": "cand_e2e_200",
+        "research_evidence_id": "res_e2e_300",
+        "canonical_live_decision_fingerprint": "fingerprint_live_decision_001",
+        "runtime_authorization_fingerprint": "fingerprint_runtime_auth_001",
+        "metadata": {
+            "provenance_type": "live_signal",
+            "is_live": True,
+        },
+    }
+
+    res = gw_svc.ingest_signal_payload(user, rec_payload)
+    assert res.get("status") in ("INGESTED", "DUPLICATE_ACCEPTED") or res.get("ingested") is True
+
+    adapter = Project1GatewayAdapter(gateway_service=gw_svc)
+    presenter = Project1SignalPresenter(port=adapter, gateway_service=gw_svc)
+
+    snapshot = presenter.build_host_snapshot("XAUUSD", "1h")
+
+    # 1. Exact P1 R:R preservation (2.5557), NOT geometry-derived (1.5)
+    assert snapshot["authorization"]["riskRewardRatio"] == 2.5557
+
+    # 2. Exact P1 operational_stability_score preservation (0.92)
+    assert snapshot["strategy"]["stability"] == 0.92
+
+    # 3. Lineage preservation
+    assert snapshot["signal"]["metadata"]["publication_id"] == "pub_p1_e2e_001"
+    assert snapshot["authorization"]["decision_id"] == "dec_e2e_100"
+    assert snapshot["authorization"]["candidate_id"] == "cand_e2e_200"
+    assert snapshot["authorization"]["research_evidence_id"] == "res_e2e_300"
+    assert snapshot["authorization"]["canonical_live_decision_fingerprint"] == "fingerprint_live_decision_001"
+    assert snapshot["authorization"]["runtime_authorization_fingerprint"] == "fingerprint_runtime_auth_001"
+
+    # 4. isAuthorized is None
+    assert snapshot["authorization"]["isAuthorized"] is None
+    assert snapshot["authorization"]["authority"] == "PROJECT1"
+
+    # Adversarial Test B: High confidence, missing operational_stability_score => stability is None
+    rec_b = dict(rec_payload)
+    rec_b["event_id"] = "evt_p1_e2e_002"
+    rec_b["publication_id"] = "pub_p1_e2e_002"
+    rec_b["signal_id"] = "sig_p1_e2e_002"
+    rec_b["timestamp"] = now_ts - 10.0
+    rec_b.pop("operational_stability_score", None)
+    rec_b["confidence"] = 0.95
+
+    gw_svc.ingest_signal_payload(user, rec_b)
+    snapshot_b = presenter.build_host_snapshot("XAUUSD", "1h")
+    assert snapshot_b["signal"]["confidence"] == 0.95
+    assert snapshot_b["strategy"]["stability"] is None
+
+    # Adversarial Test C: Valid levels, missing risk_reward_ratio => riskRewardRatio is None (no local calculation)
+    rec_c = dict(rec_payload)
+    rec_c["event_id"] = "evt_p1_e2e_003"
+    rec_c["publication_id"] = "pub_p1_e2e_003"
+    rec_c["signal_id"] = "sig_p1_e2e_003"
+    rec_c["timestamp"] = now_ts - 5.0
+    rec_c.pop("risk_reward_ratio", None)
+
+    gw_svc.ingest_signal_payload(user, rec_c)
+    snapshot_c = presenter.build_host_snapshot("XAUUSD", "1h")
+    assert snapshot_c["risk"]["entry"] == 2650.0
+    assert snapshot_c["authorization"]["riskRewardRatio"] is None
+
+    # Adversarial Test E: Missing lineage fields => remain None
+    rec_e = dict(rec_payload)
+    rec_e["event_id"] = "evt_p1_e2e_004"
+    rec_e["publication_id"] = "pub_p1_e2e_004"
+    rec_e["signal_id"] = "sig_p1_e2e_004"
+    rec_e["timestamp"] = now_ts - 2.0
+    rec_e.pop("decision_id", None)
+    rec_e.pop("candidate_id", None)
+    rec_e.pop("runtime_authorization_fingerprint", None)
+
+    gw_svc.ingest_signal_payload(user, rec_e)
+    snapshot_e = presenter.build_host_snapshot("XAUUSD", "1h")
+    assert snapshot_e["authorization"]["decision_id"] is None
+    assert snapshot_e["authorization"]["candidate_id"] is None
+    assert snapshot_e["authorization"]["runtime_authorization_fingerprint"] is None

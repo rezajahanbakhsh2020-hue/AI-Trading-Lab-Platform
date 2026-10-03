@@ -95,7 +95,6 @@ class Project1IntegrationGatewayService:
         """Return contract capabilities discovery payload."""
         caps = get_project1_contract_capabilities()
 
-        # Audit log discovery
         self._audit.record_event(
             user_id=user.user_id if user else "guest",
             category=AuditCategory.OPERATIONAL_SYSTEM,
@@ -241,6 +240,11 @@ class Project1IntegrationGatewayService:
         if not sanitized.get("tenant_id"):
             sanitized["tenant_id"] = f"tenant_{user.user_id}"
 
+        # Ensure user-isolated integration_id
+        raw_int_id = sanitized.get("integration_id") or f"p1_{sanitized.get('publication_id')}_{sanitized.get('event_id')}"
+        if not raw_int_id.startswith(f"{user.user_id}:"):
+            sanitized["integration_id"] = f"{user.user_id}:{raw_int_id}"
+
         meta = sanitized.get("metadata")
         if not isinstance(meta, dict):
             meta = {}
@@ -252,71 +256,65 @@ class Project1IntegrationGatewayService:
             correlation_id = f"p1_corr_{int(time.time())}_{sanitized['signal_id']}"
             sanitized["correlation_id"] = correlation_id
 
-        # 6. Authoritative Replay Protection & Integrity Conflict Check
-        existing = self._repo.find_authoritative_record(sanitized, user_id=user.user_id)
-        if existing:
-            # Evaluate content equality across authoritative fields
-            auth_keys = (
-                "symbol", "signal_type", "timeframe", "strategy_name",
-                "entry_price", "stop_loss", "take_profit_1", "take_profit_2", "take_profit_3",
-                "confidence", "operational_stability_score"
-            )
-            is_identical = all(existing.get(k) == sanitized.get(k) for k in auth_keys)
-
-            if is_identical:
-                self._audit.record_event(
-                    user_id=user.user_id,
-                    category=AuditCategory.SIGNAL_INTAKE,
-                    event_type="SIGNAL_REPLAY_DETECTED",
-                    lifecycle_state=OperationalLifecycleState.COMPLETED,
-                    action="INTAKE_PROJECT1_SIGNAL",
-                    outcome="SUCCESS",
-                    severity=AuditEventSeverity.INFO,
-                    resource_id=sanitized["signal_id"],
-                    correlation_id=correlation_id,
-                    details="Idempotent replay detected. Returned existing record without duplicate processing.",
-                )
-                return {
-                    "success": True,
-                    "status": "DUPLICATE_ACCEPTED",
-                    "message": "Signal ingestion accepted (idempotent replay).",
-                    "record": SecretSanitizer.sanitize_data(existing),
-                    "correlation_id": correlation_id,
-                }
-            else:
-                # Same authoritative identity with mutated content -> Integrity conflict failure
-                self._audit.record_event(
-                    user_id=user.user_id,
-                    category=AuditCategory.SIGNAL_INTAKE,
-                    event_type="INTEGRITY_CONFLICT_DETECTED",
-                    lifecycle_state=OperationalLifecycleState.REJECTED,
-                    action="INTAKE_PROJECT1_SIGNAL",
-                    outcome="FAILURE",
-                    severity=AuditEventSeverity.ERROR,
-                    resource_id=sanitized["signal_id"],
-                    correlation_id=correlation_id,
-                    details="Integrity conflict: Payload with same publication identity contains mutated authoritative fields.",
-                )
-                self._audit.record_failure(
-                    component="Project1IntegrationGateway",
-                    error_type="INTEGRITY_CONFLICT",
-                    message="Payload with same authoritative publication identity contains mutated content.",
-                    severity=AuditEventSeverity.ERROR,
-                    correlation_id=correlation_id,
-                    user_id=user.user_id,
-                )
-                return {
-                    "success": False,
-                    "error_code": "INTEGRITY_CONFLICT",
-                    "message": "Same publication identity received with mutated authoritative content. Rejecting conflict.",
-                    "correlation_id": correlation_id,
-                }
-
-        # 7. Lifecycle state initialization & Persistence
         if "lifecycle_state" not in sanitized:
             sanitized["lifecycle_state"] = "STAGED"
 
-        saved_rec = self._repo.save_record(sanitized)
+        # 6. Atomic Lookup, Compare, Index, and Durably Persist Record
+        ingest_res = self._repo.ingest_authoritative_record(sanitized, user_id=user.user_id)
+        ingest_status = ingest_res.get("status")
+        rec_payload = ingest_res.get("record", {})
+
+        if ingest_status == "DUPLICATE_ACCEPTED":
+            self._audit.record_event(
+                user_id=user.user_id,
+                category=AuditCategory.SIGNAL_INTAKE,
+                event_type="SIGNAL_REPLAY_DETECTED",
+                lifecycle_state=OperationalLifecycleState.COMPLETED,
+                action="INTAKE_PROJECT1_SIGNAL",
+                outcome="SUCCESS",
+                severity=AuditEventSeverity.INFO,
+                resource_id=sanitized["signal_id"],
+                correlation_id=correlation_id,
+                details="Idempotent replay detected. Returned existing record without duplicate processing.",
+            )
+            return {
+                "success": True,
+                "status": "DUPLICATE_ACCEPTED",
+                "message": "Signal ingestion accepted (idempotent replay).",
+                "record": SecretSanitizer.sanitize_data(rec_payload),
+                "correlation_id": correlation_id,
+            }
+
+        elif ingest_status == "INTEGRITY_CONFLICT":
+            self._audit.record_event(
+                user_id=user.user_id,
+                category=AuditCategory.SIGNAL_INTAKE,
+                event_type="INTEGRITY_CONFLICT_DETECTED",
+                lifecycle_state=OperationalLifecycleState.REJECTED,
+                action="INTAKE_PROJECT1_SIGNAL",
+                outcome="FAILURE",
+                severity=AuditEventSeverity.ERROR,
+                resource_id=sanitized["signal_id"],
+                correlation_id=correlation_id,
+                details="Integrity conflict: Payload with same publication identity contains mutated authoritative fields.",
+            )
+            self._audit.record_failure(
+                component="Project1IntegrationGateway",
+                error_type="INTEGRITY_CONFLICT",
+                message="Payload with same authoritative publication identity contains mutated content.",
+                severity=AuditEventSeverity.ERROR,
+                correlation_id=correlation_id,
+                user_id=user.user_id,
+            )
+            return {
+                "success": False,
+                "error_code": "INTEGRITY_CONFLICT",
+                "message": "Same publication identity received with mutated authoritative content. Rejecting conflict.",
+                "correlation_id": correlation_id,
+            }
+
+        # 7. Creation successful -> Audit & Notification
+        saved_rec = rec_payload
 
         # 8. Audit Logging
         self._audit.record_event(

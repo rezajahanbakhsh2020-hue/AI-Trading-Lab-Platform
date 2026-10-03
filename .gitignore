@@ -7,3 +7,6 @@ __pycache__/
 htmlcov/
 web/node_modules/
 web/dist/
+.data/
+data/
+*.lock

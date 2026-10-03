@@ -20,17 +20,22 @@ import pytest
 P1_REPO_PATH = os.environ.get("P1_REPO_PATH", "/tmp/AI-Trading-Lab")
 HAS_P1 = os.path.isdir(P1_REPO_PATH) and os.path.exists(os.path.join(P1_REPO_PATH, "src"))
 
-if not HAS_P1:
-    pytest.fail(
-        f"CRITICAL E2E BLOCKER: P1 repository (AI-Trading-Lab) not found at '{P1_REPO_PATH}'. "
-        f"Real cross-repository proof cannot be skipped or bypassed with synthetic fixtures. "
-        f"Clone P1 or set P1_REPO_PATH environment variable to run real P1 producer E2E tests.",
-        pytrace=False
-    )
+if HAS_P1:
+    sys.path.insert(0, P1_REPO_PATH)
+    from tests.test_production_publication_boundary import make_test_artifacts
+    from src.evaluation.live_production_decision import ProductionIntelligencePublication
 
-sys.path.insert(0, P1_REPO_PATH)
-from tests.test_production_publication_boundary import make_test_artifacts
-from src.evaluation.live_production_decision import ProductionIntelligencePublication
+
+@pytest.fixture(autouse=True)
+def require_p1_producer():
+    """Fail closed if canonical P1 producer repository is unavailable."""
+    if not HAS_P1:
+        pytest.fail(
+            f"CRITICAL E2E BLOCKER: P1 repository (AI-Trading-Lab) not found at '{P1_REPO_PATH}'. "
+            f"Real cross-repository proof cannot be skipped or bypassed with synthetic fixtures. "
+            f"Clone P1 or set P1_REPO_PATH environment variable to run real P1 producer E2E tests.",
+            pytrace=False,
+        )
 
 from src.platform.config import PlatformConfig
 from src.platform.server import create_server

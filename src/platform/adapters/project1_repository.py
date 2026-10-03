@@ -534,17 +534,35 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                         record=dict(rec),
                         message="Identity collision: same publication_id assigned to different event_id.",
                     )
+                if match_by_pub and target_sig_id and rec_sig_id and target_sig_id != rec_sig_id:
+                    return AuthoritativeLookupResult(
+                        status=RepositoryStatus.IDENTITY_COLLISION,
+                        record=dict(rec),
+                        message="Identity collision: same publication_id assigned to different signal_id.",
+                    )
                 if match_by_event and target_pub_id and rec_pub_id and target_pub_id != rec_pub_id:
                     return AuthoritativeLookupResult(
                         status=RepositoryStatus.IDENTITY_COLLISION,
                         record=dict(rec),
                         message="Identity collision: same event_id assigned to different publication_id.",
                     )
+                if match_by_event and target_sig_id and rec_sig_id and target_sig_id != rec_sig_id:
+                    return AuthoritativeLookupResult(
+                        status=RepositoryStatus.IDENTITY_COLLISION,
+                        record=dict(rec),
+                        message="Identity collision: same event_id assigned to different signal_id.",
+                    )
                 if match_by_sig and target_pub_id and rec_pub_id and target_pub_id != rec_pub_id:
                     return AuthoritativeLookupResult(
                         status=RepositoryStatus.IDENTITY_COLLISION,
                         record=dict(rec),
                         message="Identity collision: same signal_id assigned to different publication_id.",
+                    )
+                if match_by_sig and target_event_id and rec_event_id and target_event_id != rec_event_id:
+                    return AuthoritativeLookupResult(
+                        status=RepositoryStatus.IDENTITY_COLLISION,
+                        record=dict(rec),
+                        message="Identity collision: same signal_id assigned to different event_id.",
                     )
                 matches.append(rec)
 

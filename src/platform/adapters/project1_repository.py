@@ -190,13 +190,13 @@ class Project1IntegrationRepositoryPort(ABC):
         raise NotImplementedError
 
 
-def _user_matches(rec: Dict[str, Any], user_id: Optional[str]) -> bool:
+def _user_matches(rec: Dict[str, Any], user_id: Optional[str], allow_system: bool = False) -> bool:
     if user_id is None:
         return True
     rec_user = rec.get("user_id")
     if rec_user == user_id:
         return True
-    if rec_user in (None, "system", "p1_service_ingest", "global"):
+    if allow_system and rec_user in (None, "system", "p1_service_ingest", "global"):
         return True
     return False
 
@@ -745,6 +745,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
         symbol: Optional[str] = None,
         lifecycle_state: Optional[str] = None,
         limit: int = 100,
+        allow_system: bool = False,
     ) -> List[Dict[str, Any]]:
         if self._is_unavailable:
             raise StorageUnavailableError("Storage or process lock unavailable.")
@@ -759,7 +760,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                     raise StorageCorruptError("Underlying storage is corrupted.")
                 filtered = []
                 for rec in reversed(self._records):
-                    if not _user_matches(rec, user_id):
+                    if not _user_matches(rec, user_id, allow_system=allow_system):
                         continue
                     if symbol is not None and rec.get("symbol") != symbol.strip().upper():
                         continue

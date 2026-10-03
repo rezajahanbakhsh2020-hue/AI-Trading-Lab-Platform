@@ -547,6 +547,7 @@ class Project1IntegrationGatewayService:
             symbol=symbol,
             lifecycle_state=lifecycle_state,
             limit=limit,
+            allow_system=True,
         )
 
         sanitized_records = [SecretSanitizer.sanitize_data(r) for r in records]

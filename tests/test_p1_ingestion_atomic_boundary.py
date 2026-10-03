@@ -489,3 +489,85 @@ def test_tenant_isolation_no_cross_tenant_collision(setup_gateway):
 
     assert len(recs_b) == 1
     assert recs_b[0]["user_id"] == "usr_tenant_b"
+
+
+def test_adversarial_strict_user_isolation_rejects_cross_user_and_system_claim(temp_repo_file, setup_gateway):
+    gw, repo, user_a, user_b = setup_gateway
+
+    # Insert records with user_id = user_b, system, p1_service_ingest, global, and None directly into repo
+    recs = [
+        {"integration_id": "int_b", "user_id": "usr_tenant_b", "publication_id": "pub_b", "event_id": "evt_b", "signal_id": "sig_b", "lifecycle_state": "STAGED"},
+        {"integration_id": "int_sys", "user_id": "system", "publication_id": "pub_sys", "event_id": "evt_sys", "signal_id": "sig_sys", "lifecycle_state": "STAGED"},
+        {"integration_id": "int_p1", "user_id": "p1_service_ingest", "publication_id": "pub_p1", "event_id": "evt_p1", "signal_id": "sig_p1", "lifecycle_state": "STAGED"},
+        {"integration_id": "int_glob", "user_id": "global", "publication_id": "pub_glob", "event_id": "evt_glob", "signal_id": "sig_glob", "lifecycle_state": "STAGED"},
+        {"integration_id": "int_none", "user_id": None, "publication_id": "pub_none", "event_id": "evt_none", "signal_id": "sig_none", "lifecycle_state": "STAGED"},
+    ]
+
+    for r in recs:
+        repo.save_record(r)
+
+    # 1. User A get_record_by_id MUST NOT return User B or system/global/None records
+    for target_int_id in ("int_b", "int_sys", "int_p1", "int_glob", "int_none"):
+        assert repo.get_record_by_id(target_int_id, user_id=user_a.user_id) is None
+
+    # 2. User A list_records_for_user MUST NOT return User B or system/global/None records when allow_system=False
+    assert len(repo.list_records_for_user(user_id=user_a.user_id, allow_system=False)) == 0
+
+    # 3. User A is_duplicate_request MUST NOT match User B or system/global/None signals
+    for target_sig in ("sig_b", "sig_sys", "sig_p1", "sig_glob", "sig_none"):
+        assert repo.is_duplicate_request(target_sig, user_id=user_a.user_id) is False
+
+    # 4. User A update_lifecycle_state MUST NOT mutate User B or system/global/None signals
+    for target_sig in ("sig_b", "sig_sys", "sig_p1", "sig_glob", "sig_none"):
+        updated = repo.update_lifecycle_state(target_sig, "CANCELLED", user_id=user_a.user_id)
+        assert updated is False
+
+    # 5. User A find_authoritative_record MUST NOT return User B or system/global/None signals
+    for pub_id in ("pub_b", "pub_sys", "pub_p1", "pub_glob", "pub_none"):
+        found = repo.find_authoritative_record({"publication_id": pub_id}, user_id=user_a.user_id)
+        assert found is None
+
+    # 6. Explicit system scope query (allow_system=True or user_id=None) CAN view system records
+    sys_recs = repo.list_records_for_user(user_id=user_a.user_id, allow_system=True)
+    assert len(sys_recs) == 4  # system, p1_service_ingest, global, None records
+
+
+def test_initialization_durability_failures_raise_storage_unavailable(tmp_path, monkeypatch):
+    non_existent_file = str(tmp_path / "non_existent_dir" / "records.json")
+
+    # Initial directory creation failure
+    def mock_makedirs_fail(path, exist_ok=False):
+        raise OSError("Directory creation denied")
+
+    monkeypatch.setattr(os, "makedirs", mock_makedirs_fail)
+
+    repo = FileBackedProject1IntegrationRepository(storage_filepath=non_existent_file)
+    assert repo._is_unavailable is True
+    with pytest.raises(StorageUnavailableError):
+        repo.list_records_for_user()
+
+
+def test_complete_6_direction_pairwise_identity_collision_matrix(setup_gateway):
+    gw, repo, user_a, _ = setup_gateway
+
+    base_p = _build_valid_payload("pub_matrix", event_id="evt_matrix", signal_id="sig_matrix")
+    base_p["integration_id"] = "usr_tenant_a:int_base_matrix"
+    base_p["user_id"] = user_a.user_id
+    res_base = repo.ingest_authoritative_record(base_p, user_id=user_a.user_id)
+    assert res_base["status"] == RepositoryStatus.CREATED
+
+    matrix_cases = [
+        ("1. same pub, diff evt", "pub_matrix", "evt_diff_1", "sig_matrix", "usr_tenant_a:int_m1"),
+        ("2. same pub, diff sig", "pub_matrix", "evt_matrix", "sig_diff_2", "usr_tenant_a:int_m2"),
+        ("3. same evt, diff pub", "pub_diff_3", "evt_matrix", "sig_matrix", "usr_tenant_a:int_m3"),
+        ("4. same evt, diff sig", "pub_diff_4", "evt_matrix", "sig_diff_4", "usr_tenant_a:int_m4"),
+        ("5. same sig, diff pub", "pub_diff_5", "evt_diff_5", "sig_matrix", "usr_tenant_a:int_m5"),
+        ("6. same sig, diff evt", "pub_diff_6", "evt_diff_6", "sig_matrix", "usr_tenant_a:int_m6"),
+    ]
+
+    for label, pub, evt, sig, int_id in matrix_cases:
+        case_payload = _build_valid_payload(pub, event_id=evt, signal_id=sig)
+        case_payload["integration_id"] = int_id
+        case_payload["user_id"] = user_a.user_id
+        res = repo.ingest_authoritative_record(case_payload, user_id=user_a.user_id)
+        assert res["status"] == RepositoryStatus.IDENTITY_COLLISION, f"Failed case {label}"

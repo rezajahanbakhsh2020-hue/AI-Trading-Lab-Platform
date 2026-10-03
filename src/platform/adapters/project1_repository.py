@@ -324,8 +324,9 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
             self._last_size = -1
             try:
                 self._flush_to_storage_unlocked()
-            except Exception:
-                pass
+            except Exception as exc:
+                self._is_unavailable = True
+                raise StorageUnavailableError(f"Failed initializing empty storage file: {str(exc)}") from exc
             return
 
         try:

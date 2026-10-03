@@ -208,6 +208,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
         self._storage_filepath = storage_filepath
         self._audit_control = audit_control
         self._lock = threading.RLock()
+        self._is_unavailable: bool = False
         self._is_corrupt: bool = False
         self._last_mtime_ns: int = -1
         self._last_size: int = -1
@@ -221,7 +222,9 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
             with self._lock, _ProcessLock(f"{self._storage_filepath}.lock"):
                 self._load_from_storage_unlocked()
         except StorageUnavailableError:
-            pass
+            self._is_unavailable = True
+        except Exception:
+            self._is_unavailable = True
 
     def _all_records_identical_content(self, recs: List[Dict[str, Any]]) -> bool:
         if not recs or len(recs) <= 1:
@@ -300,7 +303,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
             self._signal_map[sig_id] = rec
 
     def _load_from_storage_unlocked(self) -> None:
-        if self._is_corrupt:
+        if self._is_unavailable or self._is_corrupt:
             return
 
         if not os.path.exists(self._storage_filepath):
@@ -410,41 +413,72 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
         if not int_id:
             raise ValueError("record must contain integration_id")
 
-        with self._lock, _ProcessLock(f"{self._storage_filepath}.lock"):
-            self._load_from_storage_unlocked()
-            if self._is_corrupt:
-                raise StorageCorruptError("Cannot write to corrupted repository storage.")
+        if self._is_unavailable:
+            raise StorageUnavailableError("Repository storage or process lock is unavailable.")
+        if self._is_corrupt:
+            raise StorageCorruptError("Cannot write to corrupted repository storage.")
 
-            prev_records = [dict(r) for r in self._records]
+        try:
+            with self._lock, _ProcessLock(f"{self._storage_filepath}.lock"):
+                self._load_from_storage_unlocked()
+                if self._is_unavailable:
+                    raise StorageUnavailableError("Repository storage or process lock is unavailable.")
+                if self._is_corrupt:
+                    raise StorageCorruptError("Cannot write to corrupted repository storage.")
 
-            rec_copy = dict(record)
-            rec_copy["updated_at"] = time.time()
-            if "created_at" not in rec_copy:
-                rec_copy["created_at"] = time.time()
+                # Guard against mutating existing record's authoritative content via save_record
+                if record.get("publication_id") or record.get("event_id"):
+                    lookup_res = self.find_authoritative_lookup_unlocked(record, user_id=record.get("user_id"))
+                    if lookup_res.record is not None:
+                        existing = lookup_res.record
+                        for k in AUTHORITATIVE_CONTENT_KEYS:
+                            rec_val = record.get(k)
+                            ext_val = existing.get(k)
+                            if isinstance(rec_val, float) and isinstance(ext_val, float):
+                                if abs(rec_val - ext_val) > 1e-9:
+                                    raise ValueError(f"Mutation bypass rejected: Field {k} mutated.")
+                            elif rec_val != ext_val:
+                                raise ValueError(f"Mutation bypass rejected: Field {k} mutated.")
 
-            existing_idx = None
-            for i, existing in enumerate(self._records):
-                if existing.get("integration_id") == int_id and _user_matches(existing, rec_copy.get("user_id")):
-                    existing_idx = i
-                    break
+                prev_records = [dict(r) for r in self._records]
 
-            if existing_idx is not None:
-                self._records[existing_idx] = rec_copy
-            else:
-                self._records.append(rec_copy)
+                rec_copy = dict(record)
+                rec_copy["updated_at"] = time.time()
+                if "created_at" not in rec_copy:
+                    rec_copy["created_at"] = time.time()
 
-            self._index_record_unlocked(rec_copy)
-            try:
-                self._flush_to_storage_unlocked()
-            except Exception:
-                self._records = prev_records
-                self._rebuild_indexes_unlocked()
-                raise
-            return dict(rec_copy)
+                existing_idx = None
+                for i, existing in enumerate(self._records):
+                    if existing.get("integration_id") == int_id and _user_matches(existing, rec_copy.get("user_id")):
+                        existing_idx = i
+                        break
+
+                if existing_idx is not None:
+                    self._records[existing_idx] = rec_copy
+                else:
+                    self._records.append(rec_copy)
+
+                self._index_record_unlocked(rec_copy)
+                try:
+                    self._flush_to_storage_unlocked()
+                except Exception:
+                    self._records = prev_records
+                    self._rebuild_indexes_unlocked()
+                    raise
+                return dict(rec_copy)
+        except StorageUnavailableError:
+            self._is_unavailable = True
+            raise
 
     def find_authoritative_lookup_unlocked(
         self, record: Dict[str, Any], user_id: Optional[str] = None
     ) -> AuthoritativeLookupResult:
+        if self._is_unavailable:
+            return AuthoritativeLookupResult(
+                status=RepositoryStatus.STORAGE_UNAVAILABLE,
+                message="Storage or process lock is unavailable.",
+            )
+
         if self._is_corrupt:
             return AuthoritativeLookupResult(
                 status=RepositoryStatus.STORAGE_CORRUPT,
@@ -483,6 +517,24 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
             match_by_sig = bool(target_sig_id and rec_sig_id and target_sig_id == rec_sig_id)
 
             if match_by_pub or match_by_event or match_by_sig:
+                if match_by_pub and target_event_id and rec_event_id and target_event_id != rec_event_id:
+                    return AuthoritativeLookupResult(
+                        status=RepositoryStatus.IDENTITY_COLLISION,
+                        record=dict(rec),
+                        message="Identity collision: same publication_id assigned to different event_id.",
+                    )
+                if match_by_event and target_pub_id and rec_pub_id and target_pub_id != rec_pub_id:
+                    return AuthoritativeLookupResult(
+                        status=RepositoryStatus.IDENTITY_COLLISION,
+                        record=dict(rec),
+                        message="Identity collision: same event_id assigned to different publication_id.",
+                    )
+                if match_by_sig and target_pub_id and rec_pub_id and target_pub_id != rec_pub_id:
+                    return AuthoritativeLookupResult(
+                        status=RepositoryStatus.IDENTITY_COLLISION,
+                        record=dict(rec),
+                        message="Identity collision: same signal_id assigned to different publication_id.",
+                    )
                 matches.append(rec)
 
         if not matches:
@@ -520,9 +572,30 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
         if not int_id:
             raise ValueError("record must contain integration_id")
 
+        if self._is_unavailable:
+            return {
+                "status": RepositoryStatus.STORAGE_UNAVAILABLE,
+                "record": None,
+                "message": "Storage or process lock is unavailable.",
+            }
+
+        if self._is_corrupt:
+            return {
+                "status": RepositoryStatus.STORAGE_CORRUPT,
+                "record": None,
+                "message": "Underlying storage is corrupted.",
+            }
+
         try:
             with self._lock, _ProcessLock(f"{self._storage_filepath}.lock"):
                 self._load_from_storage_unlocked()
+
+                if self._is_unavailable:
+                    return {
+                        "status": RepositoryStatus.STORAGE_UNAVAILABLE,
+                        "record": None,
+                        "message": "Storage or process lock is unavailable.",
+                    }
 
                 if self._is_corrupt:
                     return {
@@ -536,6 +609,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                 if lookup_res.status in (
                     RepositoryStatus.IDENTITY_AMBIGUOUS,
                     RepositoryStatus.STORAGE_CORRUPT,
+                    RepositoryStatus.STORAGE_UNAVAILABLE,
                     RepositoryStatus.IDENTITY_COLLISION,
                 ):
                     return {
@@ -609,6 +683,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                     "message": "Authoritative record created successfully.",
                 }
         except StorageUnavailableError as exc:
+            self._is_unavailable = True
             return {
                 "status": RepositoryStatus.STORAGE_UNAVAILABLE,
                 "record": None,
@@ -618,10 +693,12 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
     def get_record_by_id(
         self, integration_id: str, user_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
+        if self._is_unavailable or self._is_corrupt:
+            return None
         try:
             with self._lock, _ProcessLock(f"{self._storage_filepath}.lock"):
                 self._load_from_storage_unlocked()
-                if self._is_corrupt:
+                if self._is_unavailable or self._is_corrupt:
                     return None
                 for rec in self._records:
                     if rec.get("integration_id") == integration_id:
@@ -629,6 +706,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                             return dict(rec)
                 return None
         except StorageUnavailableError:
+            self._is_unavailable = True
             return None
 
     def list_records_for_user(
@@ -638,10 +716,12 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
         lifecycle_state: Optional[str] = None,
         limit: int = 100,
     ) -> List[Dict[str, Any]]:
+        if self._is_unavailable or self._is_corrupt:
+            return []
         try:
             with self._lock, _ProcessLock(f"{self._storage_filepath}.lock"):
                 self._load_from_storage_unlocked()
-                if self._is_corrupt:
+                if self._is_unavailable or self._is_corrupt:
                     return []
                 filtered = []
                 for rec in reversed(self._records):
@@ -656,6 +736,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                         break
                 return filtered
         except StorageUnavailableError:
+            self._is_unavailable = True
             return []
 
     def find_authoritative_record_unlocked(
@@ -665,6 +746,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
         if lookup_res.status in (
             RepositoryStatus.IDENTITY_AMBIGUOUS,
             RepositoryStatus.STORAGE_CORRUPT,
+            RepositoryStatus.STORAGE_UNAVAILABLE,
             RepositoryStatus.IDENTITY_COLLISION,
             RepositoryStatus.ABSENT,
         ):
@@ -674,20 +756,25 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
     def find_authoritative_record(
         self, record: Dict[str, Any], user_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
+        if self._is_unavailable or self._is_corrupt:
+            return None
         try:
             with self._lock, _ProcessLock(f"{self._storage_filepath}.lock"):
                 self._load_from_storage_unlocked()
                 return self.find_authoritative_record_unlocked(record, user_id=user_id)
         except StorageUnavailableError:
+            self._is_unavailable = True
             return None
 
     def is_duplicate_request(
         self, signal_id: str, user_id: Optional[str] = None, timestamp: Optional[float] = None
     ) -> bool:
+        if self._is_unavailable or self._is_corrupt:
+            return False
         try:
             with self._lock, _ProcessLock(f"{self._storage_filepath}.lock"):
                 self._load_from_storage_unlocked()
-                if self._is_corrupt:
+                if self._is_unavailable or self._is_corrupt:
                     return False
                 if signal_id in self._signal_map or signal_id in self._publication_map or signal_id in self._event_map:
                     candidate = (
@@ -708,6 +795,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                             return True
                 return False
         except StorageUnavailableError:
+            self._is_unavailable = True
             return False
 
     def update_lifecycle_state(
@@ -717,11 +805,13 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
         reason: Optional[str] = None,
         user_id: Optional[str] = None,
     ) -> bool:
+        if self._is_unavailable or self._is_corrupt:
+            return False
         ls_upper = lifecycle_state.strip().upper()
         try:
             with self._lock, _ProcessLock(f"{self._storage_filepath}.lock"):
                 self._load_from_storage_unlocked()
-                if self._is_corrupt:
+                if self._is_unavailable or self._is_corrupt:
                     return False
 
                 prev_records = [dict(r) for r in self._records]
@@ -767,4 +857,5 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                     return False
                 return True
         except StorageUnavailableError:
+            self._is_unavailable = True
             return False

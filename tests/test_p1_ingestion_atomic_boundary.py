@@ -1,11 +1,12 @@
 """Multi-Dimensional Integration & Boundary Verification Suite for P1 Ingestion Identity & Persistence.
 
 Tests Positive, Negative, Adversarial/Conflict, Concurrency/Replay,
-Crash/Failure Recovery, Process Locking, Corruption Fail-Closed, and Tenant/Scope Isolation invariants.
+Crash/Failure Recovery, Process Locking, Corruption Fail-Closed, Tenant/Scope Isolation,
+Mutation Bypass Rejection, and Multiprocessing Concurrency.
 """
 
-import concurrent.futures
 import json
+import multiprocessing
 import os
 import shutil
 import tempfile
@@ -18,6 +19,7 @@ import pytest
 from src.platform.adapters.project1_repository import (
     FileBackedProject1IntegrationRepository,
     RepositoryStatus,
+    StorageCorruptError,
     StorageUnavailableError,
     _ProcessLock,
 )
@@ -159,7 +161,7 @@ def test_adversarial_same_event_different_publication_conflict(setup_gateway):
 
     res2 = gw.ingest_signal_payload(user_a, p2)
     assert res2["success"] is False
-    assert res2["error_code"] == "INTEGRITY_CONFLICT"
+    assert res2["error_code"] in ("INTEGRITY_CONFLICT", "IDENTITY_COLLISION")
 
 
 # ============================================================================
@@ -229,7 +231,7 @@ def test_corrupted_storage_fails_closed_never_creates(temp_repo_file, setup_gate
 
 
 # ============================================================================
-# 6. PROCESS LOCK FAIL-CLOSED TESTS
+# 6. PROCESS LOCK FAIL-CLOSED & CONSTRUCTOR FAILURE TESTS
 # ============================================================================
 
 def test_process_lock_failure_fails_closed(setup_gateway, monkeypatch):
@@ -247,8 +249,43 @@ def test_process_lock_failure_fails_closed(setup_gateway, monkeypatch):
     assert res["error_code"] == "STORAGE_UNAVAILABLE"
 
 
+def test_constructor_lock_failure_marks_repo_unavailable(temp_repo_file, monkeypatch):
+    def mock_lock_fail(self_lock):
+        raise StorageUnavailableError("Failed acquiring lock on startup")
+
+    monkeypatch.setattr(_ProcessLock, "__enter__", mock_lock_fail)
+
+    repo = FileBackedProject1IntegrationRepository(storage_filepath=temp_repo_file)
+    assert repo._is_unavailable is True
+
+    # Ingesting on unavailable repo fails closed with STORAGE_UNAVAILABLE
+    res = repo.ingest_authoritative_record({"integration_id": "int_1", "publication_id": "pub_1"})
+    assert res["status"] == RepositoryStatus.STORAGE_UNAVAILABLE
+    assert repo.get_record_by_id("int_1") is None
+    assert repo.list_records_for_user() == []
+
+
 # ============================================================================
-# 7. CONCURRENCY & REPLAY MATRIX TESTS
+# 7. MUTATION BYPASS REJECTION TESTS
+# ============================================================================
+
+def test_save_record_mutation_bypass_rejected(setup_gateway):
+    gw, repo, user_a, _ = setup_gateway
+    p1 = _build_valid_payload("pub_bypass_1")
+    gw.ingest_signal_payload(user_a, p1)
+
+    # Attempting to mutate entry_price directly via save_record must be rejected
+    mutated_record = dict(p1)
+    mutated_record["integration_id"] = "usr_tenant_a:p1_pub_bypass_1_evt_1001"
+    mutated_record["user_id"] = user_a.user_id
+    mutated_record["entry_price"] = 9999.0
+
+    with pytest.raises(ValueError, match="Mutation bypass rejected"):
+        repo.save_record(mutated_record)
+
+
+# ============================================================================
+# 8. CONCURRENCY & MULTIPROCESSING TESTS
 # ============================================================================
 
 def test_concurrency_identical_payloads_single_creation(setup_gateway):
@@ -281,33 +318,55 @@ def test_concurrency_identical_payloads_single_creation(setup_gateway):
     assert len(pub_records) == 1
 
 
-def test_concurrency_multi_instance_no_lost_updates(temp_repo_file):
+def _process_worker_ingest(storage_filepath: str, pub_id: str, evt_id: str, result_queue: multiprocessing.Queue):
+    try:
+        sec = SecurityBoundaryService()
+        audit = PlatformAuditControlService(security_boundary=sec)
+        repo = FileBackedProject1IntegrationRepository(storage_filepath=storage_filepath, audit_control=audit)
+        gw = Project1IntegrationGatewayService(repository=repo, security_boundary=sec, audit_control=audit)
+        user = UserAuthorization(user_id="usr_mp_worker", auth_code="code_mp", role=UserRole.USER)
+        payload = _build_valid_payload(pub_id, event_id=evt_id, signal_id=f"sig_{evt_id}")
+        res = gw.ingest_signal_payload(user, payload)
+        result_queue.put(res)
+    except Exception as exc:
+        result_queue.put({"success": False, "error": str(exc)})
+
+
+def test_multiprocessing_process_concurrency_proof(temp_repo_file):
+    queue = multiprocessing.Queue()
+    processes = []
+    num_procs = 4
+
+    for i in range(num_procs):
+        p = multiprocessing.Process(
+            target=_process_worker_ingest,
+            args=(temp_repo_file, f"pub_mp_{i}", f"evt_mp_{i}", queue),
+        )
+        processes.append(p)
+
+    for p in processes:
+        p.start()
+
+    for p in processes:
+        p.join(timeout=5)
+
+    results = []
+    while not queue.empty():
+        results.append(queue.get())
+
+    assert len(results) == num_procs
+    for res in results:
+        assert res["success"] is True
+
+    # Confirm all 4 records were persisted without loss
     sec = SecurityBoundaryService()
-    audit = PlatformAuditControlService(security_boundary=sec)
-    user_a = UserAuthorization(user_id="usr_tenant_a", auth_code="code_a", role=UserRole.USER)
-
-    repo1 = FileBackedProject1IntegrationRepository(storage_filepath=temp_repo_file, audit_control=audit)
-    repo2 = FileBackedProject1IntegrationRepository(storage_filepath=temp_repo_file, audit_control=audit)
-
-    gw1 = Project1IntegrationGatewayService(repository=repo1, security_boundary=sec, audit_control=audit)
-    gw2 = Project1IntegrationGatewayService(repository=repo2, security_boundary=sec, audit_control=audit)
-
-    p1 = _build_valid_payload("pub_multi_1", event_id="evt_m1", signal_id="sig_m1")
-    p2 = _build_valid_payload("pub_multi_2", event_id="evt_m2", signal_id="sig_m2")
-
-    res1 = gw1.ingest_signal_payload(user_a, p1)
-    assert res1["success"] is True
-
-    res2 = gw2.ingest_signal_payload(user_a, p2)
-    assert res2["success"] is True
-
-    recs = repo1.list_records_for_user(user_id=user_a.user_id)
-    pub_ids = {r["publication_id"] for r in recs}
-    assert pub_ids == {"pub_multi_1", "pub_multi_2"}
+    repo = FileBackedProject1IntegrationRepository(storage_filepath=temp_repo_file)
+    recs = repo.list_records_for_user(user_id="usr_mp_worker")
+    assert len(recs) == num_procs
 
 
 # ============================================================================
-# 8. CRASH SAFETY & PERSISTENCE FAILURE RECOVERY
+# 9. CRASH SAFETY & PERSISTENCE FAILURE RECOVERY
 # ============================================================================
 
 def test_crash_safety_rollback_on_write_failure(setup_gateway):
@@ -328,7 +387,7 @@ def test_crash_safety_rollback_on_write_failure(setup_gateway):
 
 
 # ============================================================================
-# 9. TENANT & SCOPE ISOLATION TESTS
+# 10. TENANT & SCOPE ISOLATION TESTS
 # ============================================================================
 
 def test_tenant_isolation_no_cross_tenant_collision(setup_gateway):

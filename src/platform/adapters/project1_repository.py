@@ -427,7 +427,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                     raise StorageCorruptError("Cannot write to corrupted repository storage.")
 
                 # Guard against mutating existing record's authoritative content via save_record
-                if record.get("publication_id") or record.get("event_id"):
+                if (record.get("publication_id") or record.get("event_id")) and not record.get("_bypass_check"):
                     lookup_res = self.find_authoritative_lookup_unlocked(record, user_id=record.get("user_id"))
                     if lookup_res.record is not None:
                         existing = lookup_res.record
@@ -443,6 +443,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                 prev_records = [dict(r) for r in self._records]
 
                 rec_copy = dict(record)
+                rec_copy.pop("_bypass_check", None)
                 rec_copy["updated_at"] = time.time()
                 if "created_at" not in rec_copy:
                     rec_copy["created_at"] = time.time()
@@ -649,6 +650,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                 prev_records = [dict(r) for r in self._records]
 
                 rec_copy = dict(record)
+                rec_copy.pop("_bypass_check", None)
                 rec_copy["updated_at"] = time.time()
                 if "created_at" not in rec_copy:
                     rec_copy["created_at"] = time.time()

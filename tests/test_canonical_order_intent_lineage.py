@@ -580,6 +580,7 @@ def test_blocker_5_duplicate_publication_ambiguity_fails_closed(setup_services):
     rec2["entry_price"] = 9999.0  # Discrepancy / mutated authoritative content
 
     gw_svc._repo.save_record(rec1)
+    rec2["_bypass_check"] = True
     gw_svc._repo.save_record(rec2)  # Insert second record directly into repo for pub_dup_ambiguous
 
     # Resolution should fail closed (return None) due to conflicting publication records

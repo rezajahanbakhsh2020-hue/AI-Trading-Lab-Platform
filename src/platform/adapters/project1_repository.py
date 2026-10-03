@@ -194,7 +194,7 @@ def _user_matches(rec: Dict[str, Any], user_id: Optional[str]) -> bool:
     if user_id is None:
         return True
     rec_user = rec.get("user_id")
-    return rec_user in (user_id, None, "system", "p1_service_ingest")
+    return rec_user == user_id or rec_user in (None, "system", "p1_service_ingest")
 
 
 class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort):
@@ -252,16 +252,17 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
         sig_occ: Dict[str, List[Dict[str, Any]]] = {}
 
         for rec in self._records:
+            u_id = rec.get("user_id") or "global"
             pub_id = rec.get("publication_id")
             event_id = rec.get("event_id")
             sig_id = rec.get("signal_id")
 
             if pub_id:
-                pub_occ.setdefault(pub_id, []).append(rec)
+                pub_occ.setdefault(f"{u_id}:{pub_id}", []).append(rec)
             if event_id:
-                evt_occ.setdefault(event_id, []).append(rec)
+                evt_occ.setdefault(f"{u_id}:{event_id}", []).append(rec)
             if sig_id:
-                sig_occ.setdefault(sig_id, []).append(rec)
+                sig_occ.setdefault(f"{u_id}:{sig_id}", []).append(rec)
 
         for k, recs in pub_occ.items():
             if len(recs) == 1:
@@ -291,22 +292,23 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                     self._signal_map[k] = recs[0]
 
     def _index_record_unlocked(self, rec: Dict[str, Any]) -> None:
+        u_id = rec.get("user_id") or "global"
         pub_id = rec.get("publication_id")
         event_id = rec.get("event_id")
         sig_id = rec.get("signal_id")
 
-        if pub_id and pub_id not in self._ambiguous_keys:
-            self._publication_map[pub_id] = rec
-        if event_id and event_id not in self._ambiguous_keys:
-            self._event_map[event_id] = rec
-        if sig_id and sig_id not in self._ambiguous_keys:
-            self._signal_map[sig_id] = rec
+        if pub_id and f"{u_id}:{pub_id}" not in self._ambiguous_keys:
+            self._publication_map[f"{u_id}:{pub_id}"] = rec
+        if event_id and f"{u_id}:{event_id}" not in self._ambiguous_keys:
+            self._event_map[f"{u_id}:{event_id}"] = rec
+        if sig_id and f"{u_id}:{sig_id}" not in self._ambiguous_keys:
+            self._signal_map[f"{u_id}:{sig_id}"] = rec
 
     def _load_from_storage_unlocked(self) -> None:
         if self._is_unavailable or self._is_corrupt:
             return
 
-        if not os.path.exists(self._storage_filepath):
+        if not os.path.exists(self._storage_filepath) or os.path.getsize(self._storage_filepath) == 0:
             self._records = []
             self._publication_map.clear()
             self._event_map.clear()
@@ -314,6 +316,10 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
             self._ambiguous_keys.clear()
             self._last_mtime_ns = -1
             self._last_size = -1
+            try:
+                self._flush_to_storage_unlocked()
+            except Exception:
+                pass
             return
 
         try:
@@ -381,7 +387,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
             except Exception:
                 pass
 
-            if dir_name:
+            if dir_name and os.path.exists(dir_name):
                 try:
                     dir_fd = os.open(dir_name, os.O_RDONLY)
                     try:
@@ -426,8 +432,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                 if self._is_corrupt:
                     raise StorageCorruptError("Cannot write to corrupted repository storage.")
 
-                # Guard against mutating existing record's authoritative content via save_record
-                if (record.get("publication_id") or record.get("event_id")) and not record.get("_bypass_check"):
+                if record.get("publication_id") or record.get("event_id"):
                     lookup_res = self.find_authoritative_lookup_unlocked(record, user_id=record.get("user_id"))
                     if lookup_res.record is not None:
                         existing = lookup_res.record
@@ -443,7 +448,6 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                 prev_records = [dict(r) for r in self._records]
 
                 rec_copy = dict(record)
-                rec_copy.pop("_bypass_check", None)
                 rec_copy["updated_at"] = time.time()
                 if "created_at" not in rec_copy:
                     rec_copy["created_at"] = time.time()
@@ -495,9 +499,10 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
         target_pub_id = record.get("publication_id")
         target_event_id = record.get("event_id")
         target_sig_id = record.get("signal_id")
+        effective_u_id = user_id or record.get("user_id") or "global"
 
         for key in (target_pub_id, target_event_id, target_sig_id):
-            if key and key in self._ambiguous_keys:
+            if key and f"{effective_u_id}:{key}" in self._ambiguous_keys:
                 return AuthoritativeLookupResult(
                     status=RepositoryStatus.IDENTITY_AMBIGUOUS,
                     message=f"Key '{key}' matches pre-existing ambiguous storage state.",
@@ -650,7 +655,6 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                 prev_records = [dict(r) for r in self._records]
 
                 rec_copy = dict(record)
-                rec_copy.pop("_bypass_check", None)
                 rec_copy["updated_at"] = time.time()
                 if "created_at" not in rec_copy:
                     rec_copy["created_at"] = time.time()
@@ -778,11 +782,12 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                 self._load_from_storage_unlocked()
                 if self._is_unavailable or self._is_corrupt:
                     return False
-                if signal_id in self._signal_map or signal_id in self._publication_map or signal_id in self._event_map:
+                u_id = user_id or "global"
+                if f"{u_id}:{signal_id}" in self._signal_map or f"{u_id}:{signal_id}" in self._publication_map or f"{u_id}:{signal_id}" in self._event_map:
                     candidate = (
-                        self._signal_map.get(signal_id)
-                        or self._publication_map.get(signal_id)
-                        or self._event_map.get(signal_id)
+                        self._signal_map.get(f"{u_id}:{signal_id}")
+                        or self._publication_map.get(f"{u_id}:{signal_id}")
+                        or self._event_map.get(f"{u_id}:{signal_id}")
                     )
                     if candidate and _user_matches(candidate, user_id):
                         return True

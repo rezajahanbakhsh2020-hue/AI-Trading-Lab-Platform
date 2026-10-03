@@ -258,7 +258,6 @@ def test_constructor_lock_failure_marks_repo_unavailable(temp_repo_file, monkeyp
     repo = FileBackedProject1IntegrationRepository(storage_filepath=temp_repo_file)
     assert repo._is_unavailable is True
 
-    # Ingesting on unavailable repo fails closed with STORAGE_UNAVAILABLE
     res = repo.ingest_authoritative_record({"integration_id": "int_1", "publication_id": "pub_1"})
     assert res["status"] == RepositoryStatus.STORAGE_UNAVAILABLE
     assert repo.get_record_by_id("int_1") is None
@@ -272,12 +271,11 @@ def test_constructor_lock_failure_marks_repo_unavailable(temp_repo_file, monkeyp
 def test_save_record_mutation_bypass_rejected(setup_gateway):
     gw, repo, user_a, _ = setup_gateway
     p1 = _build_valid_payload("pub_bypass_1")
-    gw.ingest_signal_payload(user_a, p1)
+    res = gw.ingest_signal_payload(user_a, p1)
+    ingested_rec = res["record"]
 
     # Attempting to mutate entry_price directly via save_record must be rejected
-    mutated_record = dict(p1)
-    mutated_record["integration_id"] = "usr_tenant_a:p1_pub_bypass_1_evt_1001"
-    mutated_record["user_id"] = user_a.user_id
+    mutated_record = dict(ingested_rec)
     mutated_record["entry_price"] = 9999.0
 
     with pytest.raises(ValueError, match="Mutation bypass rejected"):
@@ -358,7 +356,6 @@ def test_multiprocessing_process_concurrency_proof(temp_repo_file):
     for res in results:
         assert res["success"] is True
 
-    # Confirm all 4 records were persisted without loss
     sec = SecurityBoundaryService()
     repo = FileBackedProject1IntegrationRepository(storage_filepath=temp_repo_file)
     recs = repo.list_records_for_user(user_id="usr_mp_worker")

@@ -22,6 +22,7 @@ R. caller-controlled idempotency key cannot create a second canonical intent for
 S. frontend/client payload containing trade levels or quantity cannot override server-resolved P1 authority.
 """
 
+import json
 import time
 import pytest
 
@@ -579,9 +580,14 @@ def test_blocker_5_duplicate_publication_ambiguity_fails_closed(setup_services):
     rec2["integration_id"] = "int_2"
     rec2["entry_price"] = 9999.0  # Discrepancy / mutated authoritative content
 
-    gw_svc._repo.save_record(rec1)
-    rec2["_bypass_check"] = True
-    gw_svc._repo.save_record(rec2)  # Insert second record directly into repo for pub_dup_ambiguous
+    # Insert ambiguous records directly into storage file to test failure resolution
+    payload = {
+        "schema_version": 1,
+        "updated_at": time.time(),
+        "records": [rec1, rec2]
+    }
+    with open(gw_svc._repo._storage_filepath, "w", encoding="utf-8") as f:
+        json.dump(payload, f)
 
     # Resolution should fail closed (return None) due to conflicting publication records
     resolved = gw_svc.resolve_authoritative_publication(user, "pub_dup_ambiguous")

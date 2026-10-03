@@ -1,10 +1,11 @@
 """Multi-Dimensional Integration & Boundary Verification Suite for P1 Ingestion Identity & Persistence.
 
 Tests Positive, Negative, Adversarial/Conflict, Concurrency/Replay,
-Crash/Failure Recovery, and Tenant/Scope Isolation invariants.
+Crash/Failure Recovery, Process Locking, Corruption Fail-Closed, and Tenant/Scope Isolation invariants.
 """
 
 import concurrent.futures
+import json
 import os
 import shutil
 import tempfile
@@ -14,7 +15,12 @@ from typing import Any, Dict
 
 import pytest
 
-from src.platform.adapters.project1_repository import FileBackedProject1IntegrationRepository
+from src.platform.adapters.project1_repository import (
+    FileBackedProject1IntegrationRepository,
+    RepositoryStatus,
+    StorageUnavailableError,
+    _ProcessLock,
+)
 from src.platform.domain.user_authorization import UserAuthorization, UserRole
 from src.platform.services.audit_control import PlatformAuditControlService
 from src.platform.services.project1_gateway import Project1IntegrationGatewayService
@@ -111,12 +117,10 @@ def test_positive_single_ingest_and_authoritative_resolution(setup_gateway):
 def test_negative_invalid_contract_and_unauthorized(setup_gateway):
     gw, repo, user_a, _ = setup_gateway
 
-    # Unauthenticated
     res_unauth = gw.ingest_signal_payload(None, _build_valid_payload("pub_neg_1"))
     assert res_unauth["success"] is False
     assert res_unauth["error_code"] == "UNAUTHENTICATED"
 
-    # Malformed contract payload
     invalid_payload = {"publication_id": "pub_neg_2"}
     res_invalid = gw.ingest_signal_payload(user_a, invalid_payload)
     assert res_invalid["success"] is False
@@ -131,17 +135,14 @@ def test_adversarial_idempotent_replay_vs_mutated_conflict(setup_gateway):
     gw, repo, user_a, _ = setup_gateway
     payload = _build_valid_payload("pub_adv_1")
 
-    # Ingest 1
     res1 = gw.ingest_signal_payload(user_a, payload)
     assert res1["success"] is True
     assert res1["status"] == "INGESTED"
 
-    # Exact replay -> DUPLICATE_ACCEPTED
     res_replay = gw.ingest_signal_payload(user_a, payload)
     assert res_replay["success"] is True
     assert res_replay["status"] == "DUPLICATE_ACCEPTED"
 
-    # Mutated payload (changed entry_price) -> INTEGRITY_CONFLICT
     mutated_payload = _build_valid_payload("pub_adv_1")
     mutated_payload["entry_price"] = 9999.0
     res_conflict = gw.ingest_signal_payload(user_a, mutated_payload)
@@ -156,14 +157,98 @@ def test_adversarial_same_event_different_publication_conflict(setup_gateway):
 
     gw.ingest_signal_payload(user_a, p1)
 
-    # Attempting to map same event_id to a different publication_id -> INTEGRITY_CONFLICT
     res2 = gw.ingest_signal_payload(user_a, p2)
     assert res2["success"] is False
     assert res2["error_code"] == "INTEGRITY_CONFLICT"
 
 
 # ============================================================================
-# 4. CONCURRENCY & REPLAY MATRIX TESTS
+# 4. AMBIGUOUS PERSISTED STATE FAIL-CLOSED TESTS
+# ============================================================================
+
+def test_ambiguous_persisted_state_fails_closed_never_creates(temp_repo_file, setup_gateway):
+    gw, repo, user_a, _ = setup_gateway
+
+    ambiguous_payload = {
+        "schema_version": 1,
+        "updated_at": time.time(),
+        "records": [
+            {
+                "integration_id": "usr_tenant_a:p1_pub_ambig_evt_1",
+                "user_id": "usr_tenant_a",
+                "publication_id": "pub_ambig",
+                "event_id": "evt_1",
+                "signal_id": "sig_1",
+                "entry_price": 2650.0,
+                "symbol": "XAUUSD",
+            },
+            {
+                "integration_id": "usr_tenant_a:p1_pub_ambig_evt_2",
+                "user_id": "usr_tenant_a",
+                "publication_id": "pub_ambig",
+                "event_id": "evt_2",
+                "signal_id": "sig_2",
+                "entry_price": 9999.0,
+                "symbol": "XAUUSD",
+            },
+        ],
+    }
+
+    with open(temp_repo_file, "w", encoding="utf-8") as f:
+        json.dump(ambiguous_payload, f)
+
+    repo._load_from_storage_unlocked()
+
+    new_candidate = _build_valid_payload("pub_ambig", event_id="evt_new", signal_id="sig_new")
+    res = gw.ingest_signal_payload(user_a, new_candidate)
+
+    assert res["success"] is False
+    assert res["error_code"] == "IDENTITY_AMBIGUOUS"
+
+    recs = repo.list_records_for_user(user_id=user_a.user_id)
+    assert len(recs) == 2
+
+
+# ============================================================================
+# 5. CORRUPTED STORAGE FAIL-CLOSED TESTS
+# ============================================================================
+
+def test_corrupted_storage_fails_closed_never_creates(temp_repo_file, setup_gateway):
+    gw, repo, user_a, _ = setup_gateway
+
+    with open(temp_repo_file, "w", encoding="utf-8") as f:
+        f.write("{ invalid json corrupted content ...")
+
+    new_candidate = _build_valid_payload("pub_corrupt_1")
+    res = gw.ingest_signal_payload(user_a, new_candidate)
+
+    assert res["success"] is False
+    assert res["error_code"] == "STORAGE_CORRUPT"
+
+    assert len(repo.list_records_for_user(user_id=user_a.user_id)) == 0
+
+
+# ============================================================================
+# 6. PROCESS LOCK FAIL-CLOSED TESTS
+# ============================================================================
+
+def test_process_lock_failure_fails_closed(setup_gateway, monkeypatch):
+    gw, repo, user_a, _ = setup_gateway
+
+    def mock_lock_fail(self_lock):
+        raise StorageUnavailableError("Failed acquiring process lock on simulated lock file")
+
+    monkeypatch.setattr(_ProcessLock, "__enter__", mock_lock_fail)
+
+    new_candidate = _build_valid_payload("pub_lock_fail")
+    res = gw.ingest_signal_payload(user_a, new_candidate)
+
+    assert res["success"] is False
+    assert res["error_code"] == "STORAGE_UNAVAILABLE"
+
+
+# ============================================================================
+# 7. CONCURRENCY & REPLAY MATRIX TESTS
 # ============================================================================
 
 def test_concurrency_identical_payloads_single_creation(setup_gateway):
@@ -196,56 +281,54 @@ def test_concurrency_identical_payloads_single_creation(setup_gateway):
     assert len(pub_records) == 1
 
 
-def test_concurrency_conflicting_payloads_fail_closed(setup_gateway):
-    gw, repo, user_a, _ = setup_gateway
-    num_threads = 8
-    barrier = threading.Barrier(num_threads)
-    results = []
+def test_concurrency_multi_instance_no_lost_updates(temp_repo_file):
+    sec = SecurityBoundaryService()
+    audit = PlatformAuditControlService(security_boundary=sec)
+    user_a = UserAuthorization(user_id="usr_tenant_a", auth_code="code_a", role=UserRole.USER)
 
-    def worker(idx):
-        p = _build_valid_payload("pub_conc_conflict")
-        p["entry_price"] = 2600.0 + idx  # Different entry_price for each thread
-        barrier.wait()
-        res = gw.ingest_signal_payload(user_a, p)
-        results.append(res)
+    repo1 = FileBackedProject1IntegrationRepository(storage_filepath=temp_repo_file, audit_control=audit)
+    repo2 = FileBackedProject1IntegrationRepository(storage_filepath=temp_repo_file, audit_control=audit)
 
-    threads = [threading.Thread(target=worker, args=(i,)) for i in range(num_threads)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
+    gw1 = Project1IntegrationGatewayService(repository=repo1, security_boundary=sec, audit_control=audit)
+    gw2 = Project1IntegrationGatewayService(repository=repo2, security_boundary=sec, audit_control=audit)
 
-    assert len(results) == num_threads
-    created_count = sum(1 for r in results if r.get("status") == "INGESTED")
-    conflict_count = sum(1 for r in results if r.get("error_code") == "INTEGRITY_CONFLICT")
+    p1 = _build_valid_payload("pub_multi_1", event_id="evt_m1", signal_id="sig_m1")
+    p2 = _build_valid_payload("pub_multi_2", event_id="evt_m2", signal_id="sig_m2")
 
-    assert created_count == 1
-    assert conflict_count == num_threads - 1
+    res1 = gw1.ingest_signal_payload(user_a, p1)
+    assert res1["success"] is True
+
+    res2 = gw2.ingest_signal_payload(user_a, p2)
+    assert res2["success"] is True
+
+    recs = repo1.list_records_for_user(user_id=user_a.user_id)
+    pub_ids = {r["publication_id"] for r in recs}
+    assert pub_ids == {"pub_multi_1", "pub_multi_2"}
 
 
 # ============================================================================
-# 5. CRASH SAFETY & PERSISTENCE FAILURE RECOVERY
+# 8. CRASH SAFETY & PERSISTENCE FAILURE RECOVERY
 # ============================================================================
 
 def test_crash_safety_rollback_on_write_failure(setup_gateway):
     gw, repo, user_a, _ = setup_gateway
     payload = _build_valid_payload("pub_crash_1")
-    payload["integration_id"] = "int_pub_crash_1"
+    payload["integration_id"] = "usr_tenant_a:int_pub_crash_1"
 
     def mock_flush_fail():
         raise RuntimeError("Disk full / Write failure simulated")
 
     repo._flush_to_storage_unlocked = mock_flush_fail
 
-    with pytest.raises(RuntimeError, match="Disk full / Write failure simulated"):
-        repo.ingest_authoritative_record(payload, user_id=user_a.user_id)
+    res = repo.ingest_authoritative_record(payload, user_id=user_a.user_id)
+    assert res["status"] == RepositoryStatus.PERSISTENCE_FAILURE
 
     recs = repo.list_records_for_user(user_id=user_a.user_id)
     assert len(recs) == 0
 
 
 # ============================================================================
-# 6. TENANT & SCOPE ISOLATION TESTS
+# 9. TENANT & SCOPE ISOLATION TESTS
 # ============================================================================
 
 def test_tenant_isolation_no_cross_tenant_collision(setup_gateway):

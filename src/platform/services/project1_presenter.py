@@ -312,8 +312,10 @@ class Project1SignalPresenter:
         else:
             sig_dict["metadata"] = SecretSanitizer.sanitize_data(raw_meta)
 
-        if not is_live:
-            # HARD BOUNDARY: Historical or stale records MUST NOT masquerade or populate as current signal
+        sig_type_lower = presented_signal.signal_type.lower()
+        if not is_live or sig_type_lower in ("no-signal", "no-trade"):
+            # HARD BOUNDARY: Historical/stale records or NO TRADE/NO SIGNAL decisions MUST NOT masquerade as active trade signal
+            status_reason = "NO TRADE signal emitted by Project 1." if sig_type_lower == "no-trade" else live_reason
             return {
                 "port": desc,
                 "connected": True,
@@ -321,7 +323,7 @@ class Project1SignalPresenter:
                 "symbol": symbol,
                 "timeframe": timeframe,
                 "signal": None,
-                "message": f"No active current Project 1 signal for {symbol} ({timeframe}). {live_reason}",
+                "message": f"No active current Project 1 signal for {symbol} ({timeframe}). {status_reason}",
             }
 
         return {

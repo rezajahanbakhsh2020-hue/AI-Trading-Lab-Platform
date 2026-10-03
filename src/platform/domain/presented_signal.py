@@ -43,8 +43,8 @@ class PresentedSignal:
         if not isinstance(self.signal_type, str) or not self.signal_type.strip():
             raise ValueError("signal_type must be a non-empty string")
         sig_type_clean = self.signal_type.strip().lower()
-        if sig_type_clean not in ("buy", "sell", "hold", "no-signal"):
-            raise ValueError("signal_type must be one of: buy, sell, hold, no-signal")
+        if sig_type_clean not in ("buy", "sell", "hold", "no-signal", "no-trade"):
+            raise ValueError("signal_type must be one of: buy, sell, hold, no-signal, no-trade")
         object.__setattr__(self, "signal_type", sig_type_clean)
 
         if isinstance(self.timestamp, bool) or not isinstance(self.timestamp, numbers.Real):

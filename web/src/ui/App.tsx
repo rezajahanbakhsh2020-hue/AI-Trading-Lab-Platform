@@ -50,18 +50,13 @@ export function App() {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [authState, setAuthState] = useState<StoredAuthState>(getStoredAuthState);
-  const [isConnected, setIsConnected] = useState(false);
+  const [isConnected, setIsConnected] = useState(true);
   const [selectedSymbol, setSelectedSymbol] = useState("XAUUSD");
   const [selectedTimeframe, setSelectedTimeframe] = useState("1h");
   const [stagedIntents, setStagedIntents] = useState<OrderIntentPayload[]>([]);
   const [backendSnapshot, setBackendSnapshot] = useState<HostSnapshot | null>(null);
 
   useEffect(() => {
-    if (!isConnected) {
-      setBackendSnapshot(null);
-      return;
-    }
-
     let isMounted = true;
     async function syncBackendHostSnapshot() {
       const token = authState.sessionToken;
@@ -70,8 +65,10 @@ export function App() {
 
       if (res.success && res.snapshot) {
         setBackendSnapshot(res.snapshot);
+        setIsConnected(Boolean(res.snapshot.project1?.connected));
       } else {
         setBackendSnapshot(null);
+        setIsConnected(false);
       }
     }
 
@@ -79,7 +76,7 @@ export function App() {
     return () => {
       isMounted = false;
     };
-  }, [isConnected, selectedSymbol, selectedTimeframe, authState.sessionToken]);
+  }, [selectedSymbol, selectedTimeframe, authState.sessionToken]);
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {

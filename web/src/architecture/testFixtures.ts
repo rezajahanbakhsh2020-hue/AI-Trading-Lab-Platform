@@ -23,5 +23,5 @@ export const SAMPLE_REAL_PROJECT1_SIGNAL: PresentedSignalPayload = {
   confidence: 0.88,
   strategy_name: "GoldTrendv1",
   timeframe: "1h",
-  metadata: { source: "Project1", adapter: "Project1GatewayAdapter", provenance_type: "live_signal", is_live: true, publication_id: "pub_test_xauusd_1h_live_001", operational_stability_score: 88 },
+  metadata: { source: "Project1", adapter: "Project1GatewayAdapter", provenance_type: "live_signal", is_live: true, publication_id: "pub_test_xauusd_1h_live_001", operational_stability_score: 0.88 },
 };

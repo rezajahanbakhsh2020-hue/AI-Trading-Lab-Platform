@@ -96,7 +96,6 @@ class Project1SignalPresenter:
         port: Project1IntegrationPort,
         security_service: Optional[SecurityBoundaryService] = None,
         backtest_service: Optional[Any] = None,
-        authorization_service: Optional[Any] = None,
         audit_control_service: Optional[PlatformAuditControlService] = None,
         order_intent_service: Optional[OrderIntentService] = None,
         health_service: Optional[SystemHealthService] = None,
@@ -631,7 +630,7 @@ class Project1SignalPresenter:
         )
         if p1_rr is not None:
             try:
-                p1_rr = round(float(p1_rr), 2)
+                p1_rr = float(p1_rr)
             except (ValueError, TypeError):
                 p1_rr = None
 

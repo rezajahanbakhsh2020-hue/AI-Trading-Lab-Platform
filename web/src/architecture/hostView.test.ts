@@ -88,7 +88,7 @@ describe("connected Project 1 host snapshot", () => {
     expect(snapshot.risk.status).toBe("available");
 
     expect(snapshot.strategy.name).toBe("GoldTrendv1");
-    expect(snapshot.strategy.stability).toBe(88);
+    expect(snapshot.strategy.stability).toBe(0.88);
     expect(snapshot.strategy.status).toBe("active");
 
     expect(snapshot.orderIntents).toEqual([]);

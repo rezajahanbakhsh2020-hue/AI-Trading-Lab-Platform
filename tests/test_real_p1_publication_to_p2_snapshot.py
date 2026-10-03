@@ -9,6 +9,7 @@ Also implements Anti-Recurrence Control K (provenance removal regression test).
 
 from datetime import datetime, timezone
 import json
+import os
 import sys
 import tempfile
 import threading
@@ -16,10 +17,18 @@ import urllib.request
 import urllib.error
 import pytest
 
-sys.path.insert(0, "/tmp/AI-Trading-Lab")
+P1_REPO_PATH = os.environ.get("P1_REPO_PATH", "/tmp/AI-Trading-Lab")
+HAS_P1 = os.path.isdir(P1_REPO_PATH) and os.path.exists(os.path.join(P1_REPO_PATH, "src"))
 
-from tests.test_production_publication_boundary import make_test_artifacts
-from src.evaluation.live_production_decision import ProductionIntelligencePublication
+pytestmark = pytest.mark.skipif(
+    not HAS_P1,
+    reason=f"P1 repository (AI-Trading-Lab) not found at '{P1_REPO_PATH}'. Set P1_REPO_PATH environment variable to run real P1 producer E2E tests."
+)
+
+if HAS_P1:
+    sys.path.insert(0, P1_REPO_PATH)
+    from tests.test_production_publication_boundary import make_test_artifacts
+    from src.evaluation.live_production_decision import ProductionIntelligencePublication
 
 from src.platform.config import PlatformConfig
 from src.platform.server import create_server

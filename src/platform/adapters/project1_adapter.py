@@ -194,21 +194,13 @@ class Project1GatewayAdapter(Project1IntegrationPort):
         if repo is None:
             return None
 
-        try:
-            records = repo.list_records_for_user(
-                user_id=user_id,
-                symbol=symbol,
-                lifecycle_state=None,
-                limit=500,
-                allow_system=True,
-            )
-        except TypeError:
-            records = repo.list_records_for_user(
-                user_id=user_id,
-                symbol=symbol,
-                lifecycle_state=None,
-                limit=500,
-            )
+        records = repo.list_records_for_user(
+            user_id=user_id,
+            symbol=symbol,
+            lifecycle_state=None,
+            limit=500,
+            allow_system=True,
+        )
 
         if not records:
             return None
@@ -320,13 +312,7 @@ class Project1GatewayAdapter(Project1IntegrationPort):
 
     def describe(self, user_id: Optional[str] = None) -> Dict[str, Any]:
         repo = getattr(self._gateway_service, "_repo", None)
-        if not repo:
-            recs = []
-        else:
-            try:
-                recs = repo.list_records_for_user(user_id=user_id, limit=1, allow_system=True)
-            except TypeError:
-                recs = repo.list_records_for_user(user_id=user_id, limit=1)
+        recs = repo.list_records_for_user(user_id=user_id, limit=1, allow_system=True) if repo else []
         has_records = len(recs) > 0
         return {
             "name": "Project1GatewayAdapter",

@@ -291,15 +291,16 @@ class Project1IntegrationGatewayService:
                 event_type="INGESTION_DURABILITY_UNCERTAIN",
                 lifecycle_state=OperationalLifecycleState.STAGED,
                 action="INTAKE_PROJECT1_SIGNAL",
-                outcome="SUCCESS",
+                outcome="DEGRADED",
                 severity=AuditEventSeverity.WARNING,
                 resource_id=sanitized["signal_id"],
                 correlation_id=correlation_id,
                 details="Signal committed to target storage file, but parent directory durability was uncertain.",
             )
             return {
-                "success": True,
+                "success": False,
                 "status": "DURABILITY_UNCERTAIN",
+                "error_code": "DURABILITY_UNCERTAIN",
                 "message": "Signal payload committed to file, but directory durability was uncertain.",
                 "record": SecretSanitizer.sanitize_data(rec_payload),
                 "correlation_id": correlation_id,
@@ -312,6 +313,7 @@ class Project1IntegrationGatewayService:
             RepositoryStatus.STORAGE_UNAVAILABLE,
             RepositoryStatus.PERSISTENCE_FAILURE,
             RepositoryStatus.IDENTITY_COLLISION,
+            RepositoryStatus.ABSENT,
         ):
             err_code = str(ingest_status.value)
             msg = ingest_res.get("message", "Ingestion rejected due to repository constraint.")
@@ -327,6 +329,37 @@ class Project1IntegrationGatewayService:
                 resource_id=sanitized["signal_id"],
                 correlation_id=correlation_id,
                 details=f"Ingestion rejected: {msg}",
+            )
+            self._audit.record_failure(
+                component="Project1IntegrationGateway",
+                error_type=err_code,
+                message=msg,
+                severity=AuditEventSeverity.ERROR,
+                correlation_id=correlation_id,
+                user_id=user.user_id,
+            )
+            return {
+                "success": False,
+                "error_code": err_code,
+                "message": msg,
+                "correlation_id": correlation_id,
+            }
+
+        elif ingest_status != RepositoryStatus.CREATED:
+            err_code = "UNKNOWN_REPOSITORY_STATUS"
+            msg = f"Unrecognized repository status received: {ingest_status}"
+
+            self._audit.record_event(
+                user_id=user.user_id,
+                category=AuditCategory.SIGNAL_INTAKE,
+                event_type="INGESTION_UNKNOWN_STATUS_REJECTED",
+                lifecycle_state=OperationalLifecycleState.REJECTED,
+                action="INTAKE_PROJECT1_SIGNAL",
+                outcome="FAILURE",
+                severity=AuditEventSeverity.ERROR,
+                resource_id=sanitized["signal_id"],
+                correlation_id=correlation_id,
+                details=msg,
             )
             self._audit.record_failure(
                 component="Project1IntegrationGateway",

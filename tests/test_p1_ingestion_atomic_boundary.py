@@ -375,7 +375,6 @@ def test_post_replace_directory_fsync_warning_preserves_commit_and_memory_sync(s
     orig_fsync = os.fsync
 
     def mock_conditional_fsync(fd):
-        # Fail if fd is opened on directory (O_RDONLY dir_fd)
         try:
             st = os.fstat(fd)
             import stat
@@ -398,6 +397,117 @@ def test_post_replace_directory_fsync_warning_preserves_commit_and_memory_sync(s
     # Exact retry on DURABILITY_UNCERTAIN is idempotent duplicate accepted
     res_retry = repo.ingest_authoritative_record(p1, user_id=user_a.user_id)
     assert res_retry["status"] == RepositoryStatus.DUPLICATE_ACCEPTED
+
+
+def test_no_parent_directory_fsync_failure_durability_uncertain(monkeypatch):
+    no_parent_filepath = "records_test_no_parent.json"
+    if os.path.exists(no_parent_filepath):
+        os.remove(no_parent_filepath)
+
+    try:
+        sec = SecurityBoundaryService()
+        audit = PlatformAuditControlService(security_boundary=sec)
+        repo = FileBackedProject1IntegrationRepository(storage_filepath=no_parent_filepath, audit_control=audit)
+
+        orig_fsync = os.fsync
+
+        def mock_conditional_fsync(fd):
+            try:
+                st = os.fstat(fd)
+                import stat
+                if stat.S_ISDIR(st.st_mode):
+                    raise OSError("Simulated current dir '.' fsync failure")
+            except Exception as e:
+                if "dir" in str(e):
+                    raise
+            orig_fsync(fd)
+
+        monkeypatch.setattr(os, "fsync", mock_conditional_fsync)
+
+        p1 = _build_valid_payload("pub_no_parent")
+        p1["user_id"] = "usr_tenant_a"
+        p1["integration_id"] = "usr_tenant_a:int_no_parent"
+
+        res = repo.ingest_authoritative_record(p1, user_id="usr_tenant_a")
+        assert res["status"] == RepositoryStatus.DURABILITY_UNCERTAIN
+
+        recs = repo.list_records_for_user(user_id="usr_tenant_a")
+        assert len(recs) == 1
+        assert recs[0]["publication_id"] == "pub_no_parent"
+
+        # Retry is idempotent
+        res_retry = repo.ingest_authoritative_record(p1, user_id="usr_tenant_a")
+        assert res_retry["status"] == RepositoryStatus.DUPLICATE_ACCEPTED
+    finally:
+        if os.path.exists(no_parent_filepath):
+            os.remove(no_parent_filepath)
+        if os.path.exists(f"{no_parent_filepath}.lock"):
+            os.remove(f"{no_parent_filepath}.lock")
+
+
+def test_gateway_durability_uncertain_handling(setup_gateway, monkeypatch):
+    gw, repo, user_a, _ = setup_gateway
+    p1 = _build_valid_payload("pub_gw_durability")
+
+    def mock_ingest_durability_uncertain(record, user_id=None):
+        return {
+            "status": RepositoryStatus.DURABILITY_UNCERTAIN,
+            "record": record,
+            "message": "Directory fsync failed after replace",
+        }
+
+    monkeypatch.setattr(repo, "ingest_authoritative_record", mock_ingest_durability_uncertain)
+
+    res = gw.ingest_signal_payload(user_a, p1)
+    assert res["success"] is False
+    assert res["status"] == "DURABILITY_UNCERTAIN"
+    assert res["error_code"] == "DURABILITY_UNCERTAIN"
+
+
+def test_gateway_unknown_repository_status_fails_closed(setup_gateway, monkeypatch):
+    gw, repo, user_a, _ = setup_gateway
+    p1 = _build_valid_payload("pub_gw_unknown_status")
+
+    def mock_ingest_unknown_status(record, user_id=None):
+        return {
+            "status": "FUTURE_UNHANDLED_STATUS",
+            "record": record,
+            "message": "Future repository status not handled",
+        }
+
+    monkeypatch.setattr(repo, "ingest_authoritative_record", mock_ingest_unknown_status)
+
+    res = gw.ingest_signal_payload(user_a, p1)
+    assert res["success"] is False
+    assert res["error_code"] == "UNKNOWN_REPOSITORY_STATUS"
+
+
+def test_typeerror_compatibility_escape_proof(setup_gateway):
+    from src.platform.adapters.project1_adapter import Project1GatewayAdapter
+
+    class BuggyRepoPort:
+        def list_records_for_user(self, user_id=None, symbol=None, lifecycle_state=None, limit=500, allow_system=False):
+            raise TypeError("Internal bug in repository implementation")
+
+    class BuggyGatewayService:
+        def __init__(self):
+            self._repo = BuggyRepoPort()
+
+    adapter = Project1GatewayAdapter(gateway_service=BuggyGatewayService())
+
+    with pytest.raises(TypeError, match="Internal bug in repository implementation"):
+        adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h")
+
+
+def test_all_repository_statuses_mapped_in_gateway(setup_gateway):
+    import inspect
+    from src.platform.adapters.project1_repository import RepositoryStatus
+
+    gw, repo, user_a, _ = setup_gateway
+    gw_code = inspect.getsource(gw.ingest_signal_payload)
+
+    for status in RepositoryStatus:
+        assert str(status.value) in gw_code or status.name in gw_code, f"RepositoryStatus member {status} missing explicit mapping in gateway!"
 
 
 # ============================================================================

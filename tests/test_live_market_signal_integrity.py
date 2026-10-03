@@ -40,7 +40,7 @@ class DummyGatewayRepo:
     def __init__(self, records=None) -> None:
         self.records = records or []
 
-    def list_records_for_user(self, user_id=None, symbol=None, lifecycle_state=None, limit=500):
+    def list_records_for_user(self, user_id=None, symbol=None, lifecycle_state=None, limit=500, allow_system=False):
         res = []
         for r in self.records:
             if symbol and r.get("symbol") and r.get("symbol").upper() != symbol.upper():

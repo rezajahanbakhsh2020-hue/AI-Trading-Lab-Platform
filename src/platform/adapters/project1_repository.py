@@ -369,7 +369,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
             self._is_unavailable = True
 
     def _flush_to_storage_unlocked(self) -> bool:
-        dir_name = os.path.dirname(self._storage_filepath)
+        dir_name = os.path.dirname(self._storage_filepath) or "."
         if dir_name and not os.path.exists(dir_name):
             os.makedirs(dir_name, exist_ok=True)
 

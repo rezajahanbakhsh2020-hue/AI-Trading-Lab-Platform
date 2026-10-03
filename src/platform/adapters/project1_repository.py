@@ -194,7 +194,11 @@ def _user_matches(rec: Dict[str, Any], user_id: Optional[str]) -> bool:
     if user_id is None:
         return True
     rec_user = rec.get("user_id")
-    return rec_user == user_id or rec_user in (None, "system", "p1_service_ingest")
+    if rec_user == user_id:
+        return True
+    if rec_user in (None, "system", "p1_service_ingest", "global"):
+        return True
+    return False
 
 
 class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort):
@@ -226,19 +230,21 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
         except Exception:
             self._is_unavailable = True
 
+    def _are_contents_identical(self, rec1: Dict[str, Any], rec2: Dict[str, Any]) -> bool:
+        for k in AUTHORITATIVE_CONTENT_KEYS:
+            v1 = rec1.get(k)
+            v2 = rec2.get(k)
+            if v1 != v2:
+                return False
+        return True
+
     def _all_records_identical_content(self, recs: List[Dict[str, Any]]) -> bool:
         if not recs or len(recs) <= 1:
             return True
         first = recs[0]
         for other in recs[1:]:
-            for k in AUTHORITATIVE_CONTENT_KEYS:
-                v1 = first.get(k)
-                v2 = other.get(k)
-                if isinstance(v1, float) and isinstance(v2, float):
-                    if abs(v1 - v2) > 1e-9:
-                        return False
-                elif v1 != v2:
-                    return False
+            if not self._are_contents_identical(first, other):
+                return False
         return True
 
     def _rebuild_indexes_unlocked(self) -> None:
@@ -323,10 +329,6 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
             return
 
         try:
-            st = os.stat(self._storage_filepath)
-            if self._last_mtime_ns > 0 and st.st_mtime_ns == self._last_mtime_ns and st.st_size == self._last_size and self._records:
-                return
-
             with open(self._storage_filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if isinstance(data, dict) and "records" in data:
@@ -335,10 +337,11 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                     self._records = data
                 else:
                     raise ValueError("JSON top-level payload must be dict with 'records' key or list")
+            st = os.stat(self._storage_filepath)
             self._last_mtime_ns = st.st_mtime_ns
             self._last_size = st.st_size
             self._rebuild_indexes_unlocked()
-        except Exception as exc:
+        except (json.JSONDecodeError, ValueError) as exc:
             self._is_corrupt = True
             self._records = []
             self._publication_map.clear()
@@ -359,6 +362,8 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                     message=f"Corrupt Project 1 repository file backed up to {backup_path}: {str(exc)}",
                     diagnostic_details=f"Filepath: {self._storage_filepath}",
                 )
+        except (OSError, IOError) as exc:
+            self._is_unavailable = True
 
     def _flush_to_storage_unlocked(self) -> None:
         dir_name = os.path.dirname(self._storage_filepath)
@@ -388,14 +393,11 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                 pass
 
             if dir_name and os.path.exists(dir_name):
+                dir_fd = os.open(dir_name, os.O_RDONLY)
                 try:
-                    dir_fd = os.open(dir_name, os.O_RDONLY)
-                    try:
-                        os.fsync(dir_fd)
-                    finally:
-                        os.close(dir_fd)
-                except Exception:
-                    pass
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
         except Exception as exc:
             if os.path.exists(tmp_path):
                 try:
@@ -409,7 +411,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                     message=f"Failed flushing Project 1 integration records: {str(exc)}",
                     diagnostic_details=f"Filepath: {self._storage_filepath}",
                 )
-            raise
+            raise StorageUnavailableError(f"Persistence flush failed: {str(exc)}") from exc
 
     def save_record(self, record: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(record, dict):
@@ -432,18 +434,21 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                 if self._is_corrupt:
                     raise StorageCorruptError("Cannot write to corrupted repository storage.")
 
-                if record.get("publication_id") or record.get("event_id"):
-                    lookup_res = self.find_authoritative_lookup_unlocked(record, user_id=record.get("user_id"))
+                target_user = record.get("user_id")
+
+                for existing in self._records:
+                    if existing.get("integration_id") == int_id and not _user_matches(existing, target_user):
+                        raise ValueError(f"Integration ID '{int_id}' collision with existing record of another user.")
+
+                if record.get("publication_id") or record.get("event_id") or record.get("signal_id"):
+                    lookup_res = self.find_authoritative_lookup_unlocked(record, user_id=target_user)
                     if lookup_res.record is not None:
                         existing = lookup_res.record
-                        for k in AUTHORITATIVE_CONTENT_KEYS:
-                            rec_val = record.get(k)
-                            ext_val = existing.get(k)
-                            if isinstance(rec_val, float) and isinstance(ext_val, float):
-                                if abs(rec_val - ext_val) > 1e-9:
-                                    raise ValueError(f"Mutation bypass rejected: Field {k} mutated.")
-                            elif rec_val != ext_val:
-                                raise ValueError(f"Mutation bypass rejected: Field {k} mutated.")
+                        if not self._are_contents_identical(record, existing):
+                            raise ValueError("Mutation bypass rejected: Cannot mutate authoritative P1 content via save_record.")
+                        for field in ("user_id", "tenant_id", "integration_id", "publication_id", "event_id", "signal_id", "lifecycle_state"):
+                            if field in record and field in existing and record[field] != existing[field]:
+                                raise ValueError(f"Mutation bypass rejected: Field '{field}' cannot be mutated via save_record.")
 
                 prev_records = [dict(r) for r in self._records]
 
@@ -626,19 +631,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
 
                 if lookup_res.record is not None:
                     existing = lookup_res.record
-                    is_identical = True
-                    for k in AUTHORITATIVE_CONTENT_KEYS:
-                        rec_val = record.get(k)
-                        ext_val = existing.get(k)
-                        if isinstance(rec_val, float) and isinstance(ext_val, float):
-                            if abs(rec_val - ext_val) > 1e-9:
-                                is_identical = False
-                                break
-                        elif rec_val != ext_val:
-                            is_identical = False
-                            break
-
-                    if is_identical:
+                    if self._are_contents_identical(record, existing):
                         return {
                             "status": RepositoryStatus.DUPLICATE_ACCEPTED,
                             "record": dict(existing),
@@ -651,7 +644,15 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                             "message": "Same publication identity received with mutated authoritative content.",
                         }
 
-                # ABSENT -> Create new record atomically
+                # ABSENT -> Check integration_id collision before creating
+                for existing in self._records:
+                    if existing.get("integration_id") == int_id:
+                        return {
+                            "status": RepositoryStatus.IDENTITY_COLLISION,
+                            "record": dict(existing),
+                            "message": f"Integration ID '{int_id}' collides with an existing record.",
+                        }
+
                 prev_records = [dict(r) for r in self._records]
 
                 rec_copy = dict(record)
@@ -699,13 +700,17 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
     def get_record_by_id(
         self, integration_id: str, user_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
-        if self._is_unavailable or self._is_corrupt:
-            return None
+        if self._is_unavailable:
+            raise StorageUnavailableError("Storage or process lock unavailable.")
+        if self._is_corrupt:
+            raise StorageCorruptError("Underlying storage is corrupted.")
         try:
             with self._lock, _ProcessLock(f"{self._storage_filepath}.lock"):
                 self._load_from_storage_unlocked()
-                if self._is_unavailable or self._is_corrupt:
-                    return None
+                if self._is_unavailable:
+                    raise StorageUnavailableError("Storage or process lock unavailable.")
+                if self._is_corrupt:
+                    raise StorageCorruptError("Underlying storage is corrupted.")
                 for rec in self._records:
                     if rec.get("integration_id") == integration_id:
                         if _user_matches(rec, user_id):
@@ -713,7 +718,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                 return None
         except StorageUnavailableError:
             self._is_unavailable = True
-            return None
+            raise
 
     def list_records_for_user(
         self,
@@ -722,13 +727,17 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
         lifecycle_state: Optional[str] = None,
         limit: int = 100,
     ) -> List[Dict[str, Any]]:
-        if self._is_unavailable or self._is_corrupt:
-            return []
+        if self._is_unavailable:
+            raise StorageUnavailableError("Storage or process lock unavailable.")
+        if self._is_corrupt:
+            raise StorageCorruptError("Underlying storage is corrupted.")
         try:
             with self._lock, _ProcessLock(f"{self._storage_filepath}.lock"):
                 self._load_from_storage_unlocked()
-                if self._is_unavailable or self._is_corrupt:
-                    return []
+                if self._is_unavailable:
+                    raise StorageUnavailableError("Storage or process lock unavailable.")
+                if self._is_corrupt:
+                    raise StorageCorruptError("Underlying storage is corrupted.")
                 filtered = []
                 for rec in reversed(self._records):
                     if not _user_matches(rec, user_id):
@@ -743,7 +752,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                 return filtered
         except StorageUnavailableError:
             self._is_unavailable = True
-            return []
+            raise
 
     def find_authoritative_record_unlocked(
         self, record: Dict[str, Any], user_id: Optional[str] = None
@@ -762,26 +771,32 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
     def find_authoritative_record(
         self, record: Dict[str, Any], user_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
-        if self._is_unavailable or self._is_corrupt:
-            return None
+        if self._is_unavailable:
+            raise StorageUnavailableError("Storage or process lock unavailable.")
+        if self._is_corrupt:
+            raise StorageCorruptError("Underlying storage is corrupted.")
         try:
             with self._lock, _ProcessLock(f"{self._storage_filepath}.lock"):
                 self._load_from_storage_unlocked()
                 return self.find_authoritative_record_unlocked(record, user_id=user_id)
         except StorageUnavailableError:
             self._is_unavailable = True
-            return None
+            raise
 
     def is_duplicate_request(
         self, signal_id: str, user_id: Optional[str] = None, timestamp: Optional[float] = None
     ) -> bool:
-        if self._is_unavailable or self._is_corrupt:
-            return False
+        if self._is_unavailable:
+            raise StorageUnavailableError("Storage or process lock unavailable.")
+        if self._is_corrupt:
+            raise StorageCorruptError("Underlying storage is corrupted.")
         try:
             with self._lock, _ProcessLock(f"{self._storage_filepath}.lock"):
                 self._load_from_storage_unlocked()
-                if self._is_unavailable or self._is_corrupt:
-                    return False
+                if self._is_unavailable:
+                    raise StorageUnavailableError("Storage or process lock unavailable.")
+                if self._is_corrupt:
+                    raise StorageCorruptError("Underlying storage is corrupted.")
                 u_id = user_id or "global"
                 if f"{u_id}:{signal_id}" in self._signal_map or f"{u_id}:{signal_id}" in self._publication_map or f"{u_id}:{signal_id}" in self._event_map:
                     candidate = (
@@ -803,7 +818,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                 return False
         except StorageUnavailableError:
             self._is_unavailable = True
-            return False
+            raise
 
     def update_lifecycle_state(
         self,
@@ -812,14 +827,18 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
         reason: Optional[str] = None,
         user_id: Optional[str] = None,
     ) -> bool:
-        if self._is_unavailable or self._is_corrupt:
-            return False
+        if self._is_unavailable:
+            raise StorageUnavailableError("Storage or process lock unavailable.")
+        if self._is_corrupt:
+            raise StorageCorruptError("Underlying storage is corrupted.")
         ls_upper = lifecycle_state.strip().upper()
         try:
             with self._lock, _ProcessLock(f"{self._storage_filepath}.lock"):
                 self._load_from_storage_unlocked()
-                if self._is_unavailable or self._is_corrupt:
-                    return False
+                if self._is_unavailable:
+                    raise StorageUnavailableError("Storage or process lock unavailable.")
+                if self._is_corrupt:
+                    raise StorageCorruptError("Underlying storage is corrupted.")
 
                 prev_records = [dict(r) for r in self._records]
 
@@ -861,8 +880,8 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                 except Exception:
                     self._records = prev_records
                     self._rebuild_indexes_unlocked()
-                    return False
+                    raise
                 return True
         except StorageUnavailableError:
             self._is_unavailable = True
-            return False
+            raise

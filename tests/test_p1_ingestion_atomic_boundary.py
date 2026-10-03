@@ -227,7 +227,8 @@ def test_corrupted_storage_fails_closed_never_creates(temp_repo_file, setup_gate
     assert res["success"] is False
     assert res["error_code"] == "STORAGE_CORRUPT"
 
-    assert len(repo.list_records_for_user(user_id=user_a.user_id)) == 0
+    with pytest.raises(StorageCorruptError):
+        repo.list_records_for_user(user_id=user_a.user_id)
 
 
 # ============================================================================
@@ -260,12 +261,14 @@ def test_constructor_lock_failure_marks_repo_unavailable(temp_repo_file, monkeyp
 
     res = repo.ingest_authoritative_record({"integration_id": "int_1", "publication_id": "pub_1"})
     assert res["status"] == RepositoryStatus.STORAGE_UNAVAILABLE
-    assert repo.get_record_by_id("int_1") is None
-    assert repo.list_records_for_user() == []
+    with pytest.raises(StorageUnavailableError):
+        repo.get_record_by_id("int_1")
+    with pytest.raises(StorageUnavailableError):
+        repo.list_records_for_user()
 
 
 # ============================================================================
-# 7. MUTATION BYPASS REJECTION TESTS
+# 7. MUTATION BYPASS REJECTION & COLLISION TESTS
 # ============================================================================
 
 def test_save_record_mutation_bypass_rejected(setup_gateway):
@@ -274,12 +277,92 @@ def test_save_record_mutation_bypass_rejected(setup_gateway):
     res = gw.ingest_signal_payload(user_a, p1)
     ingested_rec = res["record"]
 
-    # Attempting to mutate entry_price directly via save_record must be rejected
+    # Exact float mutation reject
     mutated_record = dict(ingested_rec)
-    mutated_record["entry_price"] = 9999.0
-
+    mutated_record["entry_price"] = 2650.000000001
     with pytest.raises(ValueError, match="Mutation bypass rejected"):
         repo.save_record(mutated_record)
+
+    # All 23 authoritative fields mutation rejection
+    auth_fields = [
+        ("publication_id", "pub_mutated"),
+        ("event_id", "evt_mutated"),
+        ("signal_id", "sig_mutated"),
+        ("decision_id", "dec_mutated"),
+        ("canonical_live_decision_fingerprint", "fp_mutated"),
+        ("candidate_id", "cand_mutated"),
+        ("research_evidence_id", "evid_mutated"),
+        ("strategy_name", "strat_mutated"),
+        ("research_fingerprint", "rf_mutated"),
+        ("runtime_authorization_fingerprint", "rta_mutated"),
+        ("strategy_version", "9.9.9"),
+        ("symbol", "EURUSD"),
+        ("signal_type", "sell"),
+        ("timeframe", "H1"),
+        ("entry_price", 1.0500),
+        ("stop_loss", 1.0600),
+        ("take_profit_1", 1.0400),
+        ("take_profit_2", 1.0300),
+        ("take_profit_3", 1.0200),
+        ("confidence", 0.11),
+        ("operational_stability_score", 0.22),
+        ("trailing_stop", {"distance": 10.0, "is_active": False}),
+        ("invalidation_condition", "Mutated condition"),
+    ]
+
+    for key, val in auth_fields:
+        mutated = dict(ingested_rec)
+        mutated[key] = val
+        with pytest.raises(ValueError, match="Mutation bypass rejected"):
+            repo.save_record(mutated)
+
+
+def test_integration_id_collision_and_pairwise_mismatches(setup_gateway):
+    gw, repo, user_a, user_b = setup_gateway
+
+    p1 = _build_valid_payload("pub_pair_1", event_id="evt_pair_1", signal_id="sig_pair_1")
+    res1 = gw.ingest_signal_payload(user_a, p1)
+    assert res1["success"] is True
+
+    # integration_id collision with different publication_id
+    colliding = _build_valid_payload("pub_pair_other", event_id="evt_pair_other", signal_id="sig_pair_other")
+    colliding["integration_id"] = res1["record"]["integration_id"]
+    res_coll = repo.ingest_authoritative_record(colliding, user_id=user_a.user_id)
+    assert res_coll["status"] == RepositoryStatus.IDENTITY_COLLISION
+
+    # Pairwise identity mismatches
+    # Same publication_id, different event_id
+    mismatch_pub_evt = _build_valid_payload("pub_pair_1", event_id="evt_pair_diff", signal_id="sig_pair_1")
+    mismatch_pub_evt["integration_id"] = "usr_tenant_a:int_mismatch_1"
+    res_m1 = repo.ingest_authoritative_record(mismatch_pub_evt, user_id=user_a.user_id)
+    assert res_m1["status"] == RepositoryStatus.IDENTITY_COLLISION
+
+    # Same event_id, different publication_id
+    mismatch_evt_pub = _build_valid_payload("pub_pair_diff", event_id="evt_pair_1", signal_id="sig_pair_1")
+    mismatch_evt_pub["integration_id"] = "usr_tenant_a:int_mismatch_2"
+    res_m2 = repo.ingest_authoritative_record(mismatch_evt_pub, user_id=user_a.user_id)
+    assert res_m2["status"] == RepositoryStatus.IDENTITY_COLLISION
+
+    # Same signal_id, different publication_id
+    mismatch_sig_pub = _build_valid_payload("pub_pair_diff2", event_id="evt_pair_diff2", signal_id="sig_pair_1")
+    mismatch_sig_pub["integration_id"] = "usr_tenant_a:int_mismatch_3"
+    res_m3 = repo.ingest_authoritative_record(mismatch_sig_pub, user_id=user_a.user_id)
+    assert res_m3["status"] == RepositoryStatus.IDENTITY_COLLISION
+
+
+def test_file_and_directory_fsync_durability_failures(setup_gateway, monkeypatch):
+    gw, repo, user_a, _ = setup_gateway
+    p1 = _build_valid_payload("pub_fsync_fail")
+    p1["integration_id"] = "usr_tenant_a:int_pub_fsync_fail"
+
+    # File fsync failure
+    def mock_fsync_fail(fd):
+        raise OSError("Simulator file fsync error")
+
+    monkeypatch.setattr(os, "fsync", mock_fsync_fail)
+
+    res = repo.ingest_authoritative_record(p1, user_id=user_a.user_id)
+    assert res["status"] == RepositoryStatus.PERSISTENCE_FAILURE
 
 
 # ============================================================================

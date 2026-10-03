@@ -292,6 +292,7 @@ class Project1GatewayAdapter(Project1IntegrationPort):
         meta["runtime_authorization_fingerprint"] = target_rec.get("runtime_authorization_fingerprint")
         meta["operational_stability_score"] = target_rec.get("operational_stability_score")
         meta["strategy_version"] = target_rec.get("strategy_version")
+        meta["risk_reward_ratio"] = target_rec.get("risk_reward_ratio")
 
         target_sym = str(target_rec.get("symbol") or symbol).strip().upper()
         return PresentedSignal(

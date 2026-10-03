@@ -528,7 +528,7 @@ export function createHostSnapshotFromProject1(
     market: defaultMarketState,
     strategy: {
       name: stratName,
-      stability: conf != null ? Math.round(conf * 100) : null,
+      stability: (signal as any)?.operational_stability_score ?? (meta?.operational_stability_score as number | undefined) ?? null,
       status: "active",
       message: `Strategy '${stratName}' owned and evaluated by Project 1.`,
     },

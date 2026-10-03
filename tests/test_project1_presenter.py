@@ -73,6 +73,8 @@ def test_presenter_with_disconnected_adapter():
     assert snapshot["project1"]["status"] == "disconnected"
     assert snapshot["signal"]["action"] is None
     assert snapshot["risk"]["entry"] is None
+    assert snapshot["authorization"]["status"] == "DISCONNECTED"
+    assert snapshot["authorization"]["isAuthorized"] is None
 
 
 class MockLiveSignalPort(Project1IntegrationPort):
@@ -131,6 +133,8 @@ def test_presenter_with_genuinely_live_signal():
     assert snapshot["risk"]["entry"] == 2650.50
     assert snapshot["risk"]["stopLoss"] == 2635.00
     assert snapshot["risk"]["takeProfits"] == [2670.0, 2690.0, 2710.0]
+    assert snapshot["authorization"]["authority"] == "PROJECT1"
+    assert snapshot["authorization"]["isAuthorized"] is None
 
 
 def test_presenter_with_lab_artifact_historical_isolation():
@@ -321,6 +325,89 @@ def test_presenter_build_host_snapshot_does_not_auto_stage_unauthoritative_order
     )
 
     snapshot = presenter.build_host_snapshot("XAUUSD", "1h", user=user)
-    assert snapshot["authorization"]["isAuthorized"] is True
+    assert snapshot["authorization"]["authority"] == "PROJECT1"
+    assert snapshot["authorization"]["isAuthorized"] is None
     # Presenter evaluation MUST NOT automatically synthesize an OrderIntent locally
     assert len(snapshot["orderIntents"]) == 0
+
+
+def test_presenter_truthful_project1_authorization_boundary():
+    """Verify criteria A, B, C, D, F: Presenter is projection-only and does not reconstruct P2 authorization decisions."""
+    import time
+    from src.platform.domain.presented_signal import PresentedSignal
+
+    now_ts = time.time()
+
+    # A & C & D: Given valid live P1 signal with BUY, confidence, Entry, SL, TP, risk_reward_ratio, operational_stability_score
+    p1_signal = PresentedSignal(
+        signal_id="p1_sig_auth_test_001",
+        symbol="XAUUSD",
+        signal_type="buy",
+        timestamp=now_ts - 10.0,
+        entry_price=2650.0,
+        stop_loss=2630.0,
+        take_profits=(2680.0, 2700.0),
+        confidence=0.85,
+        strategy_name="P1AuthorityStrategy",
+        timeframe="1h",
+        metadata={
+            "provenance_type": "live_signal",
+            "is_live": True,
+            "publication_id": "pub_p1_001",
+            "decision_id": "dec_p1_100",
+            "candidate_id": "cand_p1_200",
+            "research_evidence_id": "res_p1_300",
+            "runtime_authorization_fingerprint": "fingerprint_p1_auth",
+            "canonical_live_decision_fingerprint": "fingerprint_p1_decision",
+            "operational_stability_score": 0.92,
+            "risk_reward_ratio": 2.55,
+        },
+    )
+
+    port = MockLiveSignalPort(p1_signal)
+    presenter = Project1SignalPresenter(port)
+
+    snapshot = presenter.build_host_snapshot("XAUUSD", "1h")
+
+    # A: No local authorization reconstruction - isAuthorized is None, authority is PROJECT1
+    assert snapshot["authorization"]["authority"] == "PROJECT1"
+    assert snapshot["authorization"]["status"] == "PROJECT1_AUTHORITATIVE"
+    assert snapshot["authorization"]["isAuthorized"] is None
+    assert "owned by Project 1" in snapshot["authorization"]["reason"]
+    assert snapshot["authorization"]["decision_id"] == "dec_p1_100"
+    assert snapshot["authorization"]["runtime_authorization_fingerprint"] == "fingerprint_p1_auth"
+
+    # C: P2 does not recompute R:R; uses exact P1 risk_reward_ratio
+    assert snapshot["authorization"]["riskRewardRatio"] == 2.55
+
+    # D: Stability provenance comes strictly from P1 operational_stability_score (0.92)
+    assert snapshot["strategy"]["stability"] == 0.92
+
+    # B: Missing confidence / missing P1 fields cannot fabricate values
+    p1_signal_no_conf = PresentedSignal(
+        signal_id="p1_sig_no_conf_002",
+        symbol="XAUUSD",
+        signal_type="buy",
+        timestamp=now_ts - 5.0,
+        entry_price=2650.0,
+        stop_loss=2630.0,
+        take_profits=(2680.0,),
+        confidence=None,  # Missing confidence
+        strategy_name="P1NoConfStrategy",
+        timeframe="1h",
+        metadata={
+            "provenance_type": "live_signal",
+            "is_live": True,
+            "publication_id": "pub_p1_002",
+        },
+    )
+
+    port_no_conf = MockLiveSignalPort(p1_signal_no_conf)
+    presenter_no_conf = Project1SignalPresenter(port_no_conf)
+
+    snapshot_no_conf = presenter_no_conf.build_host_snapshot("XAUUSD", "1h")
+    # B: No 0.5 fallback, no derived stability, riskRewardRatio is None when missing from P1
+    assert snapshot_no_conf["signal"]["confidence"] is None
+    assert snapshot_no_conf["strategy"]["stability"] is None
+    assert snapshot_no_conf["authorization"]["riskRewardRatio"] is None
+    assert snapshot_no_conf["authorization"]["isAuthorized"] is None

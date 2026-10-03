@@ -37,7 +37,7 @@ ALLOWED_EVENT_TYPES: Tuple[str, ...] = (
     "HEARTBEAT",
 )
 
-ALLOWED_SIGNAL_TYPES: Tuple[str, ...] = ("buy", "sell", "hold", "no-signal")
+ALLOWED_SIGNAL_TYPES: Tuple[str, ...] = ("buy", "sell", "hold", "no-signal", "no-trade")
 
 ALLOWED_LIFECYCLE_STATES: Tuple[str, ...] = (
     "STAGED",
@@ -408,7 +408,11 @@ def validate_project1_contract_payload(
 
     # 3. Canonical Boundary Layout Check
     if command_type in ("EMIT_SIGNAL", "TRADING_SIGNAL"):
-        if is_nested_v1 and (not signal_obj or not instrument_obj or not trade_setup_obj):
+        if is_nested_v1 and (
+            raw_payload.get("signal") is None
+            or raw_payload.get("instrument") is None
+            or raw_payload.get("trade_setup") is None
+        ):
             errors.append("Missing canonical nested sections ('signal', 'instrument', 'trade_setup').")
 
     # 4. Strict Lineage Identity Extraction (Never synthesize decision_id = signal_id or publication_id = event_id)
@@ -453,8 +457,12 @@ def validate_project1_contract_payload(
 
         if not isinstance(raw_decision, str) or not raw_decision.strip():
             errors.append("signal decision/type is required and must be a non-empty string for TRADING_SIGNAL.")
-        elif raw_decision.strip().lower() not in ALLOWED_SIGNAL_TYPES:
-            errors.append(f"Invalid signal decision '{raw_decision}'. Allowed: {list(ALLOWED_SIGNAL_TYPES)}")
+        else:
+            norm_decision = raw_decision.strip().lower().replace("_", "-").replace(" ", "-")
+            if norm_decision not in ALLOWED_SIGNAL_TYPES:
+                errors.append(f"Invalid signal decision '{raw_decision}'. Allowed: {list(ALLOWED_SIGNAL_TYPES)}")
+            else:
+                raw_decision = norm_decision
 
     # 4. Timestamp Normalization at Boundary
     raw_ts = raw_payload.get("timestamp") if "timestamp" in raw_payload else signal_obj.get("timestamp")
@@ -650,8 +658,23 @@ def validate_project1_contract_payload(
         meta.update(provenance_obj)
 
     # Ensure canonical provenance_type is preserved if present
-    if "provenance_type" not in meta and provenance_obj.get("provenance_type"):
-        meta["provenance_type"] = provenance_obj["provenance_type"]
+    if "provenance_type" not in meta:
+        if raw_payload.get("provenance_type"):
+            meta["provenance_type"] = raw_payload["provenance_type"]
+        elif provenance_obj.get("provenance_type"):
+            meta["provenance_type"] = provenance_obj["provenance_type"]
+
+    if "is_live" not in meta:
+        if "is_live" in raw_payload:
+            meta["is_live"] = raw_payload["is_live"]
+        elif "is_live" in provenance_obj:
+            meta["is_live"] = provenance_obj["is_live"]
+
+    if "source" not in meta:
+        if raw_payload.get("source"):
+            meta["source"] = raw_payload["source"]
+        elif provenance_obj.get("source"):
+            meta["source"] = provenance_obj["source"]
 
     sanitized["metadata"] = meta
 

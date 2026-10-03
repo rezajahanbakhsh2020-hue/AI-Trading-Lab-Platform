@@ -379,6 +379,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
 
         unique_id = uuid.uuid4().hex
         tmp_path = f"{self._storage_filepath}.tmp.{unique_id}"
+        replaced = False
         try:
             with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(payload, f, indent=2, ensure_ascii=False)
@@ -386,6 +387,8 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                 os.fsync(f.fileno())
 
             os.replace(tmp_path, self._storage_filepath)
+            replaced = True
+
             try:
                 st = os.stat(self._storage_filepath)
                 self._last_mtime_ns = st.st_mtime_ns
@@ -394,25 +397,35 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                 pass
 
             if dir_name and os.path.exists(dir_name):
-                dir_fd = os.open(dir_name, os.O_RDONLY)
                 try:
-                    os.fsync(dir_fd)
-                finally:
-                    os.close(dir_fd)
+                    dir_fd = os.open(dir_name, os.O_RDONLY)
+                    try:
+                        os.fsync(dir_fd)
+                    finally:
+                        os.close(dir_fd)
+                except Exception as dir_exc:
+                    if self._audit_control is not None and hasattr(self._audit_control, "record_failure"):
+                        self._audit_control.record_failure(
+                            component="Project1IntegrationRepository",
+                            error_type="DIRECTORY_FSYNC_WARNING",
+                            message=f"Directory fsync warning after successful file commit: {str(dir_exc)}",
+                            diagnostic_details=f"Filepath: {self._storage_filepath}",
+                        )
         except Exception as exc:
-            if os.path.exists(tmp_path):
+            if not replaced and os.path.exists(tmp_path):
                 try:
                     os.remove(tmp_path)
                 except Exception:
                     pass
-            if self._audit_control is not None and hasattr(self._audit_control, "record_failure"):
-                self._audit_control.record_failure(
-                    component="Project1IntegrationRepository",
-                    error_type="STORAGE_WRITE_FAILURE",
-                    message=f"Failed flushing Project 1 integration records: {str(exc)}",
-                    diagnostic_details=f"Filepath: {self._storage_filepath}",
-                )
-            raise StorageUnavailableError(f"Persistence flush failed: {str(exc)}") from exc
+            if not replaced:
+                if self._audit_control is not None and hasattr(self._audit_control, "record_failure"):
+                    self._audit_control.record_failure(
+                        component="Project1IntegrationRepository",
+                        error_type="STORAGE_WRITE_FAILURE",
+                        message=f"Failed flushing Project 1 integration records: {str(exc)}",
+                        diagnostic_details=f"Filepath: {self._storage_filepath}",
+                    )
+                raise StorageUnavailableError(f"Persistence flush failed: {str(exc)}") from exc
 
     def save_record(self, record: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(record, dict):

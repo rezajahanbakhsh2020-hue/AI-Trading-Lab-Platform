@@ -350,12 +350,12 @@ def test_integration_id_collision_and_pairwise_mismatches(setup_gateway):
     assert res_m3["status"] == RepositoryStatus.IDENTITY_COLLISION
 
 
-def test_file_and_directory_fsync_durability_failures(setup_gateway, monkeypatch):
+def test_pre_replace_fsync_failure_rolls_back_memory_and_cleans_tmp(setup_gateway, monkeypatch):
     gw, repo, user_a, _ = setup_gateway
-    p1 = _build_valid_payload("pub_fsync_fail")
-    p1["integration_id"] = "usr_tenant_a:int_pub_fsync_fail"
+    p1 = _build_valid_payload("pub_pre_replace_fail")
+    p1["integration_id"] = "usr_tenant_a:int_pub_pre_replace_fail"
+    p1["user_id"] = user_a.user_id
 
-    # File fsync failure
     def mock_fsync_fail(fd):
         raise OSError("Simulator file fsync error")
 
@@ -363,6 +363,37 @@ def test_file_and_directory_fsync_durability_failures(setup_gateway, monkeypatch
 
     res = repo.ingest_authoritative_record(p1, user_id=user_a.user_id)
     assert res["status"] == RepositoryStatus.PERSISTENCE_FAILURE
+    assert len(repo.list_records_for_user(user_id=user_a.user_id)) == 0
+
+
+def test_post_replace_directory_fsync_warning_preserves_commit_and_memory_sync(setup_gateway, monkeypatch):
+    gw, repo, user_a, _ = setup_gateway
+    p1 = _build_valid_payload("pub_post_replace_dir_fail")
+    p1["integration_id"] = "usr_tenant_a:int_pub_post_replace_dir_fail"
+    p1["user_id"] = user_a.user_id
+
+    orig_fsync = os.fsync
+
+    def mock_conditional_fsync(fd):
+        # Fail if fd is opened on directory (O_RDONLY dir_fd)
+        try:
+            st = os.fstat(fd)
+            import stat
+            if stat.S_ISDIR(st.st_mode):
+                raise OSError("Simulated directory fsync failure")
+        except Exception as e:
+            if "directory" in str(e):
+                raise
+        orig_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", mock_conditional_fsync)
+
+    res = repo.ingest_authoritative_record(p1, user_id=user_a.user_id)
+    assert res["status"] == RepositoryStatus.CREATED
+
+    recs = repo.list_records_for_user(user_id=user_a.user_id)
+    assert len(recs) == 1
+    assert recs[0]["publication_id"] == "pub_post_replace_dir_fail"
 
 
 # ============================================================================

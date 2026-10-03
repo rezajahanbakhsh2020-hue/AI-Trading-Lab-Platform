@@ -389,11 +389,15 @@ def test_post_replace_directory_fsync_warning_preserves_commit_and_memory_sync(s
     monkeypatch.setattr(os, "fsync", mock_conditional_fsync)
 
     res = repo.ingest_authoritative_record(p1, user_id=user_a.user_id)
-    assert res["status"] == RepositoryStatus.CREATED
+    assert res["status"] == RepositoryStatus.DURABILITY_UNCERTAIN
 
     recs = repo.list_records_for_user(user_id=user_a.user_id)
     assert len(recs) == 1
     assert recs[0]["publication_id"] == "pub_post_replace_dir_fail"
+
+    # Exact retry on DURABILITY_UNCERTAIN is idempotent duplicate accepted
+    res_retry = repo.ingest_authoritative_record(p1, user_id=user_a.user_id)
+    assert res_retry["status"] == RepositoryStatus.DUPLICATE_ACCEPTED
 
 
 # ============================================================================
@@ -460,15 +464,16 @@ def test_multiprocessing_process_concurrency_proof(temp_repo_file):
         p.start()
 
     for p in processes:
-        p.join(timeout=5)
+        p.join(timeout=10.0)
+        assert p.exitcode == 0, f"Worker process failed with exitcode {p.exitcode}"
 
     results = []
-    while not queue.empty():
-        results.append(queue.get())
+    for _ in range(num_procs):
+        results.append(queue.get(timeout=5.0))
 
     assert len(results) == num_procs
     for res in results:
-        assert res["success"] is True
+        assert res.get("success") is True, f"Multiprocessing worker failed: {res}"
 
     sec = SecurityBoundaryService()
     repo = FileBackedProject1IntegrationRepository(storage_filepath=temp_repo_file)

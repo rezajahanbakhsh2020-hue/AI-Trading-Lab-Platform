@@ -55,6 +55,7 @@ class RepositoryStatus(str, Enum):
     STORAGE_UNAVAILABLE = "STORAGE_UNAVAILABLE"
     PERSISTENCE_FAILURE = "PERSISTENCE_FAILURE"
     IDENTITY_COLLISION = "IDENTITY_COLLISION"
+    DURABILITY_UNCERTAIN = "DURABILITY_UNCERTAIN"
 
 
 class StorageUnavailableError(RuntimeError):
@@ -160,6 +161,7 @@ class Project1IntegrationRepositoryPort(ABC):
         symbol: Optional[str] = None,
         lifecycle_state: Optional[str] = None,
         limit: int = 100,
+        allow_system: bool = False,
     ) -> List[Dict[str, Any]]:
         """List integration records filtered by user_id, symbol, and lifecycle_state."""
         raise NotImplementedError
@@ -366,7 +368,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
         except (OSError, IOError) as exc:
             self._is_unavailable = True
 
-    def _flush_to_storage_unlocked(self) -> None:
+    def _flush_to_storage_unlocked(self) -> bool:
         dir_name = os.path.dirname(self._storage_filepath)
         if dir_name and not os.path.exists(dir_name):
             os.makedirs(dir_name, exist_ok=True)
@@ -380,6 +382,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
         unique_id = uuid.uuid4().hex
         tmp_path = f"{self._storage_filepath}.tmp.{unique_id}"
         replaced = False
+        dir_fsync_ok = True
         try:
             with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(payload, f, indent=2, ensure_ascii=False)
@@ -404,6 +407,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                     finally:
                         os.close(dir_fd)
                 except Exception as dir_exc:
+                    dir_fsync_ok = False
                     if self._audit_control is not None and hasattr(self._audit_control, "record_failure"):
                         self._audit_control.record_failure(
                             component="Project1IntegrationRepository",
@@ -411,6 +415,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                             message=f"Directory fsync warning after successful file commit: {str(dir_exc)}",
                             diagnostic_details=f"Filepath: {self._storage_filepath}",
                         )
+            return dir_fsync_ok
         except Exception as exc:
             if not replaced and os.path.exists(tmp_path):
                 try:
@@ -426,6 +431,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                         diagnostic_details=f"Filepath: {self._storage_filepath}",
                     )
                 raise StorageUnavailableError(f"Persistence flush failed: {str(exc)}") from exc
+            return dir_fsync_ok
 
     def save_record(self, record: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(record, dict):
@@ -456,6 +462,14 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
 
                 if record.get("publication_id") or record.get("event_id") or record.get("signal_id"):
                     lookup_res = self.find_authoritative_lookup_unlocked(record, user_id=target_user)
+                    if lookup_res.status in (
+                        RepositoryStatus.IDENTITY_AMBIGUOUS,
+                        RepositoryStatus.IDENTITY_COLLISION,
+                        RepositoryStatus.STORAGE_CORRUPT,
+                        RepositoryStatus.STORAGE_UNAVAILABLE,
+                    ):
+                        raise ValueError(f"Mutation bypass rejected due to authoritative lookup status: {lookup_res.status.value}")
+
                     if lookup_res.record is not None:
                         existing = lookup_res.record
                         if not self._are_contents_identical(record, existing):
@@ -706,7 +720,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                 self._index_record_unlocked(rec_copy)
 
                 try:
-                    self._flush_to_storage_unlocked()
+                    durable_ok = self._flush_to_storage_unlocked()
                 except Exception as exc:
                     self._records = prev_records
                     self._rebuild_indexes_unlocked()
@@ -714,6 +728,13 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                         "status": RepositoryStatus.PERSISTENCE_FAILURE,
                         "record": None,
                         "message": f"Persistence write failed: {str(exc)}",
+                    }
+
+                if not durable_ok:
+                    return {
+                        "status": RepositoryStatus.DURABILITY_UNCERTAIN,
+                        "record": dict(rec_copy),
+                        "message": "Authoritative record written to disk, but directory fsync failed (durability uncertain).",
                     }
 
                 return {

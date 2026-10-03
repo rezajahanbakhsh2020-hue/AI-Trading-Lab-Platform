@@ -284,6 +284,27 @@ class Project1IntegrationGatewayService:
                 "correlation_id": correlation_id,
             }
 
+        elif ingest_status == RepositoryStatus.DURABILITY_UNCERTAIN:
+            self._audit.record_event(
+                user_id=user.user_id,
+                category=AuditCategory.SIGNAL_INTAKE,
+                event_type="INGESTION_DURABILITY_UNCERTAIN",
+                lifecycle_state=OperationalLifecycleState.STAGED,
+                action="INTAKE_PROJECT1_SIGNAL",
+                outcome="SUCCESS",
+                severity=AuditEventSeverity.WARNING,
+                resource_id=sanitized["signal_id"],
+                correlation_id=correlation_id,
+                details="Signal committed to target storage file, but parent directory durability was uncertain.",
+            )
+            return {
+                "success": True,
+                "status": "DURABILITY_UNCERTAIN",
+                "message": "Signal payload committed to file, but directory durability was uncertain.",
+                "record": SecretSanitizer.sanitize_data(rec_payload),
+                "correlation_id": correlation_id,
+            }
+
         elif ingest_status in (
             RepositoryStatus.INTEGRITY_CONFLICT,
             RepositoryStatus.IDENTITY_AMBIGUOUS,

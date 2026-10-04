@@ -25,22 +25,6 @@ if HAS_P1:
     from tests.test_production_publication_boundary import make_test_artifacts
     from src.evaluation.live_production_decision import ProductionIntelligencePublication
 
-    # Ensure P1 ProductionIntelligencePublication.to_contract_v1_payload includes
-    # canonical provenance_type="live_signal" and is_live=True if unpatched in cloned P1 main
-    _p1_orig_to_contract = ProductionIntelligencePublication.to_contract_v1_payload
-
-    def _p1_canonical_producer_to_contract_v1_payload(self):
-        payload = _p1_orig_to_contract(self)
-        prov = payload.get("provenance")
-        if isinstance(prov, dict):
-            if "provenance_type" not in prov:
-                prov["provenance_type"] = "live_signal"
-            if "is_live" not in prov:
-                prov["is_live"] = True
-        return payload
-
-    ProductionIntelligencePublication.to_contract_v1_payload = _p1_canonical_producer_to_contract_v1_payload
-
 
 @pytest.fixture(autouse=True)
 def require_p1_producer():

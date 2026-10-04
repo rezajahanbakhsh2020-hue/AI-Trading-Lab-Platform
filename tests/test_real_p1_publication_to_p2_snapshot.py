@@ -70,6 +70,10 @@ def test_real_p1_publication_to_p2_snapshot_visible_signal(p2_e2e_server):
     # 1. Create real P1 ProductionIntelligencePublication object using real P1 factory
     cand, dec, sig, risk, pub = make_test_artifacts()
 
+    # Assert P1 ProductionIntelligencePublication object native provenance fields
+    assert pub.provenance["provenance_type"] == "live_signal"
+    assert pub.provenance["is_live"] is True
+
     # 2. Serialize real payload via P1 to_contract_v1_payload()
     real_payload = pub.to_contract_v1_payload()
 
@@ -170,6 +174,39 @@ def test_anti_recurrence_K_mutated_provenance_type_fails_closed(p2_e2e_server):
     # Deliberately remove provenance_type to simulate historical escape
     if "provenance_type" in payload["provenance"]:
         del payload["provenance"]["provenance_type"]
+
+    headers = {
+        "Authorization": f"Bearer {cfg.project1_service_key}",
+        "Content-Type": "application/json",
+    }
+    req_ingest = urllib.request.Request(
+        f"{base_url}/api/v1/integration/project1/ingest",
+        data=json.dumps(payload).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+
+    with urllib.request.urlopen(req_ingest) as resp:
+        ack = json.loads(resp.read().decode("utf-8"))
+        assert ack["success"] is True
+
+    # Query snapshot: MUST NOT show active BUY
+    req_snap = urllib.request.Request(f"{base_url}/api/v1/snapshot?symbol={pub.symbol}&timeframe={pub.timeframe}")
+    with urllib.request.urlopen(req_snap) as snap_resp:
+        snap = json.loads(snap_resp.read().decode("utf-8"))
+        assert snap["signal"]["status"] != "active"
+        assert snap["signal"]["action"] == "NO SIGNAL" or snap["signal"]["signalId"] != pub.signal_id
+
+
+def test_adversarial_is_live_false_fails_closed(p2_e2e_server):
+    """Adversarial Verification: Setting is_live=False in real P1 payload copy MUST fail closed in P2."""
+    base_url, cfg, _ = p2_e2e_server
+
+    cand, dec, sig, risk, pub = make_test_artifacts()
+    payload = pub.to_contract_v1_payload()
+
+    # Deliberately set is_live=False on test payload copy
+    payload["provenance"]["is_live"] = False
 
     headers = {
         "Authorization": f"Bearer {cfg.project1_service_key}",

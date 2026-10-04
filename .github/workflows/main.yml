@@ -25,6 +25,8 @@ jobs:
       - name: Checkout P1 repository for real cross-repository verification
         run: |
           git clone https://github.com/rezajahanbakhsh2020-hue/AI-Trading-Lab.git /tmp/AI-Trading-Lab
+          cd /tmp/AI-Trading-Lab
+          git checkout c7e4b993da180a4b54581add5b7ea9d4e6af5961
 
       - name: Install Python dependencies
         run: |

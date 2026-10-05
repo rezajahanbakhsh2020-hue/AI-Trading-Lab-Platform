@@ -2,19 +2,9 @@
 
 Verifies:
 - P1 Contract v1 payload['mtf'] preservation across P2 validation -> repository -> presenter boundary.
-- All anti-recurrence controls A through L:
-  A — MTF absent: Valid non-MTF payload remains valid.
-  B — MTF malformed: Malformed MTF is rejected fail-closed.
-  C — MTF identity mutation: Mutating one authoritative constituent identity must be detectable.
-  D — Fingerprint mutation: Changing intelligence_fingerprint must not be silently normalized/recomputed.
-  E — Star mutation: P2 preserves star_representation as received without local recomputation.
-  F — Classification mutation: "COUNTER_TREND" classification is preserved as received.
-  G — Missing constituent identity: Missing decision_id or signal_id rejects rather than synthesizes.
-  H — Higher timeframe disagreement: Higher timeframe SELL does not veto lower timeframe BUY (5m BUY presented).
-  I — Timeframe grouping: 5m and 15m records remain distinguishable across canonical timeframes.
-  J — No P2 calculation: Zero strategy, risk, or MTF recalculation performed in P2.
-  K — Backward compatibility: Existing non-MTF contract tests pass.
-  L — Source mutation protection: Mutating input MTF payload after ingestion does not mutate persisted record.
+- Defect A repair: Exact preservation without casing/whitespace normalization.
+- Defect B repair: Mandatory non-empty P1 lineage field enforcement.
+- All required anti-recurrence controls A through L and required-identity test matrix.
 """
 
 from datetime import datetime
@@ -273,6 +263,64 @@ def test_cross_boundary_identity_preservation(gateway_service, admin_user):
             assert pres_sig["strategy_name"] == source_sig["strategy_name"]
             assert pres_sig["strategy_version"] == source_sig["strategy_version"]
             assert pres_sig["provenance"] == source_sig["provenance"]
+
+
+def test_anti_normalization_exact_preservation():
+    """Defect A Repair Test: Verify exact non-rewritten preservation of MTF field casing/representation."""
+    raw_payload = sample_p1_mtf_payload()
+    # Distinctive direction casing "buy" and classification "COUNTER_TREND"
+    raw_payload["mtf"]["signals"][4]["direction"] = "buy"  # Must stay "buy", not transformed to "BUY"
+    raw_payload["mtf"]["classification"] = "COUNTER_TREND"  # Must stay "COUNTER_TREND"
+
+    val_res = validate_project1_contract_payload(raw_payload)
+    assert val_res.is_valid is True
+    sanitized_mtf = val_res.sanitized_payload["mtf"]
+
+    assert sanitized_mtf["signals"][4]["direction"] == "buy"
+    assert sanitized_mtf["classification"] == "COUNTER_TREND"
+    assert sanitized_mtf["local_timeframe"] == "5m"
+
+
+@pytest.mark.parametrize(
+    "field_name, bad_value",
+    [
+        ("strategy_name", None),
+        ("strategy_name", ""),
+        ("strategy_name", "   "),
+        ("strategy_version", None),
+        ("strategy_version", ""),
+        ("strategy_version", "   "),
+        ("candidate_id", None),
+        ("candidate_id", ""),
+        ("candidate_id", "   "),
+        ("evidence_id", None),
+        ("evidence_id", ""),
+        ("evidence_id", "   "),
+        ("experiment_fingerprint", None),
+        ("experiment_fingerprint", ""),
+        ("experiment_fingerprint", "   "),
+        ("canonical_live_decision_fingerprint", None),
+        ("canonical_live_decision_fingerprint", ""),
+        ("canonical_live_decision_fingerprint", "   "),
+        ("authorization_fingerprint", None),
+        ("authorization_fingerprint", ""),
+        ("authorization_fingerprint", "   "),
+        ("constituent_fingerprint", None),
+        ("constituent_fingerprint", ""),
+        ("constituent_fingerprint", "   "),
+    ],
+)
+def test_defect_b_missing_lineage_matrix_rejection(field_name, bad_value):
+    """Defect B Repair Test Matrix: Verify every mandatory P1 constituent lineage field rejects missing/None/empty values."""
+    raw_payload = sample_p1_mtf_payload()
+    if bad_value is None and field_name in raw_payload["mtf"]["signals"][0]:
+        del raw_payload["mtf"]["signals"][0][field_name]
+    else:
+        raw_payload["mtf"]["signals"][0][field_name] = bad_value
+
+    val_res = validate_project1_contract_payload(raw_payload)
+    assert val_res.is_valid is False
+    assert any("Invalid MTF payload" in err for err in val_res.errors)
 
 
 def test_anti_recurrence_A_mtf_absent(gateway_service, admin_user):

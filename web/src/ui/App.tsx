@@ -58,14 +58,21 @@ export function App() {
 
   useEffect(() => {
     let isMounted = true;
+    const reqSymbol = selectedSymbol;
+    const reqTimeframe = selectedTimeframe;
+
     async function syncBackendHostSnapshot() {
       const token = authState.sessionToken;
-      const res = await fetchHostSnapshot(token, selectedSymbol, selectedTimeframe);
+      const res = await fetchHostSnapshot(token, reqSymbol, reqTimeframe);
       if (!isMounted) return;
 
       if (res.success && res.snapshot) {
-        setBackendSnapshot(res.snapshot);
-        setIsConnected(Boolean(res.snapshot.project1?.connected));
+        const snapSym = res.snapshot.market?.symbol?.toUpperCase();
+        const snapTf = res.snapshot.market?.timeframe?.toLowerCase();
+        if (snapSym === reqSymbol.toUpperCase() && snapTf === reqTimeframe.toLowerCase()) {
+          setBackendSnapshot(res.snapshot);
+          setIsConnected(Boolean(res.snapshot.project1?.connected));
+        }
       } else {
         setBackendSnapshot(null);
         setIsConnected(false);

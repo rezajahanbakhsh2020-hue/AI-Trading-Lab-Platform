@@ -42,6 +42,7 @@ AUTHORITATIVE_CONTENT_KEYS = (
     "operational_stability_score",
     "trailing_stop",
     "invalidation_condition",
+    "mtf",
 )
 
 

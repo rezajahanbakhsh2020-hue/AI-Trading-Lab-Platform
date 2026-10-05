@@ -49,6 +49,235 @@ ALLOWED_LIFECYCLE_STATES: Tuple[str, ...] = (
     "EXECUTED",
 )
 
+ALLOWED_MTF_TIMEFRAMES: Tuple[str, ...] = ("5m", "15m", "30m", "1H", "4H", "1D")
+
+ALLOWED_MTF_CLASSIFICATIONS: Tuple[str, ...] = (
+    "ALIGNED",
+    "COUNTER_TREND",
+    "INSUFFICIENT_CONTEXT",
+    "NO_TRADE",
+    "NEUTRAL",
+    "MIXED",
+)
+
+
+@dataclass(frozen=True)
+class Project1MTFSignal:
+    """Immutable per-timeframe constituent signal within Project 1 MTF payload."""
+
+    symbol: str
+    timeframe: str
+    direction: str
+    decision_id: str
+    signal_id: str
+    decision_timestamp: Any
+    market_timestamp: Any
+    strategy_name: Optional[str] = None
+    strategy_version: Optional[str] = None
+    candidate_id: Optional[str] = None
+    evidence_id: Optional[str] = None
+    experiment_fingerprint: Optional[str] = None
+    canonical_live_decision_fingerprint: Optional[str] = None
+    authorization_fingerprint: Optional[str] = None
+    constituent_fingerprint: Optional[str] = None
+    provenance: Optional[Dict[str, Any]] = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.symbol, str) or not self.symbol.strip():
+            raise ValueError("MTF constituent signal symbol must be a non-empty string")
+        object.__setattr__(self, "symbol", self.symbol.strip().upper())
+
+        if not isinstance(self.timeframe, str) or not self.timeframe.strip():
+            raise ValueError("MTF constituent signal timeframe must be a non-empty string")
+        tf_clean = self.timeframe.strip()
+        if tf_clean not in ALLOWED_MTF_TIMEFRAMES:
+            raise ValueError(f"MTF constituent signal timeframe '{tf_clean}' is not supported. Allowed: {ALLOWED_MTF_TIMEFRAMES}")
+        object.__setattr__(self, "timeframe", tf_clean)
+
+        if not isinstance(self.direction, str) or not self.direction.strip():
+            raise ValueError("MTF constituent signal direction must be a non-empty string")
+        dir_clean = self.direction.strip().lower()
+        if dir_clean not in ("buy", "sell", "hold", "no-signal", "no-trade", "neutral"):
+            raise ValueError(f"MTF constituent signal direction '{self.direction}' is invalid")
+        object.__setattr__(self, "direction", dir_clean)
+
+        if not isinstance(self.decision_id, str) or not self.decision_id.strip():
+            raise ValueError("MTF constituent signal decision_id must be a non-empty string")
+        object.__setattr__(self, "decision_id", self.decision_id.strip())
+
+        if not isinstance(self.signal_id, str) or not self.signal_id.strip():
+            raise ValueError("MTF constituent signal signal_id must be a non-empty string")
+        object.__setattr__(self, "signal_id", self.signal_id.strip())
+
+        if self.decision_timestamp is None:
+            raise ValueError("MTF constituent signal decision_timestamp is required")
+        if self.market_timestamp is None:
+            raise ValueError("MTF constituent signal market_timestamp is required")
+
+        if self.provenance is not None and not isinstance(self.provenance, dict):
+            raise ValueError("MTF constituent signal provenance must be a dict if provided")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "symbol": self.symbol,
+            "timeframe": self.timeframe,
+            "direction": self.direction,
+            "decision_id": self.decision_id,
+            "signal_id": self.signal_id,
+            "decision_timestamp": self.decision_timestamp,
+            "market_timestamp": self.market_timestamp,
+            "strategy_name": self.strategy_name,
+            "strategy_version": self.strategy_version,
+            "candidate_id": self.candidate_id,
+            "evidence_id": self.evidence_id,
+            "experiment_fingerprint": self.experiment_fingerprint,
+            "canonical_live_decision_fingerprint": self.canonical_live_decision_fingerprint,
+            "authorization_fingerprint": self.authorization_fingerprint,
+            "constituent_fingerprint": self.constituent_fingerprint,
+            "provenance": dict(self.provenance) if self.provenance else None,
+        }
+
+
+@dataclass(frozen=True)
+class Project1MTFConfig:
+    """Immutable, validated Project 1 Multi-Timeframe (MTF) payload representation."""
+
+    symbol: str
+    local_timeframe: str
+    participating_timeframes: Tuple[str, ...]
+    signals: Tuple[Project1MTFSignal, ...]
+    alignment_count: int
+    alignment_coverage: int
+    classification: str
+    higher_timeframe_context: Optional[Dict[str, Any]] = None
+    constituent_fingerprints: Tuple[str, ...] = field(default_factory=tuple)
+    matching_signal_count: Optional[int] = None
+    available_signal_count: Optional[int] = None
+    intelligence_fingerprint: Optional[str] = None
+    star_representation: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.symbol, str) or not self.symbol.strip():
+            raise ValueError("MTF symbol must be a non-empty string")
+        object.__setattr__(self, "symbol", self.symbol.strip().upper())
+
+        if not isinstance(self.local_timeframe, str) or not self.local_timeframe.strip():
+            raise ValueError("MTF local_timeframe must be a non-empty string")
+        ltf_clean = self.local_timeframe.strip()
+        if ltf_clean not in ALLOWED_MTF_TIMEFRAMES:
+            raise ValueError(f"MTF local_timeframe '{ltf_clean}' is not supported. Allowed: {ALLOWED_MTF_TIMEFRAMES}")
+        object.__setattr__(self, "local_timeframe", ltf_clean)
+
+        if not isinstance(self.participating_timeframes, (list, tuple)):
+            raise ValueError("MTF participating_timeframes must be a list or tuple")
+        clean_ptfs = []
+        for ptf in self.participating_timeframes:
+            if not isinstance(ptf, str) or ptf.strip() not in ALLOWED_MTF_TIMEFRAMES:
+                raise ValueError(f"MTF participating timeframe '{ptf}' is not supported")
+            clean_ptfs.append(ptf.strip())
+        object.__setattr__(self, "participating_timeframes", tuple(clean_ptfs))
+
+        if not isinstance(self.signals, (list, tuple)):
+            raise ValueError("MTF signals must be a list or tuple")
+        clean_sigs = []
+        for s in self.signals:
+            if isinstance(s, Project1MTFSignal):
+                clean_sigs.append(s)
+            elif isinstance(s, dict):
+                clean_sigs.append(Project1MTFSignal(
+                    symbol=s.get("symbol"),
+                    timeframe=s.get("timeframe", ""),
+                    direction=s.get("direction", ""),
+                    decision_id=s.get("decision_id", ""),
+                    signal_id=s.get("signal_id", ""),
+                    decision_timestamp=s.get("decision_timestamp"),
+                    market_timestamp=s.get("market_timestamp"),
+                    strategy_name=s.get("strategy_name"),
+                    strategy_version=s.get("strategy_version"),
+                    candidate_id=s.get("candidate_id"),
+                    evidence_id=s.get("evidence_id"),
+                    experiment_fingerprint=s.get("experiment_fingerprint"),
+                    canonical_live_decision_fingerprint=s.get("canonical_live_decision_fingerprint"),
+                    authorization_fingerprint=s.get("authorization_fingerprint"),
+                    constituent_fingerprint=s.get("constituent_fingerprint"),
+                    provenance=s.get("provenance") if isinstance(s.get("provenance"), dict) else None,
+                ))
+            else:
+                raise ValueError("MTF signals elements must be Project1MTFSignal or dict")
+        object.__setattr__(self, "signals", tuple(clean_sigs))
+
+        if isinstance(self.alignment_count, bool) or not isinstance(self.alignment_count, int) or self.alignment_count < 0:
+            raise ValueError("MTF alignment_count must be a non-negative integer")
+
+        if isinstance(self.alignment_coverage, bool) or not isinstance(self.alignment_coverage, int) or not (1 <= self.alignment_coverage <= 6):
+            raise ValueError("MTF alignment_coverage must be an integer in 1..6 range")
+
+        if not isinstance(self.classification, str) or not self.classification.strip():
+            raise ValueError("MTF classification must be a non-empty string")
+        class_clean = self.classification.strip().upper()
+        if class_clean not in ALLOWED_MTF_CLASSIFICATIONS:
+            raise ValueError(f"MTF classification '{class_clean}' is not supported. Allowed: {ALLOWED_MTF_CLASSIFICATIONS}")
+        object.__setattr__(self, "classification", class_clean)
+
+        if self.higher_timeframe_context is not None and not isinstance(self.higher_timeframe_context, dict):
+            raise ValueError("MTF higher_timeframe_context must be a dictionary if provided")
+
+        if not isinstance(self.constituent_fingerprints, (list, tuple)):
+            raise ValueError("MTF constituent_fingerprints must be a tuple or list")
+        object.__setattr__(self, "constituent_fingerprints", tuple(str(fp) for fp in self.constituent_fingerprints))
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "symbol": self.symbol,
+            "local_timeframe": self.local_timeframe,
+            "participating_timeframes": list(self.participating_timeframes),
+            "signals": [s.to_dict() for s in self.signals],
+            "alignment_count": self.alignment_count,
+            "alignment_coverage": self.alignment_coverage,
+            "classification": self.classification,
+            "higher_timeframe_context": dict(self.higher_timeframe_context) if self.higher_timeframe_context is not None else None,
+            "constituent_fingerprints": list(self.constituent_fingerprints),
+            "matching_signal_count": self.matching_signal_count,
+            "available_signal_count": self.available_signal_count,
+            "intelligence_fingerprint": self.intelligence_fingerprint,
+            "star_representation": self.star_representation,
+        }
+
+
+def validate_project1_mtf_object(raw_mtf: Any) -> Tuple[bool, Optional[Dict[str, Any]], Tuple[str, ...]]:
+    """Validate Project 1 MTF payload fail-closed.
+
+    Returns:
+      (is_valid, sanitized_mtf_dict, errors_tuple)
+    """
+    if raw_mtf is None:
+        return True, None, ()
+
+    if not isinstance(raw_mtf, dict):
+        return False, None, ("MTF payload must be a mapping/object.",)
+
+    try:
+        mtf_config = Project1MTFConfig(
+            symbol=raw_mtf.get("symbol", ""),
+            local_timeframe=raw_mtf.get("local_timeframe", ""),
+            participating_timeframes=raw_mtf.get("participating_timeframes", ()),
+            signals=raw_mtf.get("signals", ()),
+            alignment_count=raw_mtf.get("alignment_count"),
+            alignment_coverage=raw_mtf.get("alignment_coverage"),
+            classification=raw_mtf.get("classification", ""),
+            higher_timeframe_context=raw_mtf.get("higher_timeframe_context"),
+            constituent_fingerprints=raw_mtf.get("constituent_fingerprints", ()),
+            matching_signal_count=raw_mtf.get("matching_signal_count"),
+            available_signal_count=raw_mtf.get("available_signal_count"),
+            intelligence_fingerprint=raw_mtf.get("intelligence_fingerprint"),
+            star_representation=raw_mtf.get("star_representation"),
+        )
+        return True, mtf_config.to_dict(), ()
+    except ValueError as val_err:
+        return False, None, (f"Invalid MTF payload: {str(val_err)}",)
+    except Exception as exc:
+        return False, None, (f"Malformed MTF payload: {str(exc)}",)
+
 
 def parse_iso8601_to_utc_epoch(
     raw_timestamp: Any,
@@ -572,6 +801,15 @@ def validate_project1_contract_payload(
             except ValueError as val_err:
                 errors.append(f"Invalid trailing_stop config: {str(val_err)}")
 
+    # Multi-Timeframe (MTF) configuration validation
+    mtf_sanitized = None
+    if "mtf" in raw_payload and raw_payload["mtf"] is not None:
+        mtf_valid, mtf_dict, mtf_errs = validate_project1_mtf_object(raw_payload["mtf"])
+        if not mtf_valid:
+            errors.extend(mtf_errs)
+        else:
+            mtf_sanitized = mtf_dict
+
     if errors:
         return Project1ValidationResult(is_valid=False, errors=tuple(errors))
 
@@ -630,6 +868,9 @@ def validate_project1_contract_payload(
 
     if ts_config is not None:
         sanitized["trailing_stop"] = ts_config.to_dict()
+
+    if mtf_sanitized is not None:
+        sanitized["mtf"] = mtf_sanitized
 
     # Quantity extraction (preserve if present in raw_payload or trade_setup)
     qty = (

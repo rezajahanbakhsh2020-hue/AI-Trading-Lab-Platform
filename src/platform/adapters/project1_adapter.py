@@ -294,6 +294,8 @@ class Project1GatewayAdapter(Project1IntegrationPort):
         meta["operational_stability_score"] = target_rec.get("operational_stability_score")
         meta["strategy_version"] = target_rec.get("strategy_version")
         meta["risk_reward_ratio"] = target_rec.get("risk_reward_ratio")
+        if target_rec.get("mtf") is not None:
+            meta["mtf"] = target_rec.get("mtf")
 
         target_sym = str(target_rec.get("symbol") or symbol).strip().upper()
         return PresentedSignal(

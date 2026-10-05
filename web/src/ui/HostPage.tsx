@@ -167,6 +167,7 @@ export function HostPage({
         <IntelligenceWorkspace
           snapshot={snapshot}
           onSelectSymbol={onSelectSymbol}
+          onSelectTimeframe={onSelectTimeframe}
           onStageOrderIntent={onStageOrderIntent}
         />
       )}
@@ -186,6 +187,7 @@ export function HostPage({
           snapshot={snapshot}
           onSync={onSync}
           onStageOrderIntent={onStageOrderIntent}
+          onSelectTimeframe={onSelectTimeframe}
         />
       )}
       {(normalizedPageId === "strategies" || pageId === "strategy") && (
@@ -308,7 +310,12 @@ function DashboardPage({
           onRefresh={onSync}
         />
 
-        <SignalCard snapshot={snapshot} onSync={onSync} onStageOrderIntent={onStageOrderIntent} />
+        <SignalCard
+          snapshot={snapshot}
+          onSync={onSync}
+          onStageOrderIntent={onStageOrderIntent}
+          onSelectTimeframe={onSelectTimeframe}
+        />
       </div>
 
       <div className="grid cols-2" style={{ marginTop: 16 }}>
@@ -485,14 +492,21 @@ function SignalsPage({
   snapshot,
   onSync,
   onStageOrderIntent,
+  onSelectTimeframe,
 }: {
   snapshot: HostSnapshot;
   onSync?: () => void;
   onStageOrderIntent?: () => void;
+  onSelectTimeframe?: (tf: string) => void;
 }) {
   return (
     <div className="signals-view space-y-6">
-      <SignalCard snapshot={snapshot} onSync={onSync} onStageOrderIntent={onStageOrderIntent} />
+      <SignalCard
+        snapshot={snapshot}
+        onSync={onSync}
+        onStageOrderIntent={onStageOrderIntent}
+        onSelectTimeframe={onSelectTimeframe}
+      />
       <SignalDeliveryCenter snapshot={snapshot} />
     </div>
   );

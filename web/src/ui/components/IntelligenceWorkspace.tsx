@@ -10,6 +10,7 @@ interface IntelligenceWorkspaceProps {
   snapshot?: HostSnapshot | null;
   selectedSymbol?: string;
   onSelectSymbol?: (symbol: string) => void;
+  onSelectTimeframe?: (tf: string) => void;
   onStageOrderIntent?: () => void;
   language?: string;
   isRtl?: boolean;
@@ -19,6 +20,7 @@ export const IntelligenceWorkspace: React.FC<IntelligenceWorkspaceProps> = ({
   snapshot,
   selectedSymbol = 'XAUUSD',
   onSelectSymbol,
+  onSelectTimeframe,
   onStageOrderIntent,
 }) => {
   const [activeSymbol, setActiveSymbol] = useState(selectedSymbol);
@@ -58,12 +60,17 @@ export const IntelligenceWorkspace: React.FC<IntelligenceWorkspaceProps> = ({
             takeProfits={takeProfitsOverlay}
             signalAction={signalActionOverlay}
             isProviderConnected={isConnected}
+            onTimeframeChange={onSelectTimeframe}
           />
         </div>
 
         <div className="space-y-4">
           {snapshot ? (
-            <SignalCard snapshot={snapshot} onStageOrderIntent={onStageOrderIntent} />
+            <SignalCard
+              snapshot={snapshot}
+              onStageOrderIntent={onStageOrderIntent}
+              onSelectTimeframe={onSelectTimeframe}
+            />
           ) : (
             <div className="p-4 text-center text-xs text-slate-400 bg-slate-950 rounded-lg border border-slate-800">
               No active signal snapshot available.

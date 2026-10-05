@@ -313,9 +313,7 @@ class Project1SignalPresenter:
             sig_dict["metadata"] = SecretSanitizer.sanitize_data(raw_meta)
 
         sig_type_lower = presented_signal.signal_type.lower()
-        if not is_live or sig_type_lower in ("no-signal", "no-trade"):
-            # HARD BOUNDARY: Historical/stale records or NO TRADE/NO SIGNAL decisions MUST NOT masquerade as active trade signal
-            status_reason = "NO TRADE signal emitted by Project 1." if sig_type_lower == "no-trade" else live_reason
+        if not is_live or sig_type_lower == "no-signal":
             return {
                 "port": desc,
                 "connected": True,
@@ -323,7 +321,18 @@ class Project1SignalPresenter:
                 "symbol": symbol,
                 "timeframe": timeframe,
                 "signal": None,
-                "message": f"No active current Project 1 signal for {symbol} ({timeframe}). {status_reason}",
+                "message": f"No active current Project 1 signal for {symbol} ({timeframe}). {live_reason}",
+            }
+
+        if sig_type_lower == "no-trade":
+            return {
+                "port": desc,
+                "connected": True,
+                "status": "no-trade",
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "signal": sig_dict,
+                "message": f"Project 1 evaluated {symbol} ({timeframe}) and emitted an authoritative NO TRADE decision.",
             }
 
         return {
@@ -568,6 +577,7 @@ class Project1SignalPresenter:
                 },
                 "signal": {
                     "signalId": None,
+                    "publicationId": None,
                     "symbol": symbol,
                     "action": "NO SIGNAL",
                     "timestamp": None,
@@ -606,7 +616,10 @@ class Project1SignalPresenter:
                 "project1Gateway": self._gateway_service.get_gateway_monitoring_summary(user=user),
             }
 
-        action_str = str(signal_dict["signal_type"]).upper()
+        sig_type_raw = str(signal_dict.get("signal_type") or "").strip().lower()
+        is_no_trade = (sig_type_raw in ("no-trade", "no_trade"))
+        action_str = "NO TRADE" if is_no_trade else str(signal_dict["signal_type"]).upper()
+        sig_status_str = "no-trade" if is_no_trade else "active"
         strat_name = signal_dict.get("strategy_name") or "Project 1 Strategy"
         conf = signal_dict.get("confidence")
         entry = signal_dict.get("entry_price")
@@ -625,6 +638,7 @@ class Project1SignalPresenter:
 
         # Extract authoritative P1 risk_reward_ratio (if provided by P1; never calculated by P2)
         raw_meta = signal_dict.get("metadata") or {}
+        p1_publication_id = signal_dict.get("publication_id") or raw_meta.get("publication_id")
         p1_rr = (
             signal_dict.get("risk_reward_ratio")
             if signal_dict.get("risk_reward_ratio") is not None
@@ -659,12 +673,16 @@ class Project1SignalPresenter:
             "status": "PROJECT1_AUTHORITATIVE" if is_live else "SIGNAL_STALE",
             "isAuthorized": None,
             "reason": (
-                "Authorization decision is owned by Project 1; Project 2 does not recompute it."
-                if is_live
-                else f"Signal for {symbol} is historical/stale: {live_reason}"
+                "Project 1 evaluated market conditions and decided NO TRADE."
+                if (is_live and is_no_trade)
+                else (
+                    "Authorization decision is owned by Project 1; Project 2 does not recompute it."
+                    if is_live
+                    else f"Signal for {symbol} is historical/stale: {live_reason}"
+                )
             ),
             "checks": [],
-            "riskRewardRatio": p1_rr,
+            "riskRewardRatio": p1_rr if not is_no_trade else None,
             "timestamp": sig_ts,
             "runtime_authorization_fingerprint": p1_auth_fingerprint,
             "canonical_live_decision_fingerprint": p1_decision_fingerprint,
@@ -790,30 +808,51 @@ class Project1SignalPresenter:
             },
             "signal": {
                 "signalId": signal_dict.get("signal_id"),
+                "publicationId": p1_publication_id,
                 "symbol": signal_dict.get("symbol") or symbol,
                 "action": action_str,
                 "timestamp": str(signal_dict.get("timestamp")),
-                "confidence": conf,
+                "confidence": conf if not is_no_trade else None,
                 "strategyName": strat_name,
                 "timeframe": signal_dict.get("timeframe") or timeframe,
-                "status": "active",
-                "message": f"Validated {action_str} signal emitted by Project 1.",
+                "status": sig_status_str,
+                "message": (
+                    f"Project 1 evaluated {symbol} ({timeframe}) and emitted a NO TRADE decision."
+                    if is_no_trade
+                    else f"Validated {action_str} signal emitted by Project 1."
+                ),
                 "metadata": signal_dict.get("metadata", {}),
             },
             "authorization": auth_payload,
             "performance": perf_payload,
             "risk": {
-                "entry": entry if is_live else None,
-                "stopLoss": sl if is_live else None,
-                "takeProfits": tps if is_live else [],
-                "status": ("available" if entry is not None else "unavailable") if is_live else "stale",
-                "message": ("Real trade setup levels provided by Project 1." if entry is not None else "Trade setup omitted or restricted.") if is_live else "Trade setup levels held because signal is historical/stale.",
+                "entry": entry if (is_live and not is_no_trade) else None,
+                "stopLoss": sl if (is_live and not is_no_trade) else None,
+                "takeProfits": tps if (is_live and not is_no_trade) else [],
+                "status": ("available" if entry is not None else "unavailable") if (is_live and not is_no_trade) else "unavailable",
+                "message": (
+                    "No trade setup provided for NO TRADE decision."
+                    if is_no_trade
+                    else (
+                        ("Real trade setup levels provided by Project 1." if entry is not None else "Trade setup omitted or restricted.")
+                        if is_live
+                        else "Trade setup levels held because signal is historical/stale."
+                    )
+                ),
             },
             "monitoring": {
                 "freshness": "fresh" if is_live else "stale",
                 "health": "healthy" if is_live else "stale",
-                "status": "available" if is_live else "stale",
-                "message": "Project 1 signal active and fresh." if is_live else f"Project 1 signal for {symbol} is historical/stale. Live signal data is unavailable.",
+                "status": "no-trade" if (is_live and is_no_trade) else ("available" if is_live else "stale"),
+                "message": (
+                    f"Project 1 signal for {symbol} ({timeframe}) is active and fresh (NO TRADE)."
+                    if (is_live and is_no_trade)
+                    else (
+                        "Project 1 signal active and fresh."
+                        if is_live
+                        else f"Project 1 signal for {symbol} is historical/stale. Live signal data is unavailable."
+                    )
+                ),
             },
             "providers": prov_status,
             "activity": [

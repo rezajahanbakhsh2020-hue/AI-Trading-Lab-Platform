@@ -529,11 +529,14 @@ export function createHostSnapshotFromProject1(
     };
   }
 
-  const actionUpper = (signal.signal_type || "NO SIGNAL").toUpperCase();
-  const entry = signal.entry_price ?? null;
-  const sl = signal.stop_loss ?? null;
-  const tps = signal.take_profits ? [...signal.take_profits] : [];
-  const conf = signal.confidence ?? null;
+  const sigTypeRaw = (signal.signal_type || "").toLowerCase();
+  const isNoTrade = sigTypeRaw === "no-trade" || sigTypeRaw === "no_trade";
+  const actionUpper = isNoTrade ? "NO TRADE" : (signal.signal_type || "NO SIGNAL").toUpperCase();
+  const sigStatus = isNoTrade ? "no-trade" : "active";
+  const entry = isNoTrade ? null : (signal.entry_price ?? null);
+  const sl = isNoTrade ? null : (signal.stop_loss ?? null);
+  const tps = isNoTrade ? [] : (signal.take_profits ? [...signal.take_profits] : []);
+  const conf = isNoTrade ? null : (signal.confidence ?? null);
   const stratName = signal.strategy_name ?? "Project 1 Strategy";
   const formattedTime = new Date(signal.timestamp * 1000).toUTCString();
   const pubId = typeof meta.publication_id === "string" ? meta.publication_id : null;
@@ -569,8 +572,10 @@ export function createHostSnapshotFromProject1(
       confidence: conf,
       strategyName: stratName,
       timeframe: signal.timeframe || timeframe,
-      status: "active",
-      message: `Validated ${actionUpper} signal emitted by Project 1.`,
+      status: sigStatus,
+      message: isNoTrade
+        ? `Project 1 evaluated ${symbol} (${timeframe}) and emitted a NO TRADE decision.`
+        : `Validated ${actionUpper} signal emitted by Project 1.`,
       metadata: signal.metadata || {},
     },
     performance: {
@@ -578,13 +583,15 @@ export function createHostSnapshotFromProject1(
       message: "Performance metrics are unavailable until Project 1 backtest outputs are connected.",
     },
     risk: {
-      entry: isLive ? entry : null,
-      stopLoss: isLive ? sl : null,
-      takeProfits: isLive ? tps : [],
-      status: isLive ? (entry != null ? "available" : "unavailable") : "stale",
-      message: isLive
-        ? (entry != null ? "Real trade setup levels provided by Project 1." : "Trade setup omitted.")
-        : "Trade setup levels held because signal is historical/stale.",
+      entry: isLive && !isNoTrade ? entry : null,
+      stopLoss: isLive && !isNoTrade ? sl : null,
+      takeProfits: isLive && !isNoTrade ? tps : [],
+      status: isLive && !isNoTrade ? (entry != null ? "available" : "unavailable") : "unavailable",
+      message: isNoTrade
+        ? "No trade setup provided for NO TRADE decision."
+        : (isLive
+          ? (entry != null ? "Real trade setup levels provided by Project 1." : "Trade setup omitted.")
+          : "Trade setup levels held because signal is historical/stale."),
     },
     monitoring: {
       freshness: isLive ? "fresh" : "stale",

@@ -440,8 +440,8 @@ def test_adversarial_G_no_trade_decision(p2_e2e_server):
     req_snap = urllib.request.Request(f"{base_url}/api/v1/snapshot?symbol=XAUUSD&timeframe=1h")
     with urllib.request.urlopen(req_snap) as snap_resp:
         snap = json.loads(snap_resp.read().decode("utf-8"))
-        assert snap["signal"]["status"] == "no-signal"
-        assert snap["signal"]["action"] == "NO SIGNAL"
+        assert snap["signal"]["status"] == "no-trade"
+        assert snap["signal"]["action"] == "NO TRADE"
         assert snap["risk"]["entry"] is None
 
 

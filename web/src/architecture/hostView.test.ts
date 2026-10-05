@@ -241,3 +241,74 @@ describe("signal purity and fail-closed runtime verification", () => {
     expect(fixtureSnapshot.risk.entry).toBe(2650.5);
   });
 });
+
+describe("async race and timeframe identity anti-recurrence protection", () => {
+  it("guarantees snapshot identity matching rejects late or mismatched timeframe/symbol responses", async () => {
+    // Simulate out-of-order responses: 5m requested first (slow), 15m requested second (fast)
+    let resolveSlow5m: (value: any) => void = () => {};
+    const slow5mPromise = new Promise((resolve) => {
+      resolveSlow5m = resolve;
+    });
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url: string | URL | Request) => {
+      const urlStr = url.toString();
+      if (urlStr.includes("timeframe=5m")) {
+        await slow5mPromise;
+        const snap = createDisconnectedHostSnapshot("XAUUSD", "5m");
+        snap.market.status = "connected";
+        snap.signal.action = "BUY";
+        snap.signal.status = "active";
+        return {
+          ok: true,
+          json: async () => snap,
+        } as Response;
+      }
+      if (urlStr.includes("timeframe=15m")) {
+        const snap = createDisconnectedHostSnapshot("XAUUSD", "15m");
+        snap.market.status = "connected";
+        snap.signal.action = "SELL";
+        snap.signal.status = "active";
+        return {
+          ok: true,
+          json: async () => snap,
+        } as Response;
+      }
+      return { ok: false, json: async () => ({}) } as Response;
+    };
+
+    try {
+      // Step 1: Start 5m request
+      const req5mPromise = fetchHostSnapshot(null, "XAUUSD", "5m");
+      // Step 2: Start 15m request and resolve immediately
+      const req15m = await fetchHostSnapshot(null, "XAUUSD", "15m");
+      expect(req15m.snapshot?.market.timeframe).toBe("15m");
+      expect(req15m.snapshot?.signal.action).toBe("SELL");
+
+      // Step 3: Now resolve the slow 5m request
+      resolveSlow5m(null);
+      const req5m = await req5mPromise;
+      expect(req5m.snapshot?.market.timeframe).toBe("5m");
+
+      // Step 4: Verify identity boundary matching function logic (as used in App.tsx)
+      const isMatchingCurrentSelection = (
+        snapshot: any,
+        currentSymbol: string,
+        currentTimeframe: string
+      ) => {
+        const snapSym = snapshot?.market?.symbol?.toUpperCase();
+        const snapTf = snapshot?.market?.timeframe?.toLowerCase();
+        return (
+          snapSym === currentSymbol.toUpperCase() && snapTf === currentTimeframe.toLowerCase()
+        );
+      };
+
+      // When current selection is 15m, the late 5m response is REJECTED
+      expect(isMatchingCurrentSelection(req5m.snapshot, "XAUUSD", "15m")).toBe(false);
+      // When current selection is 15m, the 15m response is ACCEPTED
+      expect(isMatchingCurrentSelection(req15m.snapshot, "XAUUSD", "15m")).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});

@@ -44,7 +44,6 @@ def _evaluate_signal_live_status(
 
     clk = clock or default_clock
     now_ts = clk.get_current_timestamp()
-    current_date = clk.get_current_date()
 
     sig_symbol = str(sig_dict.get("symbol") or "").strip().upper()
     if not sig_symbol:
@@ -64,8 +63,6 @@ def _evaluate_signal_live_status(
     if sig_ts > now_ts + 5.0:
         return False, f"Signal timestamp {sig_ts} is in the future relative to system clock {now_ts}."
 
-    age_sec = max(0.0, now_ts - sig_ts)
-
     meta = sig_dict.get("metadata") if isinstance(sig_dict.get("metadata"), dict) else {}
     prov = meta.get("provenance_type") or meta.get("source") or ""
 
@@ -75,17 +72,46 @@ def _evaluate_signal_live_status(
     if prov != "live_signal":
         return False, f"Signal provenance '{prov}' is not an authorized live signal."
 
-    sig_date = clk.get_date_for_timestamp(sig_ts)
-    if sig_date != current_date:
-        return False, f"Signal date '{sig_date}' does not match current application date '{current_date}'."
-
-    if age_sec > LIVE_SIGNAL_MAX_AGE_SECONDS:
-        return False, f"Signal timestamp {sig_ts} is stale (age {int(age_sec)}s > {int(LIVE_SIGNAL_MAX_AGE_SECONDS)}s live threshold)."
-
     if "is_live" in meta and not meta["is_live"]:
         return False, "Signal metadata explicitly marks signal as non-live."
 
-    return True, f"Verified current live signal (emitted {int(age_sec)}s ago)."
+    # Determine publication / production timestamp vs market/bar timestamp
+    pub_ts: Optional[float] = None
+    raw_pub_ts = (
+        meta.get("produced_at")
+        or meta.get("authorized_at_utc")
+        or meta.get("publication_timestamp")
+        or sig_dict.get("produced_at")
+    )
+    if raw_pub_ts is not None:
+        if isinstance(raw_pub_ts, (int, float)) and not isinstance(raw_pub_ts, bool):
+            pub_ts = float(raw_pub_ts)
+        elif isinstance(raw_pub_ts, str) and raw_pub_ts.strip():
+            try:
+                from src.platform.domain.project1_contract import parse_iso8601_to_utc_epoch
+                pub_ts = parse_iso8601_to_utc_epoch(raw_pub_ts, max_future_skew_seconds=5.0, current_time_fn=clk.get_current_timestamp)
+            except Exception:
+                pub_ts = None
+
+    # Check explicit expiration / validity bounds if provided in contract
+    raw_valid_until = meta.get("valid_until") or meta.get("expires_at") or sig_dict.get("valid_until") or sig_dict.get("expires_at")
+    if raw_valid_until is not None:
+        valid_until_ts: Optional[float] = None
+        if isinstance(raw_valid_until, (int, float)) and not isinstance(raw_valid_until, bool):
+            valid_until_ts = float(raw_valid_until)
+        elif isinstance(raw_valid_until, str) and raw_valid_until.strip():
+            try:
+                from src.platform.domain.project1_contract import parse_iso8601_to_utc_epoch
+                valid_until_ts = parse_iso8601_to_utc_epoch(raw_valid_until, max_future_skew_seconds=86400.0, current_time_fn=clk.get_current_timestamp)
+            except Exception:
+                return False, "Signal valid_until/expires_at timestamp is malformed."
+        if valid_until_ts is not None and now_ts > valid_until_ts:
+            return False, f"Signal publication has passed authoritative valid_until threshold ({valid_until_ts})."
+
+    if pub_ts is not None and pub_ts > now_ts + 5.0:
+        return False, f"Signal publication timestamp {pub_ts} is in the future relative to system clock {now_ts}."
+
+    return True, "Verified current live signal."
 
 
 class Project1SignalPresenter:

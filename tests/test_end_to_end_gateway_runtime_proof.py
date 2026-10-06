@@ -165,7 +165,7 @@ def test_negative_zero_records_produces_no_signal(running_server):
 
 
 def test_negative_stale_signal_produces_no_signal(running_server):
-    """Prove HTTP ingestion of a stale signal (>300s) produces NO SIGNAL in host snapshot."""
+    """Prove HTTP ingestion of a signal (>300s publication age) remains ACTIVE according to contract."""
     base_url, cfg, _ = running_server
     token = _login(base_url)
 
@@ -208,9 +208,9 @@ def test_negative_stale_signal_produces_no_signal(running_server):
     with urllib.request.urlopen(req_snap) as resp:
         snapshot = json.loads(resp.read().decode("utf-8"))
 
-        assert snapshot["signal"]["action"] == "NO SIGNAL"
-        assert snapshot["signal"]["status"] == "no-signal"
-        assert snapshot["risk"]["entry"] is None
+        assert snapshot["signal"]["action"] == "BUY"
+        assert snapshot["signal"]["status"] == "active"
+        assert snapshot["risk"]["entry"] == 2700.00
 
 
 def test_negative_mismatched_symbol_produces_no_signal(running_server):

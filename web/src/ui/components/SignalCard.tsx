@@ -16,7 +16,7 @@ export function SignalCard({
 }: SignalCardProps) {
   const signal = snapshot.signal;
   const isConnected = snapshot.project1.connected;
-  const { t, formatPercent, formatDate } = useI18n();
+  const { t, formatPercent } = useI18n();
 
   const supportedTimeframes = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"];
   const currentTf = (signal.timeframe || snapshot.market.timeframe || "1h").toLowerCase();
@@ -47,6 +47,34 @@ export function SignalCard({
   const isNoSignal = signal.status === "no-signal" || (!isNoTrade && (signal.action?.toUpperCase() === "NO SIGNAL" || signal.action?.toUpperCase() === "NO CURRENT SIGNAL" || !signal.timestamp));
 
   const mtfData = (signal.metadata?.mtf as any) || null;
+  const showLiveBadge = Boolean(signal.metadata?.show_live_badge);
+
+  const getPublicationDisplayDate = () => {
+    const raw = signal.metadata?.produced_at || signal.metadata?.authorized_at_utc || signal.metadata?.publication_timestamp;
+    let dt: Date | null = null;
+    if (typeof raw === "number" && !isNaN(raw)) {
+      dt = new Date(raw > 1e11 ? raw : raw * 1000);
+    } else if (typeof raw === "string" && raw.trim()) {
+      const parsed = Date.parse(raw);
+      if (!isNaN(parsed)) dt = new Date(parsed);
+    }
+
+    if (!dt) return null;
+    try {
+      return new Intl.DateTimeFormat(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      }).format(dt);
+    } catch {
+      return dt.toLocaleString();
+    }
+  };
+
+  const formattedPubDate = getPublicationDisplayDate();
 
   return (
     <div className="card">
@@ -128,11 +156,14 @@ export function SignalCard({
         ) : isNoTrade ? (
           <div className="signal-active-box">
             <div className="signal-header-row">
-              <span className={getActionBadgeClass(signal.action, signal.status)}>
-                {formatActionText(signal.action, signal.status)}
-              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span className={getActionBadgeClass(signal.action, signal.status)}>
+                  {formatActionText(signal.action, signal.status)}
+                </span>
+                {showLiveBadge && <span className="badge-live">🟩 LIVE</span>}
+              </div>
               <span className="timestamp-tag">
-                {signal.timestamp ? `${t("signal.timestamp")}: ${formatDate(signal.timestamp)}` : "N/A"}
+                {formattedPubDate ? `${t("signal.timestamp")}: ${formattedPubDate}` : "N/A"}
               </span>
             </div>
 
@@ -273,11 +304,14 @@ export function SignalCard({
         ) : (
           <div className="signal-active-box">
             <div className="signal-header-row">
-              <span className={getActionBadgeClass(signal.action, signal.status)}>
-                {formatActionText(signal.action, signal.status)}
-              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span className={getActionBadgeClass(signal.action, signal.status)}>
+                  {formatActionText(signal.action, signal.status)}
+                </span>
+                {showLiveBadge && <span className="badge-live">🟩 LIVE</span>}
+              </div>
               <span className="timestamp-tag">
-                {signal.timestamp ? `${t("signal.timestamp")}: ${formatDate(signal.timestamp)}` : "N/A"}
+                {formattedPubDate ? `${t("signal.timestamp")}: ${formattedPubDate}` : "N/A"}
               </span>
             </div>
 

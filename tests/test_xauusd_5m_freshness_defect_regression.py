@@ -273,3 +273,69 @@ def test_scenario_10_malformed_validity_metadata_fails_closed():
     is_live, reason = _evaluate_signal_live_status(sig_dict, requested_symbol="XAUUSD")
     assert is_live is False
     assert "malformed" in reason.lower()
+
+
+def test_contradictory_timestamp_ordering_anti_recurrence():
+    """Anti-recurrence test: Publication A has newer candle timestamp but older produced_at.
+
+    Publication B has older candle timestamp but newer produced_at.
+    The adapter MUST select B based on authoritative publication timestamp ordering,
+    while preserving B's original candle timestamp as market identity.
+    """
+    from src.platform.adapters.project1_adapter import Project1GatewayAdapter
+
+    now_ts = time.time()
+
+    # Publication A: Newer candle (now - 100s), older produced_at (now - 100s)
+    pub_a = {
+        "command_type": "EMIT_SIGNAL",
+        "symbol": "XAUUSD",
+        "timeframe": "5m",
+        "signal_type": "SELL",
+        "timestamp": now_ts - 100.0,  # Newer candle time
+        "lifecycle_state": "STAGED",
+        "created_at": now_ts - 100.0,
+        "signal_id": "sig_a_newer_candle",
+        "metadata": {
+            "provenance_type": "live_signal",
+            "is_live": True,
+            "produced_at": now_ts - 100.0,  # Older publication time
+            "publication_id": "pub_a_001",
+        },
+    }
+
+    # Publication B: Older candle (now - 1000s), newer produced_at (now - 10s)
+    pub_b = {
+        "command_type": "EMIT_SIGNAL",
+        "symbol": "XAUUSD",
+        "timeframe": "5m",
+        "signal_type": "BUY",
+        "timestamp": now_ts - 1000.0,  # Older candle time
+        "lifecycle_state": "STAGED",
+        "created_at": now_ts - 10.0,
+        "signal_id": "sig_b_newer_publication",
+        "metadata": {
+            "provenance_type": "live_signal",
+            "is_live": True,
+            "produced_at": now_ts - 10.0,  # Newer publication time
+            "publication_id": "pub_b_002",
+        },
+    }
+
+    class FakeRepo:
+        def list_records_for_user(self, **kwargs):
+            return [pub_a, pub_b]
+
+    class FakeGateway:
+        _repo = FakeRepo()
+
+    adapter = Project1GatewayAdapter(FakeGateway())
+    res = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="5m")
+
+    assert res is not None
+    assert res.signal_id == "sig_b_newer_publication"
+    assert res.signal_type == "buy"
+    # Preserves B's original candle timestamp as market identity
+    assert res.timestamp == now_ts - 1000.0
+    assert res.metadata["publication_id"] == "pub_b_002"
+    assert res.metadata["produced_at"] == now_ts - 10.0

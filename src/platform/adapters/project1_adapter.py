@@ -257,13 +257,32 @@ class Project1GatewayAdapter(Project1IntegrationPort):
             if raw_meta.get("is_historical") is True:
                 continue
 
-            candidates.append((sig_event_ts, rec))
+            # Authoritative publication timestamp derivation
+            pub_ts = None
+            raw_pub_ts = (
+                raw_meta.get("produced_at")
+                or raw_meta.get("authorized_at_utc")
+                or raw_meta.get("publication_timestamp")
+                or rec.get("produced_at")
+            )
+            if raw_pub_ts is not None:
+                if isinstance(raw_pub_ts, (int, float)) and not isinstance(raw_pub_ts, bool):
+                    pub_ts = float(raw_pub_ts)
+                elif isinstance(raw_pub_ts, str) and raw_pub_ts.strip():
+                    try:
+                        from src.platform.domain.project1_contract import parse_iso8601_to_utc_epoch
+                        pub_ts = parse_iso8601_to_utc_epoch(raw_pub_ts, max_future_skew_seconds=5.0, current_time_fn=lambda: now_ts)
+                    except Exception:
+                        pub_ts = None
+
+            eval_pub_ts = pub_ts if pub_ts is not None else sig_event_ts
+            candidates.append((eval_pub_ts, sig_event_ts, rec))
 
         if not candidates:
             return None
 
-        # Event-time correctness: select candidate with maximum event timestamp
-        sig_event_ts, target_rec = max(candidates, key=lambda pair: pair[0])
+        # Publication-time correctness: select candidate with maximum authoritative publication timestamp
+        eval_pub_ts, sig_event_ts, target_rec = max(candidates, key=lambda item: item[0])
 
         tps = []
         if target_rec.get("take_profit_1") is not None:
@@ -283,7 +302,7 @@ class Project1GatewayAdapter(Project1IntegrationPort):
         meta["ingested_at"] = ingested_ts
 
         # Preserve complete P1 publication lineage
-        meta["publication_id"] = target_rec.get("publication_id")
+        meta["publication_id"] = target_rec.get("publication_id") or raw_meta.get("publication_id")
         meta["event_id"] = target_rec.get("event_id")
         meta["decision_id"] = target_rec.get("decision_id")
         meta["candidate_id"] = target_rec.get("candidate_id")

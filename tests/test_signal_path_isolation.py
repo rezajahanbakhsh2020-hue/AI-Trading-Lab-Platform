@@ -206,13 +206,13 @@ def test_hard_5_minute_freshness_boundary(tmp_path, mock_admin_user):
 
 
 def test_previous_date_rejection(tmp_path):
-    """Test signal from previous UTC calendar date is rejected even if age <= 300s across midnight."""
+    """Test signal with publication age <= 300s across midnight remains valid."""
     # System time: 2026-03-31 00:01:00 UTC (timestamp 1774915260)
     system_dt = datetime(2026, 3, 31, 0, 1, 0, tzinfo=timezone.utc)
     now_ts = system_dt.timestamp()
     clk = SystemClock(fixed_timestamp=now_ts)
 
-    # Signal time: 2026-03-30 23:59:30 UTC (timestamp 1774915170) -> 90 seconds ago, but PREVIOUS DATE
+    # Signal produced time: 2026-03-30 23:59:30 UTC (timestamp 1774915170) -> 90 seconds ago across midnight
     sig_dt = datetime(2026, 3, 30, 23, 59, 30, tzinfo=timezone.utc)
     sig_ts = sig_dt.timestamp()
 
@@ -221,13 +221,17 @@ def test_previous_date_rejection(tmp_path):
         "symbol": "XAUUSD",
         "timeframe": "1h",
         "signal_type": "buy",
-        "timestamp": sig_ts,
-        "metadata": {"provenance_type": "live_signal"},
+        "timestamp": sig_ts - 3600.0,
+        "metadata": {
+            "provenance_type": "live_signal",
+            "is_live": True,
+            "produced_at": sig_ts,
+        },
     }
 
     is_live, reason = _evaluate_signal_live_status(sig_dict, clock=clk)
-    assert is_live is False
-    assert "does not match current application date" in reason
+    assert is_live is True
+    assert "Verified current live signal" in reason
 
 
 def test_future_and_invalid_timestamp_rejection():

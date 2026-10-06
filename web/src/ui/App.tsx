@@ -80,8 +80,15 @@ export function App() {
     }
 
     syncBackendHostSnapshot();
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        syncBackendHostSnapshot();
+      }
+    }, 12000);
+
     return () => {
       isMounted = false;
+      clearInterval(intervalId);
     };
   }, [selectedSymbol, selectedTimeframe, authState.sessionToken]);
 

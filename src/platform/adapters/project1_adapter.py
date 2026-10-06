@@ -220,7 +220,7 @@ class Project1GatewayAdapter(Project1IntegrationPort):
                 continue
 
             rec_tf = str(rec.get("timeframe") or "").strip()
-            if timeframe and rec_tf and rec_tf != timeframe.strip():
+            if timeframe and rec_tf and rec_tf.lower() != timeframe.strip().lower():
                 continue
 
             if strategy_name and rec.get("strategy_name") and rec.get("strategy_name") != strategy_name:

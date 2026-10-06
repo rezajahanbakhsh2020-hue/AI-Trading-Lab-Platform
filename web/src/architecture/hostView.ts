@@ -437,15 +437,32 @@ export function createHostSnapshotFromProject1(
   const LIVE_SIGNAL_MAX_AGE_SECONDS = 300;
   const nowSec = Date.now() / 1000;
   const sigTs = Number(signal?.timestamp || 0);
-  const ageSec = sigTs > 0 ? Math.max(0, nowSec - sigTs) : Infinity;
   const meta = signal?.metadata || {};
   const provenance = (meta.provenance_type as string) || "";
   const isHistorical = meta.is_historical === true || ["lab_artifact", "historical_snapshot", "backtest_record"].includes(provenance);
 
-  // UTC Calendar Date Comparison (YYYY-MM-DD)
-  const currentUtcDate = new Date(nowSec * 1000).toISOString().slice(0, 10);
-  const signalUtcDate = sigTs > 0 ? new Date(sigTs * 1000).toISOString().slice(0, 10) : "";
-  const sameCalendarDate = signalUtcDate === currentUtcDate;
+  // Extract publication/production timestamp vs candle market data timestamp
+  let pubTs: number | null = null;
+  const rawPubTs = meta.produced_at || meta.authorized_at_utc || meta.publication_timestamp;
+  if (typeof rawPubTs === "number" && !isNaN(rawPubTs)) {
+    pubTs = rawPubTs;
+  } else if (typeof rawPubTs === "string" && rawPubTs.trim()) {
+    const parsed = Date.parse(rawPubTs);
+    if (!isNaN(parsed)) pubTs = parsed / 1000;
+  }
+
+  // Check explicit valid_until / expires_at if provided
+  let isExpired = false;
+  const rawValidUntil = meta.valid_until || meta.expires_at;
+  if (typeof rawValidUntil === "number" && !isNaN(rawValidUntil)) {
+    if (nowSec > rawValidUntil) isExpired = true;
+  } else if (typeof rawValidUntil === "string" && rawValidUntil.trim()) {
+    const parsed = Date.parse(rawValidUntil);
+    if (!isNaN(parsed) && nowSec > parsed / 1000) isExpired = true;
+  }
+
+  const evalPubTs = pubTs !== null ? pubTs : sigTs;
+  const pubAgeSec = evalPubTs > 0 ? Math.max(0, nowSec - evalPubTs) : Infinity;
 
   // Symbol match check
   const sigSymbol = (signal?.symbol || "").toUpperCase();
@@ -456,11 +473,12 @@ export function createHostSnapshotFromProject1(
     signal &&
     sigTs > 0 &&
     sigTs <= nowSec + 5.0 &&
+    evalPubTs <= nowSec + 5.0 &&
     provenance === "live_signal" &&
     !isHistorical &&
     meta.is_live !== false &&
-    ageSec <= LIVE_SIGNAL_MAX_AGE_SECONDS &&
-    sameCalendarDate &&
+    !isExpired &&
+    pubAgeSec <= LIVE_SIGNAL_MAX_AGE_SECONDS &&
     symbolMatches
   );
 

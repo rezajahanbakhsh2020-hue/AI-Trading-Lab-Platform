@@ -16,7 +16,7 @@ export function SignalCard({
 }: SignalCardProps) {
   const signal = snapshot.signal;
   const isConnected = snapshot.project1.connected;
-  const { t, formatPercent, formatDate } = useI18n();
+  const { t, formatPercent } = useI18n();
 
   const supportedTimeframes = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"];
   const currentTf = (signal.timeframe || snapshot.market.timeframe || "1h").toLowerCase();

@@ -108,16 +108,10 @@ def _evaluate_signal_live_status(
         if valid_until_ts is not None and now_ts > valid_until_ts:
             return False, f"Signal publication has passed authoritative valid_until threshold ({valid_until_ts})."
 
-    # Evaluate publication freshness window
-    eval_pub_ts = pub_ts if pub_ts is not None else sig_ts
-    if eval_pub_ts > now_ts + 5.0:
-        return False, f"Signal publication timestamp {eval_pub_ts} is in the future relative to system clock {now_ts}."
+    if pub_ts is not None and pub_ts > now_ts + 5.0:
+        return False, f"Signal publication timestamp {pub_ts} is in the future relative to system clock {now_ts}."
 
-    pub_age_sec = max(0.0, now_ts - eval_pub_ts)
-    if pub_age_sec > LIVE_SIGNAL_MAX_AGE_SECONDS:
-        return False, f"Signal publication is stale (age {int(pub_age_sec)}s > {int(LIVE_SIGNAL_MAX_AGE_SECONDS)}s live threshold)."
-
-    return True, f"Verified current live signal (published {int(pub_age_sec)}s ago)."
+    return True, "Verified current live signal."
 
 
 class Project1SignalPresenter:

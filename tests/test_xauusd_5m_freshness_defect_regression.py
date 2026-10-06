@@ -1,4 +1,4 @@
-"""Focused regression and adversarial test suite for XAUUSD 5m freshness contract defect repair."""
+"""Focused regression and adversarial test suite for XAUUSD 5m freshness contract & LIVE badge TTL semantics."""
 
 import datetime
 import time
@@ -10,9 +10,9 @@ from src.platform.services.project1_presenter import _evaluate_signal_live_statu
 
 
 def test_scenario_1_market_data_timestamp_older_than_300s_with_fresh_publication():
-    """Scenario 1: Bar/market_data_timestamp is 2 hours old, but publication produced_at is fresh (10s old).
+    """Scenario 1: Candle timestamp is 2 hours old, but publication produced_at is fresh (10s old).
 
-    MUST evaluate to ACTIVE (True).
+    MUST evaluate to ACTIVE (is_live = True).
     """
     now_ts = time.time()
     market_data_ts = now_ts - 7200.0  # Candle started 2 hours ago
@@ -55,8 +55,28 @@ def test_scenario_2_authoritative_valid_until_expired():
     assert "valid_until" in reason.lower() or "expired" in reason.lower()
 
 
-def test_scenario_3_future_publication_timestamp_rejected():
-    """Scenario 3: Publication timestamp is in the future beyond allowed skew (e.g. +60s).
+def test_scenario_3_publication_older_than_300s_remains_active_signal():
+    """Scenario 3: Publication is 301 seconds or 1 hour old (age > 300s).
+
+    MUST evaluate to ACTIVE (is_live = True) and NOT be rejected or converted to NO SIGNAL.
+    """
+    now_ts = time.time()
+    sig_dict = {
+        "symbol": "XAUUSD",
+        "timestamp": now_ts - 3600.0,
+        "metadata": {
+            "provenance_type": "live_signal",
+            "is_live": True,
+            "produced_at": now_ts - 301.0,
+        },
+    }
+
+    is_live, reason = _evaluate_signal_live_status(sig_dict, requested_symbol="XAUUSD")
+    assert is_live is True, f"Expected signal > 300s publication age to remain ACTIVE, got: {reason}"
+
+
+def test_scenario_4_future_publication_timestamp_rejected():
+    """Scenario 4: Publication timestamp is in the future beyond allowed skew (+60s).
 
     MUST evaluate to False (rejected).
     """
@@ -76,8 +96,8 @@ def test_scenario_3_future_publication_timestamp_rejected():
     assert "future" in reason.lower()
 
 
-def test_scenario_4_historical_provenance_rejected():
-    """Scenario 4: Provenance is lab_artifact or marked historical.
+def test_scenario_5_historical_provenance_rejected():
+    """Scenario 5: Provenance is lab_artifact or marked historical.
 
     MUST evaluate to False (rejected).
     """
@@ -97,8 +117,8 @@ def test_scenario_4_historical_provenance_rejected():
     assert "historical" in reason.lower() or "provenance" in reason.lower()
 
 
-def test_scenario_5_is_live_false_rejected():
-    """Scenario 5: metadata explicitly sets is_live=False.
+def test_scenario_6_is_live_false_rejected():
+    """Scenario 6: metadata explicitly sets is_live=False.
 
     MUST evaluate to False (rejected).
     """
@@ -118,8 +138,8 @@ def test_scenario_5_is_live_false_rejected():
     assert "non-live" in reason.lower()
 
 
-def test_scenario_6_symbol_mismatch_rejected():
-    """Scenario 6: Requested symbol XAUUSD vs Signal symbol EURUSD.
+def test_scenario_7_symbol_mismatch_rejected():
+    """Scenario 7: Requested symbol XAUUSD vs Signal symbol EURUSD.
 
     MUST evaluate to False (rejected).
     """
@@ -139,8 +159,8 @@ def test_scenario_6_symbol_mismatch_rejected():
     assert "does not match" in reason.lower()
 
 
-def test_scenario_7_5m_signal_requested_as_1h_in_adapter():
-    """Scenario 7: 5m signal in storage queried with timeframe='1h'.
+def test_scenario_8_5m_signal_requested_as_1h_in_adapter():
+    """Scenario 8: 5m signal in storage queried with timeframe='1h'.
 
     Project1GatewayAdapter MUST return None / NO SIGNAL (timeframe isolation).
     """
@@ -183,8 +203,8 @@ def test_scenario_7_5m_signal_requested_as_1h_in_adapter():
     assert res_5m.signal_id == "sig_5m_001"
 
 
-def test_scenario_8_newest_authoritative_publication_wins():
-    """Scenario 8: Storage contains multiple publications for 5m; max event timestamp candidate is chosen."""
+def test_scenario_9_newest_authoritative_publication_wins():
+    """Scenario 9: Storage contains multiple publications for 5m; max event timestamp candidate is chosen."""
     from src.platform.adapters.project1_adapter import Project1GatewayAdapter
 
     now_ts = time.time()
@@ -233,8 +253,8 @@ def test_scenario_8_newest_authoritative_publication_wins():
     assert res.signal_type == "buy"
 
 
-def test_scenario_9_malformed_validity_metadata_fails_closed():
-    """Scenario 9: Signal contains malformed string for valid_until/expires_at.
+def test_scenario_10_malformed_validity_metadata_fails_closed():
+    """Scenario 10: Signal contains malformed string for valid_until/expires_at.
 
     MUST evaluate to False (fail closed).
     """
@@ -253,47 +273,3 @@ def test_scenario_9_malformed_validity_metadata_fails_closed():
     is_live, reason = _evaluate_signal_live_status(sig_dict, requested_symbol="XAUUSD")
     assert is_live is False
     assert "malformed" in reason.lower()
-
-
-def test_scenario_10_actual_300s_defect_regression_xauusd_5m():
-    """Scenario 10: Recreates exact real-world XAUUSD/5m publication scenario.
-
-    Signal timestamp = 1791274800.0 (e.g. candle start)
-    Publication produced_at / authorized_at_utc = '2026-10-06T08:21:11Z'
-    System clock now = produced_at + 12s
-
-    MUST evaluate to ACTIVE (True) and NOT stale.
-    """
-    prod_dt = datetime.datetime(2026, 10, 6, 8, 21, 11, tzinfo=datetime.timezone.utc)
-    prod_ts = prod_dt.timestamp()
-
-    candle_ts = prod_ts - 3600.0  # Candle start 1 hour before production
-
-    sig_dict = {
-        "symbol": "XAUUSD",
-        "timeframe": "5m",
-        "timestamp": candle_ts,
-        "metadata": {
-            "provenance_type": "live_signal",
-            "is_live": True,
-            "produced_at": prod_dt.isoformat(),
-            "publication_id": "pub_xauusd_5m_real_001",
-            "event_id": "evt_xauusd_5m_real_001",
-            "signal_id": "sig_xauusd_5m_real_001",
-        },
-    }
-
-    class CustomClock(SystemClock):
-        def get_current_timestamp(self) -> float:
-            return prod_ts + 12.0  # 12 seconds after production
-
-        def get_current_date(self) -> str:
-            return "2026-10-06"
-
-    clk = CustomClock()
-    is_live, reason = _evaluate_signal_live_status(
-        sig_dict, requested_symbol="XAUUSD", clock=clk
-    )
-
-    assert is_live is True, f"Expected XAUUSD 5m real signal to be ACTIVE, but got: {reason}"
-    assert "Verified current live signal (published 12s ago)" in reason

@@ -125,7 +125,7 @@ def test_gateway_adapter_presenter_scenarios(gateway_svc, admin_user):
     assert pres_live["signal"]["entry_price"] == 2765.50
     assert pres_live["signal"]["is_live"] is True
 
-    # 3. Stale Gateway Record (> 300s) -> Rejected from Current Signal Feed
+    # 3. Older Gateway Record (> 300s) -> Remains Active Signal
     stale_ts = time.time() - 600
     payload_stale = {
         "contract_version": "1.0",
@@ -147,8 +147,8 @@ def test_gateway_adapter_presenter_scenarios(gateway_svc, admin_user):
 
     pres_stale = presenter.present_signal(symbol="EURUSD", timeframe="1h", user=admin_user)
     assert pres_stale["connected"] is True
-    assert pres_stale["status"] == "no-signal"
-    assert pres_stale["signal"] is None
+    assert pres_stale["status"] == "active"
+    assert pres_stale["signal"] is not None
 
 def test_historical_lab_artifact_blocked_from_live(gateway_svc, admin_user):
     class DummyLabSource(LabArtifactSource):

@@ -441,7 +441,7 @@ export function createHostSnapshotFromProject1(
   const provenance = (meta.provenance_type as string) || "";
   const isHistorical = meta.is_historical === true || ["lab_artifact", "historical_snapshot", "backtest_record"].includes(provenance);
 
-  // Extract publication/production timestamp vs candle market data timestamp
+  // Extract publication/production timestamp strictly (never fallback to sigTs)
   let pubTs: number | null = null;
   const rawPubTs = meta.produced_at || meta.authorized_at_utc || meta.publication_timestamp;
   if (typeof rawPubTs === "number" && !isNaN(rawPubTs)) {
@@ -461,28 +461,29 @@ export function createHostSnapshotFromProject1(
     if (!isNaN(parsed) && nowSec > parsed / 1000) isExpired = true;
   }
 
-  const evalPubTs = pubTs !== null ? pubTs : sigTs;
-  const pubAgeSec = evalPubTs > 0 ? Math.max(0, nowSec - evalPubTs) : Infinity;
+  const pubAgeSec = pubTs !== null ? Math.max(0, nowSec - pubTs) : Infinity;
 
   // Symbol match check
   const sigSymbol = (signal?.symbol || "").toUpperCase();
   const requestedSymbol = symbol.toUpperCase();
   const symbolMatches = !sigSymbol || sigSymbol === requestedSymbol;
 
-  const isLive = Boolean(
+  const isLiveSignal = Boolean(
     signal &&
     sigTs > 0 &&
     sigTs <= nowSec + 5.0 &&
-    evalPubTs <= nowSec + 5.0 &&
+    (pubTs === null || pubTs <= nowSec + 5.0) &&
     provenance === "live_signal" &&
     !isHistorical &&
     meta.is_live !== false &&
     !isExpired &&
-    pubAgeSec <= LIVE_SIGNAL_MAX_AGE_SECONDS &&
     symbolMatches
   );
 
-  if (!signal || !isLive) {
+  // LIVE badge TTL: 300 seconds window for the newest displayed signal
+  const showLiveBadge = Boolean(isLiveSignal && pubTs !== null && pubAgeSec <= LIVE_SIGNAL_MAX_AGE_SECONDS);
+
+  if (!signal || !isLiveSignal) {
     return {
       generatedAt: null,
       platform: {
@@ -594,29 +595,32 @@ export function createHostSnapshotFromProject1(
       message: isNoTrade
         ? `Project 1 evaluated ${symbol} (${timeframe}) and emitted a NO TRADE decision.`
         : `Validated ${actionUpper} signal emitted by Project 1.`,
-      metadata: signal.metadata || {},
+      metadata: {
+        ...(signal.metadata || {}),
+        show_live_badge: showLiveBadge,
+      },
     },
     performance: {
       status: "unavailable",
       message: "Performance metrics are unavailable until Project 1 backtest outputs are connected.",
     },
     risk: {
-      entry: isLive && !isNoTrade ? entry : null,
-      stopLoss: isLive && !isNoTrade ? sl : null,
-      takeProfits: isLive && !isNoTrade ? tps : [],
-      status: isLive && !isNoTrade ? (entry != null ? "available" : "unavailable") : "unavailable",
+        entry: isLiveSignal && !isNoTrade ? entry : null,
+        stopLoss: isLiveSignal && !isNoTrade ? sl : null,
+        takeProfits: isLiveSignal && !isNoTrade ? tps : [],
+        status: isLiveSignal && !isNoTrade ? (entry != null ? "available" : "unavailable") : "unavailable",
       message: isNoTrade
         ? "No trade setup provided for NO TRADE decision."
-        : (isLive
+          : (isLiveSignal
           ? (entry != null ? "Real trade setup levels provided by Project 1." : "Trade setup omitted.")
           : "Trade setup levels held because signal is historical/stale."),
     },
     monitoring: {
-      freshness: isLive ? "fresh" : "stale",
-      health: isLive ? "healthy" : "stale",
-      status: isLive ? "available" : "stale",
-      message: isLive
-        ? "Project 1 signal active and fresh."
+        freshness: showLiveBadge ? "fresh" : "active",
+        health: isLiveSignal ? "healthy" : "stale",
+        status: isLiveSignal ? "available" : "stale",
+        message: isLiveSignal
+          ? (showLiveBadge ? "Project 1 signal active and fresh." : "Project 1 signal active.")
         : `Project 1 signal for ${signal.symbol || symbol} is historical/stale. Live signal data is unavailable.`,
     },
     providers: {

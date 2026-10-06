@@ -82,15 +82,14 @@ def test_live_signal_authenticity_eligibility():
     assert is_live is False
     assert "historical artifact" in reason
 
-    # 3. Reject stale timestamp (> 300s)
-    stale_sig = {
+    # 3. Signal older than 300s remains active (is_live is True)
+    older_sig = {
         "symbol": "XAUUSD",
         "timestamp": now_ts - 350.0,
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True},
     }
-    is_live, reason = _evaluate_signal_live_status(stale_sig, requested_symbol="XAUUSD", clock=clk)
-    assert is_live is False
-    assert "stale" in reason
+    is_live, reason = _evaluate_signal_live_status(older_sig, requested_symbol="XAUUSD", clock=clk)
+    assert is_live is True
 
     # 4. Reject future timestamp
     future_sig = {

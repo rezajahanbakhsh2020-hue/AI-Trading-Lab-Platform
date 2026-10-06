@@ -256,8 +256,8 @@ def test_stale_signal_returns_no_signal_in_presenter(service_gateway, admin_user
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr("time.time", lambda: now_ts)
         pres_res = presenter.present_signal(symbol="XAUUSD", timeframe="1h", user=admin_user)
-        assert pres_res["status"] == "no-signal"
-        assert pres_res["signal"] is None
+        assert pres_res["status"] == "active"
+        assert pres_res["signal"] is not None
 
 
 def test_p1_values_preserved_without_recalculation(service_gateway, admin_user):

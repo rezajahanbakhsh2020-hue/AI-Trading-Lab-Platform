@@ -183,13 +183,13 @@ def test_live_authoritative_no_trade_preservation():
 
 
 def test_stale_signal_remains_fail_closed():
-    """Verify stale signal (>300s old) cannot masquerade as live active or live no-trade."""
+    """Verify signal with publication age > 300s remains active signal according to canonical validity contract."""
     now_ts = time.time()
     stale_sig = PresentedSignal(
         signal_id="sig_stale_1h",
         symbol="XAUUSD",
         signal_type="buy",
-        timestamp=now_ts - 600.0,  # 10 minutes old (stale)
+        timestamp=now_ts - 600.0,  # 10 minutes old
         entry_price=2650.0,
         stop_loss=2630.0,
         take_profits=(2680.0,),
@@ -203,13 +203,13 @@ def test_stale_signal_remains_fail_closed():
     presenter = Project1SignalPresenter(port)
 
     res = presenter.present_signal("XAUUSD", "1h")
-    assert res["status"] == "no-signal"
-    assert res["signal"] is None
+    assert res["status"] == "active"
+    assert res["signal"] is not None
 
     snapshot = presenter.build_host_snapshot("XAUUSD", "1h")
-    assert snapshot["signal"]["status"] == "no-signal"
-    assert snapshot["signal"]["action"] == "NO SIGNAL"
-    assert snapshot["risk"]["entry"] is None
+    assert snapshot["signal"]["status"] == "active"
+    assert snapshot["signal"]["action"] == "BUY"
+    assert snapshot["risk"]["entry"] == 2650.0
 
 
 def test_p1_mtf_metadata_and_lineage_preservation_without_p2_recomputation(tmp_path):

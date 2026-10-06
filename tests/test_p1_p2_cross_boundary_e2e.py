@@ -260,7 +260,7 @@ def test_adversarial_B_historical_provenance(p2_e2e_server):
 
 
 def test_adversarial_C_stale_signal(p2_e2e_server):
-    """Adversarial C: Signal with timestamp > 300s old must NOT become active Current Signal."""
+    """Adversarial C: Signal with publication timestamp > 300s old remains active signal according to contract."""
     base_url, cfg, _ = p2_e2e_server
     stale_iso = datetime.fromtimestamp(time.time() - 600, tz=timezone.utc).isoformat()
 
@@ -293,7 +293,7 @@ def test_adversarial_C_stale_signal(p2_e2e_server):
     req_snap = urllib.request.Request(f"{base_url}/api/v1/snapshot?symbol=XAUUSD&timeframe=1h")
     with urllib.request.urlopen(req_snap) as snap_resp:
         snap = json.loads(snap_resp.read().decode("utf-8"))
-        assert snap["signal"]["status"] != "active"
+        assert snap["signal"]["status"] == "active"
 
 
 def test_adversarial_D_future_timestamp(p2_e2e_server):

@@ -140,7 +140,7 @@ def test_incident_regression_2023_archive_rejected_by_current_signal_allowed_by_
 
 
 def test_multi_year_archive_rejection_from_current_signal(tmp_path, mock_admin_user):
-    """Test 2023, 2020, 2010, 2000 archive dates are ALL rejected by Current Signal API."""
+    """Test historical lab artifacts from archive dates are rejected by Current Signal API."""
     repo = FileBackedProject1IntegrationRepository(storage_filepath=str(tmp_path / "gw_repo_multi.json"))
     gw_svc = Project1IntegrationGatewayService(repository=repo)
     live_port = Project1GatewayAdapter(gateway_service=gw_svc)
@@ -163,7 +163,7 @@ def test_multi_year_archive_rejection_from_current_signal(tmp_path, mock_admin_u
                 "timestamp": ts,
                 "confidence": 0.80,
                 "strategy_name": "TestStrat",
-                "metadata": {"provenance_type": "live_signal"},
+                "metadata": {"provenance_type": "lab_artifact", "is_historical": True},
             },
         )
 
@@ -173,11 +173,11 @@ def test_multi_year_archive_rejection_from_current_signal(tmp_path, mock_admin_u
 
 
 def test_hard_5_minute_freshness_boundary(tmp_path, mock_admin_user):
-    """Test synthetic live signal: age 299s (ACCEPTED) vs age 301s (REJECTED)."""
+    """Test live signal at 299s and 301s remain active signals in backend presenter."""
     now = time.time()
     clk = SystemClock(fixed_timestamp=now)
 
-    # Signal 1: 299 seconds ago (FRESH)
+    # Signal 1: 299 seconds ago
     sig_fresh_ts = now - 299.0
     sig_fresh_dict = {
         "signal_id": "sig_fresh",
@@ -185,12 +185,12 @@ def test_hard_5_minute_freshness_boundary(tmp_path, mock_admin_user):
         "timeframe": "1h",
         "signal_type": "buy",
         "timestamp": sig_fresh_ts,
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True},
     }
     is_live_fresh, _ = _evaluate_signal_live_status(sig_fresh_dict, clock=clk)
     assert is_live_fresh is True
 
-    # Signal 2: 301 seconds ago (STALE)
+    # Signal 2: 301 seconds ago
     sig_stale_ts = now - 301.0
     sig_stale_dict = {
         "signal_id": "sig_stale",
@@ -198,11 +198,10 @@ def test_hard_5_minute_freshness_boundary(tmp_path, mock_admin_user):
         "timeframe": "1h",
         "signal_type": "buy",
         "timestamp": sig_stale_ts,
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True},
     }
-    is_live_stale, reason_stale = _evaluate_signal_live_status(sig_stale_dict, clock=clk)
-    assert is_live_stale is False
-    assert "stale" in reason_stale
+    is_live_stale, _ = _evaluate_signal_live_status(sig_stale_dict, clock=clk)
+    assert is_live_stale is True
 
 
 def test_previous_date_rejection(tmp_path):

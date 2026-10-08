@@ -90,6 +90,7 @@ def test_positive_cross_boundary_p1_to_p2_visible_signal(p2_e2e_server):
         "provenance": {
             "provenance_type": "live_signal",
             "is_live": True,
+            "produced_at": now_iso,
             "source": "AI-Trading-Lab",
             "research_evidence_id": research_evidence_id,
             "research_fingerprint": "rfp_999",
@@ -277,7 +278,7 @@ def test_adversarial_C_stale_signal(p2_e2e_server):
             "strategy": "GoldStrategy",
         },
         "trade_setup": {"entry_price": 2650.0, "stop_loss": 2635.0},
-        "provenance": {"provenance_type": "live_signal", "is_live": True},
+        "provenance": {"provenance_type": "live_signal", "is_live": True, "produced_at": stale_iso},
     }
 
     req = urllib.request.Request(
@@ -424,7 +425,7 @@ def test_adversarial_G_no_trade_decision(p2_e2e_server):
             "strategy": "GoldStrategy",
         },
         "trade_setup": {},
-        "provenance": {"provenance_type": "live_signal", "is_live": True},
+        "provenance": {"provenance_type": "live_signal", "is_live": True, "produced_at": now_iso},
     }
 
     req = urllib.request.Request(

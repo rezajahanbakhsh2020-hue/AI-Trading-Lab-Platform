@@ -339,3 +339,15 @@ def test_contradictory_timestamp_ordering_anti_recurrence():
     assert res.timestamp == now_ts - 1000.0
     assert res.metadata["publication_id"] == "pub_b_002"
     assert res.metadata["produced_at"] == now_ts - 10.0
+
+
+def test_missing_is_live_flag_fails_closed():
+    now_ts = time.time()
+    sig_dict = {
+        "symbol": "XAUUSD",
+        "timestamp": now_ts - 5,
+        "metadata": {"provenance_type": "live_signal", "produced_at": now_ts - 5},
+    }
+    is_live, reason = _evaluate_signal_live_status(sig_dict, requested_symbol="XAUUSD")
+    assert is_live is False
+    assert "does not authoritatively mark" in reason

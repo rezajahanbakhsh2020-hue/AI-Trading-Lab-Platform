@@ -152,6 +152,19 @@ def test_adversarial_idempotent_replay_vs_mutated_conflict(setup_gateway):
     assert res_conflict["error_code"] == "INTEGRITY_CONFLICT"
 
 
+def test_replay_with_changed_provenance_metadata_is_integrity_conflict(setup_gateway):
+    gw, _, user_a, _ = setup_gateway
+    payload = _build_valid_payload("pub_metadata_integrity")
+    payload["is_live"] = True
+    assert gw.ingest_signal_payload(user_a, payload)["success"] is True
+
+    changed = dict(payload)
+    changed["is_live"] = False
+    result = gw.ingest_signal_payload(user_a, changed)
+    assert result["success"] is False
+    assert result["error_code"] == "INTEGRITY_CONFLICT"
+
+
 def test_adversarial_same_event_different_publication_conflict(setup_gateway):
     gw, repo, user_a, _ = setup_gateway
     p1 = _build_valid_payload("pub_adv_evt_1", event_id="same_evt_100")
@@ -486,7 +499,7 @@ def test_typeerror_compatibility_escape_proof(setup_gateway):
     from src.platform.adapters.project1_adapter import Project1GatewayAdapter
 
     class BuggyRepoPort:
-        def list_records_for_user(self, user_id=None, symbol=None, lifecycle_state=None, limit=500, allow_system=False):
+        def list_records_for_user(self, user_id=None, symbol=None, lifecycle_state=None, limit=500, allow_system=False, publication_order=False):
             raise TypeError("Internal bug in repository implementation")
 
     class BuggyGatewayService:
@@ -675,7 +688,7 @@ def test_adversarial_strict_user_isolation_rejects_cross_user_and_system_claim(t
 
     # 6. Explicit system scope query (allow_system=True or user_id=None) CAN view system records
     sys_recs = repo.list_records_for_user(user_id=user_a.user_id, allow_system=True)
-    assert len(sys_recs) == 4  # system, p1_service_ingest, global, None records
+    assert len(sys_recs) == 3  # system, p1_service_ingest, global; tenantless is ambiguous
 
 
 def test_initialization_durability_failures_raise_storage_unavailable(tmp_path, monkeypatch):

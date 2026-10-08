@@ -309,7 +309,7 @@ def test_evaluate_signal_live_status_symbol_mismatch_rejection():
 def test_presenter_adapter_name_default_is_gateway_adapter():
     """Verify Project1SignalPresenter defaults adapterName to Project1GatewayAdapter when connected."""
     class DummyRepoPort:
-        def list_records_for_user(self, user_id=None, symbol=None, lifecycle_state=None, limit=500, allow_system=False):
+        def list_records_for_user(self, user_id=None, symbol=None, lifecycle_state=None, limit=500, allow_system=False, publication_order=False):
             if limit == 1:
                 return [{"signal_id": "dummy"}]
             return []

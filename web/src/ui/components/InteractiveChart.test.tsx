@@ -116,6 +116,16 @@ describe("InteractiveChart Component", () => {
     expect(container.querySelector(".overlay-title")?.textContent).toBe("Streaming provider candles...");
   });
 
+  it("offers exactly the canonical Project 1 production timeframes", () => {
+    const { container } = render(
+      <I18nProvider>
+        <InteractiveChart symbol="XAUUSD" timeframe="1H" candles={sampleCandles} />
+      </I18nProvider>
+    );
+    const values = Array.from(container.querySelectorAll("[aria-label=\"Timeframe selector\"] button"), (button) => button.textContent);
+    expect(values).toEqual(["5m", "15m", "30m", "1H", "4H", "1D"]);
+  });
+
   it("triggers onTimeframeChange callback when timeframe button is clicked", () => {
     const handleTfChange = vi.fn();
 

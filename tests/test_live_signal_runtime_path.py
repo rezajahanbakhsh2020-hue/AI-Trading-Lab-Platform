@@ -111,7 +111,7 @@ def test_1_authorized_real_upstream_signal_accepted(gateway_svc, admin_user):
         "take_profit_1": 2770.00,
         "confidence": 0.90,
         "strategy_name": "GoldStrategy",
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now - 15.0},
     }
 
     res = gateway_svc.ingest_signal_payload(user=admin_user, payload=payload)
@@ -138,7 +138,7 @@ def test_2_upstream_values_preserved_exactly(gateway_svc, admin_user):
         "take_profit_3": 2820.25,
         "confidence": 0.942,
         "strategy_name": "ExactPrecisionStrategy",
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now - 10.0},
     }
 
     gateway_svc.ingest_signal_payload(user=admin_user, payload=payload)
@@ -165,7 +165,7 @@ def test_3_provenance_preserved(gateway_svc, admin_user):
         "timeframe": "1h",
         "signal_type": "sell",
         "timestamp": now - 20.0,
-        "metadata": {"provenance_type": "live_signal", "source_system": "P1_Core_Alpha"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "source_system": "P1_Core_Alpha", "produced_at": now - 20.0},
     }
 
     gateway_svc.ingest_signal_payload(user=admin_user, payload=payload)
@@ -189,7 +189,7 @@ def test_4_event_timestamp_preserved(gateway_svc, admin_user):
         "timeframe": "1h",
         "signal_type": "buy",
         "timestamp": event_ts,
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": event_ts},
     }
 
     gateway_svc.ingest_signal_payload(user=admin_user, payload=payload)
@@ -214,7 +214,7 @@ def test_5_receipt_time_cannot_replace_event_time(temp_repo, gateway_svc, admin_
         "timeframe": "1h",
         "signal_type": "buy",
         "timestamp": old_event_ts,
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": old_event_ts},
     }
 
     # Ingest right NOW (receipt time = now)
@@ -239,7 +239,7 @@ def test_6_xauusd_identity_remains_xauusd(gateway_svc, admin_user):
         "timeframe": "1h",
         "signal_type": "buy",
         "timestamp": now - 12.0,
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now - 12.0},
     }
 
     gateway_svc.ingest_signal_payload(user=admin_user, payload=payload)
@@ -262,7 +262,7 @@ def test_7_mismatched_instrument_rejected(gateway_svc, admin_user):
         "timeframe": "1h",
         "signal_type": "buy",
         "timestamp": now - 10.0,
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now - 10.0},
     }
 
     gateway_svc.ingest_signal_payload(user=admin_user, payload=payload)
@@ -288,7 +288,7 @@ def test_8_missing_instrument_rejected(temp_repo, gateway_svc, admin_user):
         "timeframe": "1h",
         "signal_type": "buy",
         "timestamp": time.time() - 10.0,
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": time.time() - 10.0},
     }
     temp_repo.save_record(raw_rec)
 
@@ -361,7 +361,7 @@ def test_12_stale_event_produces_no_signal(gateway_svc, admin_user):
         "timeframe": "1h",
         "signal_type": "buy",
         "timestamp": now - 350.0,  # >300s old
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now - 350.0},
     }
 
     gateway_svc.ingest_signal_payload(user=admin_user, payload=payload)
@@ -385,7 +385,7 @@ def test_13_invalid_event_time_produces_no_signal(gateway_svc, admin_user):
         "timeframe": "1h",
         "signal_type": "buy",
         "timestamp": now + 500.0,  # future timestamp
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now + 500.0},
     }
 
     gateway_svc.ingest_signal_payload(user=admin_user, payload=payload)
@@ -447,7 +447,7 @@ def test_16_current_signal_selects_latest_valid_authorized_event(gateway_svc, ad
         "signal_type": "buy",
         "timestamp": now - 80.0,
         "entry_price": 2740.0,
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now - 80.0},
     }
 
     # Newer valid event (now - 15s)
@@ -461,7 +461,7 @@ def test_16_current_signal_selects_latest_valid_authorized_event(gateway_svc, ad
         "signal_type": "sell",
         "timestamp": now - 15.0,
         "entry_price": 2755.0,
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now - 15.0},
     }
 
     # Ingest older first, then newer
@@ -496,7 +496,7 @@ def test_17_upstream_values_not_recalculated_by_project2(gateway_svc, admin_user
         "take_profit_2": 2730.00,
         "confidence": 0.88,
         "strategy_name": "AsIsStrategy",
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now - 10.0},
     }
 
     gateway_svc.ingest_signal_payload(user=admin_user, payload=payload)
@@ -537,7 +537,7 @@ def test_19_workspace_isolation_remains_enforced(gateway_svc, admin_user, custom
         "signal_type": "buy",
         "timestamp": now - 10.0,
         "user_id": "usr_customer_a",
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now - 10.0},
     }
 
     gateway_svc.ingest_signal_payload(user=customer_user_a, payload=payload_a)
@@ -566,7 +566,7 @@ def test_20_existing_gateway_authentication_authorization_enforced(gateway_svc):
         "timeframe": "1h",
         "signal_type": "buy",
         "timestamp": now - 10.0,
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now - 10.0},
     }
 
     # Anonymous call -> UNAUTHENTICATED

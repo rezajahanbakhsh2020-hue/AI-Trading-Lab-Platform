@@ -95,11 +95,13 @@ class BiQuoteProvider(MarketDataProvider):
         normalized = timeframe.strip()
         if normalized == "":
             raise ValueError("timeframe must not be empty or whitespace")
-        if normalized not in SUPPORTED_INTERVALS:
+        canonical_interval = {interval.lower(): interval for interval in SUPPORTED_INTERVALS}.get(normalized.lower())
+        if canonical_interval is None:
             raise ValueError(
                 "timeframe must be one of: " + ", ".join(SUPPORTED_INTERVALS)
             )
-        return normalized
+        # P1 uses canonical identities such as 1H/4H/1D; BiQuote uses lowercase.
+        return canonical_interval.lower()
 
     def _validate_limit(self, limit: int) -> int:
         if isinstance(limit, bool) or not isinstance(limit, int):

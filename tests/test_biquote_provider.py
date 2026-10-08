@@ -164,10 +164,18 @@ def test_invalid_symbol_raises(bad_symbol):
         BiQuoteProvider().fetch_candles(bad_symbol, "1h", 1)  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize("bad_timeframe", [None, 1, "", "   ", "2h", "H1", "1H"])
+@pytest.mark.parametrize("bad_timeframe", [None, 1, "", "   ", "2h", "H1"])
 def test_invalid_timeframe_raises(bad_timeframe):
     with pytest.raises(ValueError):
         BiQuoteProvider().fetch_candles("XAUUSD", bad_timeframe, 1)  # type: ignore[arg-type]
+
+
+@patch("src.platform.providers.biquote.urllib.request.urlopen")
+def test_accepts_canonical_uppercase_p1_intervals_and_maps_for_provider(mock_urlopen):
+    mock_urlopen.return_value = FakeHTTPResponse(_json_bytes(_payload(_newest_first_bars())))
+    BiQuoteProvider().fetch_candles("XAUUSD", "1H", 1)
+    request = mock_urlopen.call_args.args[0]
+    assert "interval=1h" in request.full_url
 
 
 @pytest.mark.parametrize("bad_limit", [0, -1, 1001, 1.5, "100", True])

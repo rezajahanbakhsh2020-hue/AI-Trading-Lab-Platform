@@ -19,7 +19,16 @@ import {
 import type { Candle, MarketDataStatus, ProviderMetadata } from "../../architecture/marketData";
 import { useI18n } from "../../i18n";
 
-export type Timeframe = "1m" | "5m" | "15m" | "30m" | "1h" | "4h" | "1d";
+export type Timeframe = "5m" | "15m" | "30m" | "1H" | "4H" | "1D";
+const canonicalTimeframe = (value: string): Timeframe | null => {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "1h") return "1H";
+  if (normalized === "4h") return "4H";
+  if (normalized === "1d") return "1D";
+  return (["5m", "15m", "30m"] as const).includes(normalized as "5m" | "15m" | "30m")
+    ? normalized as Timeframe
+    : null;
+};
 export type ChartType = "Candles" | "Line" | "Area";
 
 export interface InteractiveChartProps {
@@ -133,14 +142,15 @@ export function InteractiveChart({
 }: InteractiveChartProps) {
   const { t } = useI18n();
   const [selectedTimeframe, setSelectedTimeframe] = useState<Timeframe>(
-    (timeframe as Timeframe) || "1h"
+    canonicalTimeframe(timeframe) || "1H"
   );
 
   useEffect(() => {
-    if (timeframe && timeframe !== selectedTimeframe) {
-      setSelectedTimeframe(timeframe as Timeframe);
+    const canonical = canonicalTimeframe(timeframe);
+    if (canonical && canonical !== selectedTimeframe) {
+      setSelectedTimeframe(canonical);
     }
-  }, [timeframe]);
+  }, [timeframe, selectedTimeframe]);
   const [chartType, setChartType] = useState<ChartType>("Candles");
   const [hoverData, setHoverData] = useState<{
     timeStr: string;
@@ -156,7 +166,7 @@ export function InteractiveChart({
   const volumeSeriesRef = useRef<ISeriesApi<any> | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
 
-  const timeframes: Timeframe[] = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"];
+  const timeframes: Timeframe[] = ["5m", "15m", "30m", "1H", "4H", "1D"];
   const chartTypes: ChartType[] = ["Candles", "Line", "Area"];
 
   // Unique chart container ID for accessibility

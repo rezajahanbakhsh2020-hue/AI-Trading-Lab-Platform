@@ -15,6 +15,9 @@ import {
   createDisconnectedHostSnapshot,
   createHostSnapshotFromProject1,
   fetchHostSnapshot,
+  createLatestRequestSequence,
+  hostSnapshotMatchesSelection,
+  marketDataMatchesSelection,
   type HostSnapshot,
 } from "../architecture/hostView";
 import {
@@ -52,19 +55,23 @@ export function App() {
   const [authState, setAuthState] = useState<StoredAuthState>(getStoredAuthState);
   const [isConnected, setIsConnected] = useState(true);
   const [selectedSymbol, setSelectedSymbol] = useState("XAUUSD");
-  const [selectedTimeframe, setSelectedTimeframe] = useState("1h");
+  const [selectedTimeframe, setSelectedTimeframe] = useState("1H");
   const [stagedIntents, setStagedIntents] = useState<OrderIntentPayload[]>([]);
   const [backendSnapshot, setBackendSnapshot] = useState<HostSnapshot | null>(null);
 
   useEffect(() => {
     let isMounted = true;
+    const requestSequence = createLatestRequestSequence();
     const reqSymbol = selectedSymbol;
     const reqTimeframe = selectedTimeframe;
+    // Clear data for the previous selection before requesting its replacement.
+    setBackendSnapshot(null);
 
     async function syncBackendHostSnapshot() {
+      const requestId = requestSequence.begin();
       const token = authState.sessionToken;
       const res = await fetchHostSnapshot(token, reqSymbol, reqTimeframe);
-      if (!isMounted) return;
+      if (!isMounted || !requestSequence.isCurrent(requestId)) return;
 
       if (res.success && res.snapshot) {
         const snapSym = res.snapshot.market?.symbol?.toUpperCase();
@@ -88,6 +95,7 @@ export function App() {
 
     return () => {
       isMounted = false;
+      requestSequence.invalidate();
       clearInterval(intervalId);
     };
   }, [selectedSymbol, selectedTimeframe, authState.sessionToken]);
@@ -105,6 +113,7 @@ export function App() {
 
   const [liveCandles, setLiveCandles] = useState<Candle[]>([]);
   const [liveQuote, setLiveQuote] = useState<Quote | null>(null);
+  const [liveMarketIdentity, setLiveMarketIdentity] = useState<string | null>(null);
 
   useEffect(() => {
     // When disconnected or provider is not active, set candles to empty array and quote to null.
@@ -112,16 +121,19 @@ export function App() {
     if (!isConnected) {
       setLiveCandles([]);
       setLiveQuote(null);
+      setLiveMarketIdentity(null);
       return;
     }
 
-    // Immediately invalidate/clear candles and quote upon timeframe or symbol selection change
+    // Keep each market response bound to the requested symbol and interval.
+    setLiveMarketIdentity(null);
     setLiveCandles([]);
     setLiveQuote(null);
 
     let isMounted = true;
     const reqSymbol = selectedSymbol;
     const reqTimeframe = selectedTimeframe;
+    const requestIdentity = `${reqSymbol.toUpperCase()}::${reqTimeframe.toLowerCase()}`;
 
     async function loadMarketData() {
       const token = authState.sessionToken;
@@ -142,6 +154,7 @@ export function App() {
         } else {
           setLiveQuote(null);
         }
+        setLiveMarketIdentity(requestIdentity);
       }
     }
 
@@ -151,10 +164,15 @@ export function App() {
     };
   }, [isConnected, selectedSymbol, selectedTimeframe, authState.sessionToken]);
 
-  const rawQuoteForSymbol = (liveQuote && liveQuote.symbol === selectedSymbol) ? liveQuote : null;
+  const marketDataMatchesCurrentSelection = marketDataMatchesSelection(
+    liveMarketIdentity,
+    selectedSymbol,
+    selectedTimeframe
+  );
+  const rawQuoteForSymbol = marketDataMatchesCurrentSelection && liveQuote?.symbol === selectedSymbol ? liveQuote : null;
   const normalizedLiveQuote = normalizeQuote(rawQuoteForSymbol);
 
-  const marketCandles = liveCandles;
+  const marketCandles = marketDataMatchesCurrentSelection ? liveCandles : [];
   const isMarketConnected = marketCandles.length > 0 || normalizedLiveQuote != null;
   const marketStatus = isMarketConnected ? "connected" as const : "disconnected" as const;
 
@@ -171,8 +189,15 @@ export function App() {
     lastFetchedAt: isMarketConnected ? new Date().toUTCString() : null,
   };
 
+  const expectedSnapshotUserId = authState.userAccount?.userId || "guest_user";
+  const backendSnapshotMatchesSelection = hostSnapshotMatchesSelection(
+    backendSnapshot,
+    selectedSymbol,
+    selectedTimeframe,
+    expectedSnapshotUserId
+  );
   const baseSnapshot = isConnected
-    ? (backendSnapshot || createHostSnapshotFromProject1(
+    ? (backendSnapshotMatchesSelection ? backendSnapshot! : createHostSnapshotFromProject1(
         PROJECT1_GATEWAY_PORT,
         null,
         selectedSymbol,

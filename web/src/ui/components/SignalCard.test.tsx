@@ -118,6 +118,10 @@ describe("SignalCard UI Component", () => {
     const onSelectTf = vi.fn();
     renderWithI18n(<SignalCard snapshot={snapshot} onSelectTimeframe={onSelectTf} />);
 
+    expect(screen.queryByRole("button", { name: "1m" })).toBeNull();
+    for (const tf of ["5m", "15m", "30m", "1H", "4H", "1D"]) {
+      expect(screen.getByRole("button", { name: tf })).toBeDefined();
+    }
     const tf5mBtn = screen.getByRole("button", { name: "5m" });
     fireEvent.click(tf5mBtn);
 

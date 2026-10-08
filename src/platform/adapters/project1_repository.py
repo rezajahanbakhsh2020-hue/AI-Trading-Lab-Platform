@@ -43,6 +43,7 @@ AUTHORITATIVE_CONTENT_KEYS = (
     "trailing_stop",
     "invalidation_condition",
     "mtf",
+    "metadata",
 )
 
 
@@ -163,8 +164,9 @@ class Project1IntegrationRepositoryPort(ABC):
         lifecycle_state: Optional[str] = None,
         limit: int = 100,
         allow_system: bool = False,
+        publication_order: bool = False,
     ) -> List[Dict[str, Any]]:
-        """List integration records filtered by user_id, symbol, and lifecycle_state."""
+        """List scoped records, optionally ordered by authoritative publication time before limiting."""
         raise NotImplementedError
 
     @abstractmethod
@@ -199,7 +201,8 @@ def _user_matches(rec: Dict[str, Any], user_id: Optional[str], allow_system: boo
     rec_user = rec.get("user_id")
     if rec_user == user_id:
         return True
-    if allow_system and rec_user in (None, "system", "p1_service_ingest", "global"):
+    # Tenantless records are ambiguous legacy data, not system authority.
+    if allow_system and rec_user in ("system", "p1_service_ingest", "global"):
         return True
     return False
 
@@ -781,6 +784,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
         lifecycle_state: Optional[str] = None,
         limit: int = 100,
         allow_system: bool = False,
+        publication_order: bool = False,
     ) -> List[Dict[str, Any]]:
         if self._is_unavailable:
             raise StorageUnavailableError("Storage or process lock unavailable.")
@@ -794,7 +798,7 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                 if self._is_corrupt:
                     raise StorageCorruptError("Underlying storage is corrupted.")
                 filtered = []
-                for rec in reversed(self._records):
+                for rec in self._records:
                     if not _user_matches(rec, user_id, allow_system=allow_system):
                         continue
                     if symbol is not None and rec.get("symbol") != symbol.strip().upper():
@@ -802,9 +806,31 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                     if lifecycle_state is not None and rec.get("lifecycle_state") != lifecycle_state.strip().upper():
                         continue
                     filtered.append(dict(rec))
-                    if len(filtered) >= limit:
-                        break
-                return filtered
+                if publication_order:
+                    # Apply the bounded window only after valid authoritative publication-time
+                    # ordering, so late or malformed records cannot hide the newest publication.
+                    import math
+                    now_ts = time.time()
+                    def publication_epoch(record: Dict[str, Any]) -> float:
+                        metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+                        value = (metadata.get("produced_at") or metadata.get("authorized_at_utc")
+                                 or metadata.get("publication_timestamp") or record.get("produced_at"))
+                        if isinstance(value, (int, float)) and not isinstance(value, bool):
+                            epoch = float(value)
+                            return epoch if math.isfinite(epoch) and epoch <= now_ts + 5 else float("-inf")
+                        if isinstance(value, str) and value.strip():
+                            try:
+                                from src.platform.domain.project1_contract import parse_iso8601_to_utc_epoch
+                                return parse_iso8601_to_utc_epoch(
+                                    value, max_future_skew_seconds=5, current_time_fn=lambda: now_ts
+                                )
+                            except (ValueError, OverflowError):
+                                pass
+                        return float("-inf")
+                    filtered.sort(key=publication_epoch, reverse=True)
+                else:
+                    filtered.reverse()
+                return filtered[:max(0, limit)] if limit > 0 else filtered
         except StorageUnavailableError:
             self._is_unavailable = True
             raise

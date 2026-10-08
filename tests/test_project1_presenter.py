@@ -473,6 +473,7 @@ def test_e2e_p1_pipeline_preservation_and_adversarial_invariants(tmp_path):
         "metadata": {
             "provenance_type": "live_signal",
             "is_live": True,
+            "produced_at": now_ts - 15.0,
         },
     }
 
@@ -482,7 +483,7 @@ def test_e2e_p1_pipeline_preservation_and_adversarial_invariants(tmp_path):
     adapter = Project1GatewayAdapter(gateway_service=gw_svc)
     presenter = Project1SignalPresenter(port=adapter, gateway_service=gw_svc)
 
-    snapshot = presenter.build_host_snapshot("XAUUSD", "1h")
+    snapshot = presenter.build_host_snapshot("XAUUSD", "1h", user=user)
 
     # 1. Exact P1 R:R preservation (2.5557), NOT geometry-derived (1.5)
     assert snapshot["authorization"]["riskRewardRatio"] == 2.5557
@@ -508,11 +509,12 @@ def test_e2e_p1_pipeline_preservation_and_adversarial_invariants(tmp_path):
     rec_b["publication_id"] = "pub_p1_e2e_002"
     rec_b["signal_id"] = "sig_p1_e2e_002"
     rec_b["timestamp"] = now_ts - 10.0
+    rec_b["metadata"] = {**rec_payload["metadata"], "produced_at": now_ts - 10.0}
     rec_b.pop("operational_stability_score", None)
     rec_b["confidence"] = 0.95
 
     gw_svc.ingest_signal_payload(user, rec_b)
-    snapshot_b = presenter.build_host_snapshot("XAUUSD", "1h")
+    snapshot_b = presenter.build_host_snapshot("XAUUSD", "1h", user=user)
     assert snapshot_b["signal"]["confidence"] == 0.95
     assert snapshot_b["strategy"]["stability"] is None
 
@@ -522,10 +524,11 @@ def test_e2e_p1_pipeline_preservation_and_adversarial_invariants(tmp_path):
     rec_c["publication_id"] = "pub_p1_e2e_003"
     rec_c["signal_id"] = "sig_p1_e2e_003"
     rec_c["timestamp"] = now_ts - 5.0
+    rec_c["metadata"] = {**rec_payload["metadata"], "produced_at": now_ts - 5.0}
     rec_c.pop("risk_reward_ratio", None)
 
     gw_svc.ingest_signal_payload(user, rec_c)
-    snapshot_c = presenter.build_host_snapshot("XAUUSD", "1h")
+    snapshot_c = presenter.build_host_snapshot("XAUUSD", "1h", user=user)
     assert snapshot_c["risk"]["entry"] == 2650.0
     assert snapshot_c["authorization"]["riskRewardRatio"] is None
 
@@ -535,12 +538,13 @@ def test_e2e_p1_pipeline_preservation_and_adversarial_invariants(tmp_path):
     rec_e["publication_id"] = "pub_p1_e2e_004"
     rec_e["signal_id"] = "sig_p1_e2e_004"
     rec_e["timestamp"] = now_ts - 2.0
+    rec_e["metadata"] = {**rec_payload["metadata"], "produced_at": now_ts - 2.0}
     rec_e.pop("decision_id", None)
     rec_e.pop("candidate_id", None)
     rec_e.pop("runtime_authorization_fingerprint", None)
 
     gw_svc.ingest_signal_payload(user, rec_e)
-    snapshot_e = presenter.build_host_snapshot("XAUUSD", "1h")
+    snapshot_e = presenter.build_host_snapshot("XAUUSD", "1h", user=user)
     assert snapshot_e["authorization"]["decision_id"] is None
     assert snapshot_e["authorization"]["candidate_id"] is None
     assert snapshot_e["authorization"]["runtime_authorization_fingerprint"] is None

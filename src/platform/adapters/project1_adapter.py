@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional
 from typing import Sequence
 from src.platform.domain.market import Candle
 from src.platform.domain.presented_signal import PresentedSignal
+from src.platform.domain.project1_contract import ALLOWED_MTF_TIMEFRAMES
 from src.platform.integrations.backtest import BacktestSource
 from src.platform.integrations.project1 import Project1IntegrationPort
 from src.platform.services.lab_artifacts import LabArtifactService
@@ -194,12 +195,16 @@ class Project1GatewayAdapter(Project1IntegrationPort):
         if repo is None:
             return None
 
+        # Anonymous snapshot access may see explicitly system-published P1
+        # records only; omitting user_id must never become an all-tenant query.
+        scoped_user_id = user_id if user_id is not None else "p1_service_ingest"
         records = repo.list_records_for_user(
-            user_id=user_id,
+            user_id=scoped_user_id,
             symbol=symbol,
             lifecycle_state=None,
             limit=500,
             allow_system=True,
+            publication_order=True,
         )
 
         if not records:
@@ -220,7 +225,10 @@ class Project1GatewayAdapter(Project1IntegrationPort):
                 continue
 
             rec_tf = str(rec.get("timeframe") or "").strip()
-            if timeframe and rec_tf and rec_tf.lower() != timeframe.strip().lower():
+            canonical_timeframes = {value.lower() for value in ALLOWED_MTF_TIMEFRAMES}
+            if not rec_tf or rec_tf.lower() not in canonical_timeframes:
+                continue
+            if timeframe and rec_tf.lower() != timeframe.strip().lower():
                 continue
 
             if strategy_name and rec.get("strategy_name") and rec.get("strategy_name") != strategy_name:
@@ -251,7 +259,7 @@ class Project1GatewayAdapter(Project1IntegrationPort):
                 continue
 
             prov = raw_meta.get("provenance_type")
-            if prov != "live_signal":
+            if prov != "live_signal" or raw_meta.get("is_live") is not True:
                 continue
 
             if raw_meta.get("is_historical") is True:
@@ -275,8 +283,11 @@ class Project1GatewayAdapter(Project1IntegrationPort):
                     except Exception:
                         pub_ts = None
 
-            eval_pub_ts = pub_ts if pub_ts is not None else sig_event_ts
-            candidates.append((eval_pub_ts, sig_event_ts, rec))
+            # Event/candle time identifies market data; it cannot stand in for
+            # authoritative publication ordering when publication time is absent.
+            if pub_ts is None or not math.isfinite(pub_ts) or pub_ts > now_ts + 5.0:
+                continue
+            candidates.append((pub_ts, sig_event_ts, rec))
 
         if not candidates:
             return None
@@ -327,13 +338,16 @@ class Project1GatewayAdapter(Project1IntegrationPort):
             take_profits=tuple(tps),
             confidence=float(target_rec["confidence"]) if target_rec.get("confidence") is not None else None,
             strategy_name=target_rec.get("strategy_name"),
-            timeframe=timeframe,
+            # Signal timeframe is P1 identity. Market-data requests retain their
+            # separately selected timeframe in the presenter/host snapshot.
+            timeframe=str(target_rec.get("timeframe")),
             metadata=meta,
         )
 
     def describe(self, user_id: Optional[str] = None) -> Dict[str, Any]:
         repo = getattr(self._gateway_service, "_repo", None)
-        recs = repo.list_records_for_user(user_id=user_id, limit=1, allow_system=True) if repo else []
+        scoped_user_id = user_id if user_id is not None else "p1_service_ingest"
+        recs = repo.list_records_for_user(user_id=scoped_user_id, limit=1, allow_system=True) if repo else []
         has_records = len(recs) > 0
         return {
             "name": "Project1GatewayAdapter",

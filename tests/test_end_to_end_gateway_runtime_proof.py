@@ -86,7 +86,7 @@ def test_positive_end_to_end_project1_live_signal_path(running_server):
             "tp1": 2788.00,
             "tp2": 2810.00,
         },
-        "provenance": {"provenance_type": "live_signal"},
+        "provenance": {"provenance_type": "live_signal", "is_live": True, "produced_at": now_iso},
     }
 
     # 1. Ingest signal via POST /api/v1/integration/project1/ingest using service credential
@@ -189,7 +189,7 @@ def test_negative_stale_signal_produces_no_signal(running_server):
             "stop_loss": 2680.00,
             "tp1": 2720.00,
         },
-        "provenance": {"provenance_type": "live_signal"},
+        "provenance": {"provenance_type": "live_signal", "is_live": True, "produced_at": stale_iso},
     }
 
     req_ingest = urllib.request.Request(
@@ -238,7 +238,7 @@ def test_negative_mismatched_symbol_produces_no_signal(running_server):
             "stop_loss": 1.0900,
             "tp1": 1.0800,
         },
-        "provenance": {"provenance_type": "live_signal"},
+        "provenance": {"provenance_type": "live_signal", "is_live": True, "produced_at": now_iso},
     }
 
     req_ingest = urllib.request.Request(

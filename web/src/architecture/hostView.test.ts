@@ -6,6 +6,9 @@ import {
   createDisconnectedHostSnapshot,
   createHostSnapshotFromProject1,
   fetchHostSnapshot,
+  createLatestRequestSequence,
+  hostSnapshotMatchesSelection,
+  marketDataMatchesSelection,
 } from "./hostView";
 import { SAMPLE_CONNECTED_PORT, SAMPLE_REAL_PROJECT1_SIGNAL } from "./testFixtures";
 import { SAMPLE_BIQUOTE_PROVIDER, SAMPLE_BIQUOTE_QUOTE_XAUUSD, SAMPLE_BIQUOTE_CANDLES_XAUUSD } from "./marketData";
@@ -310,5 +313,44 @@ describe("async race and timeframe identity anti-recurrence protection", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+});
+
+
+describe("snapshot selection identity", () => {
+  const current = createDisconnectedHostSnapshot("EURUSD", "15m", {
+    userId: "tenant-a-user", role: "user", permissions: [], isAdmin: false,
+  });
+
+  it("rejects snapshots for another symbol, timeframe, or user", () => {
+    expect(hostSnapshotMatchesSelection(current, "EURUSD", "15m", "tenant-a-user")).toBe(true);
+    expect(hostSnapshotMatchesSelection(current, "XAUUSD", "15m", "tenant-a-user")).toBe(false);
+    expect(hostSnapshotMatchesSelection(current, "EURUSD", "1H", "tenant-a-user")).toBe(false);
+    expect(hostSnapshotMatchesSelection(current, "EURUSD", "15m", "tenant-b-user")).toBe(false);
+    expect(hostSnapshotMatchesSelection(null, "EURUSD", "15m", "tenant-a-user")).toBe(false);
+  });
+});
+
+
+describe("latest request sequence", () => {
+  it("prevents delayed earlier polls from replacing a newer request result", () => {
+    const sequence = createLatestRequestSequence();
+    const first = sequence.begin();
+    const second = sequence.begin();
+    expect(sequence.isCurrent(first)).toBe(false);
+    expect(sequence.isCurrent(second)).toBe(true);
+    sequence.invalidate();
+    expect(sequence.isCurrent(second)).toBe(false);
+  });
+});
+
+
+describe("market data selection identity", () => {
+  it("hides candles and quotes until symbol and timeframe match their request", () => {
+    const identity = "XAUUSD::15m";
+    expect(marketDataMatchesSelection(identity, "XAUUSD", "15M")).toBe(true);
+    expect(marketDataMatchesSelection(identity, "EURUSD", "15m")).toBe(false);
+    expect(marketDataMatchesSelection(identity, "XAUUSD", "1H")).toBe(false);
+    expect(marketDataMatchesSelection(null, "XAUUSD", "15m")).toBe(false);
   });
 });

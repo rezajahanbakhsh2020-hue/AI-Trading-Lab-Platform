@@ -242,7 +242,7 @@ def test_stale_signal_returns_no_signal_in_presenter(service_gateway, admin_user
             "confidence": 0.85,
         },
         "trade_setup": {"entry_price": 2650.0, "stop_loss": 2635.0},
-        "provenance": {"provenance_type": "live_signal"},
+        "provenance": {"provenance_type": "live_signal", "is_live": True, "produced_at": sig_time_str},
     }
 
     with pytest.MonkeyPatch.context() as mp:
@@ -285,7 +285,7 @@ def test_p1_values_preserved_without_recalculation(service_gateway, admin_user):
             "tp3": 2710.0,
             "risk_reward_ratio": 2.55,
         },
-        "provenance": {"provenance_type": "live_signal"},
+        "provenance": {"provenance_type": "live_signal", "is_live": True, "produced_at": sig_time_str},
     }
 
     with pytest.MonkeyPatch.context() as mp:

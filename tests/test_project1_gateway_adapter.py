@@ -67,13 +67,13 @@ def test_gateway_adapter_fetches_ingested_signal(gateway_svc, admin_user):
         "take_profit_2": 2800.00,
         "confidence": 0.92,
         "strategy_name": "LiveGoldStrategy",
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": time.time() - 20},
     }
 
     ingest_res = gateway_svc.ingest_signal_payload(user=admin_user, payload=payload)
     assert ingest_res["success"] is True
 
-    sig = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h")
+    sig = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h", user_id=admin_user.user_id)
     assert sig is not None
     assert sig.symbol == "XAUUSD"
     assert sig.signal_type == "buy"
@@ -86,7 +86,7 @@ def test_gateway_adapter_fetches_ingested_signal(gateway_svc, admin_user):
     assert sig.metadata.get("provenance_type") == "live_signal"
     assert sig.metadata.get("adapter") == "Project1GatewayAdapter"
 
-    desc = adapter.describe()
+    desc = adapter.describe(user_id=admin_user.user_id)
     assert desc["connected"] is True
     assert desc["status"] == "active"
 
@@ -115,7 +115,7 @@ def test_gateway_adapter_presenter_scenarios(gateway_svc, admin_user):
         "take_profit_1": 2785.00,
         "confidence": 0.92,
         "strategy_name": "LiveGoldStrategy",
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": fresh_ts},
     }
     gateway_svc.ingest_signal_payload(user=admin_user, payload=payload_fresh)
 
@@ -141,7 +141,7 @@ def test_gateway_adapter_presenter_scenarios(gateway_svc, admin_user):
         "take_profit_1": 1.0800,
         "confidence": 0.88,
         "strategy_name": "EuroTrend",
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": stale_ts},
     }
     gateway_svc.ingest_signal_payload(user=admin_user, payload=payload_stale)
 

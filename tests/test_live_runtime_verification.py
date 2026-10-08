@@ -132,7 +132,7 @@ def test_live_runtime_http_isolation(running_runtime_server, tmp_path):
         "entry_price": 2750.0,
         "stop_loss": 2735.0,
         "take_profit_1": 2780.0,
-        "metadata": {"provenance_type": "live_signal", "is_live": True},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now_ts - 10.0},
     }
 
     ingest_live_req = urllib.request.Request(

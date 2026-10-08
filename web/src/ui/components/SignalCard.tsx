@@ -18,8 +18,9 @@ export function SignalCard({
   const isConnected = snapshot.project1.connected;
   const { t, formatPercent } = useI18n();
 
-  const supportedTimeframes = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"];
-  const currentTf = (signal.timeframe || snapshot.market.timeframe || "1h").toLowerCase();
+  const supportedTimeframes = ["5m", "15m", "30m", "1H", "4H", "1D"];
+  const rawTimeframe = (signal.timeframe || snapshot.market.timeframe || "1H").toLowerCase();
+  const currentTf = rawTimeframe === "1h" ? "1H" : rawTimeframe === "4h" ? "4H" : rawTimeframe === "1d" ? "1D" : rawTimeframe;
   const currentSymbol = signal.symbol || snapshot.market.symbol || "XAUUSD";
 
   const getActionBadgeClass = (action: string | null, status?: string) => {

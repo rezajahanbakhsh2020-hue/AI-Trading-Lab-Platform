@@ -139,6 +139,35 @@ export interface ObservabilityReportPayload {
   recent_failures_count: number;
 }
 
+export function marketDataMatchesSelection(
+  dataIdentity: string | null,
+  symbol: string,
+  timeframe: string
+): boolean {
+  return dataIdentity === `${symbol.toUpperCase()}::${timeframe.toLowerCase()}`;
+}
+
+export function createLatestRequestSequence() {
+  let currentId = 0;
+  return {
+    begin: () => ++currentId,
+    isCurrent: (requestId: number) => requestId === currentId,
+    invalidate: () => { currentId += 1; },
+  };
+}
+
+export function hostSnapshotMatchesSelection(
+  snapshot: HostSnapshot | null,
+  symbol: string,
+  timeframe: string,
+  userId: string
+): snapshot is HostSnapshot {
+  return Boolean(snapshot
+    && snapshot.market?.symbol?.toUpperCase() === symbol.toUpperCase()
+    && snapshot.market?.timeframe?.toLowerCase() === timeframe.toLowerCase()
+    && snapshot.security?.userId === userId);
+}
+
 export interface HostSnapshot {
   generatedAt: string | null;
   platform: {

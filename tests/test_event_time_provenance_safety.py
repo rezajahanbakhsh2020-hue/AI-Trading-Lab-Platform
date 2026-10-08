@@ -113,7 +113,7 @@ def test_1_event_timestamp_wins_over_insertion_order(gateway_svc, admin_user):
             "stability_score": 0.85,
         },
         "trade_setup": {"entry_price": 2000.0, "stop_loss": 1980.0, "tp1": 2020.0},
-        "provenance": {"provenance_type": "live_signal", "is_historical": False},
+        "provenance": {"provenance_type": "live_signal", "is_live": True, "is_historical": False, "produced_at": ts_newer},
     }
     res_b = gateway_svc.ingest_signal_payload(user=admin_user, payload=payload_b)
     assert res_b["success"] is True
@@ -136,13 +136,13 @@ def test_1_event_timestamp_wins_over_insertion_order(gateway_svc, admin_user):
             "stability_score": 0.70,
         },
         "trade_setup": {"entry_price": 2000.0, "stop_loss": 2020.0, "tp1": 1980.0},
-        "provenance": {"provenance_type": "live_signal", "is_historical": False},
+        "provenance": {"provenance_type": "live_signal", "is_live": True, "is_historical": False, "produced_at": ts_older},
     }
     res_a = gateway_svc.ingest_signal_payload(user=admin_user, payload=payload_a)
     assert res_a["success"] is True
 
     adapter = Project1GatewayAdapter(gateway_service=gateway_svc)
-    sig = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h")
+    sig = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h", user_id=admin_user.user_id)
 
     assert sig is not None
     assert sig.signal_id == "p1_xauusd_1h_newer_event"
@@ -173,7 +173,7 @@ def test_2_stale_record_inserted_later_does_not_replace_newer_signal(gateway_svc
             "stability_score": 0.90,
         },
         "trade_setup": {"entry_price": 2000.0, "stop_loss": 1980.0, "tp1": 2020.0},
-        "provenance": {"provenance_type": "live_signal", "is_historical": False},
+        "provenance": {"provenance_type": "live_signal", "is_live": True, "is_historical": False, "produced_at": ts_fresh},
     }
     gateway_svc.ingest_signal_payload(user=admin_user, payload=payload_fresh)
 
@@ -195,7 +195,7 @@ def test_2_stale_record_inserted_later_does_not_replace_newer_signal(gateway_svc
             "stability_score": 0.75,
         },
         "trade_setup": {"entry_price": 2000.0, "stop_loss": 2020.0, "tp1": 1980.0},
-        "provenance": {"provenance_type": "live_signal", "is_historical": False},
+        "provenance": {"provenance_type": "live_signal", "is_live": True, "is_historical": False, "produced_at": ts_stale},
     }
     gateway_svc.ingest_signal_payload(user=admin_user, payload=payload_stale)
 
@@ -203,7 +203,7 @@ def test_2_stale_record_inserted_later_does_not_replace_newer_signal(gateway_svc
     adapter = Project1GatewayAdapter(gateway_service=gateway_svc)
     presenter = Project1SignalPresenter(port=adapter, gateway_service=gateway_svc)
 
-    latest_sig = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h")
+    latest_sig = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h", user_id=admin_user.user_id)
     assert latest_sig is not None
     assert latest_sig.signal_id == "sig_fresh_001"
 
@@ -228,7 +228,7 @@ def test_3_missing_timestamp_fail_closed(temp_repo, gateway_svc, admin_user):
     temp_repo.save_record(raw_rec)
 
     adapter = Project1GatewayAdapter(gateway_service=gateway_svc)
-    sig = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h")
+    sig = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h", user_id=admin_user.user_id)
 
     assert sig is None
 
@@ -255,7 +255,7 @@ def test_4_missing_provenance_fail_closed(temp_repo, gateway_svc, admin_user):
     temp_repo.save_record(raw_rec)
 
     adapter = Project1GatewayAdapter(gateway_service=gateway_svc)
-    sig = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h")
+    sig = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h", user_id=admin_user.user_id)
 
     assert sig is None
 
@@ -281,7 +281,7 @@ def test_5_historical_provenance_never_promoted_to_live(temp_repo, gateway_svc, 
     temp_repo.save_record(raw_rec)
 
     adapter = Project1GatewayAdapter(gateway_service=gateway_svc)
-    sig = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h")
+    sig = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h", user_id=admin_user.user_id)
 
     assert sig is None
 
@@ -312,7 +312,7 @@ def test_6_future_dated_signal_rejected(gateway_svc, admin_user):
     gateway_svc.ingest_signal_payload(user=admin_user, payload=payload_future)
 
     adapter = Project1GatewayAdapter(gateway_service=gateway_svc)
-    sig = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h")
+    sig = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h", user_id=admin_user.user_id)
 
     assert sig is None
 
@@ -343,10 +343,100 @@ def test_7_pr86_historical_isolation_regression(temp_repo, gateway_svc, admin_us
     temp_repo.save_record(raw_rec)
 
     adapter = Project1GatewayAdapter(gateway_service=gateway_svc)
-    live_sig = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h")
+    live_sig = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h", user_id=admin_user.user_id)
     assert live_sig is None
 
     presenter = Project1SignalPresenter(port=adapter, gateway_service=gateway_svc)
     pres_res = presenter.present_signal(symbol="XAUUSD", timeframe="1h", user=admin_user)
     assert pres_res["status"] == "no-signal"
     assert pres_res["signal"] is None
+
+
+def test_publication_order_is_applied_before_bounded_repository_window(tmp_path, admin_user):
+    """Late ingestion of >500 older records cannot hide the newest publication."""
+    repo = FileBackedProject1IntegrationRepository(str(tmp_path / "publication_order.json"))
+    gateway = Project1IntegrationGatewayService(repository=repo)
+    now = time.time()
+    newest = {
+        "integration_id": "user:newest",
+        "user_id": admin_user.user_id,
+        "command_type": "EMIT_SIGNAL",
+        "symbol": "XAUUSD",
+        "timeframe": "5m",
+        "signal_type": "buy",
+        "timestamp": now - 900,
+        "lifecycle_state": "STAGED",
+        "signal_id": "publication_newest",
+        "entry_price": None,
+        "stop_loss": None,
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now - 2},
+    }
+    repo.save_record(newest)
+    for idx in range(501):
+        repo.save_record({
+            **newest,
+            "integration_id": f"user:late-{idx}",
+            "signal_id": f"publication_older_{idx}",
+            "timestamp": now - 5,
+            "metadata": {"provenance_type": "live_signal", "is_live": True,
+                         "produced_at": now - 100 - idx if idx < 250 else now + 3600},
+        })
+
+    signal = Project1GatewayAdapter(gateway).fetch_latest_signal("XAUUSD", "5m", user_id=admin_user.user_id)
+    assert signal is not None
+    assert signal.signal_id == "publication_newest"
+
+
+def test_missing_live_flag_or_publication_time_is_not_current_signal(tmp_path, admin_user):
+    repo = FileBackedProject1IntegrationRepository(str(tmp_path / "missing_authority.json"))
+    gateway = Project1IntegrationGatewayService(repository=repo)
+    now = time.time()
+    for record in (
+        {"signal_id": "missing_live", "metadata": {"provenance_type": "live_signal", "produced_at": now}},
+        {"signal_id": "missing_publication", "metadata": {"provenance_type": "live_signal", "is_live": True}},
+    ):
+        repo.save_record({
+            "integration_id": f"user:{record['signal_id']}", "user_id": admin_user.user_id,
+            "command_type": "EMIT_SIGNAL", "symbol": "XAUUSD", "timeframe": "5m",
+            "signal_type": "buy", "timestamp": now, "lifecycle_state": "STAGED",
+            **record,
+        })
+    assert Project1GatewayAdapter(gateway).fetch_latest_signal("XAUUSD", "5m", user_id=admin_user.user_id) is None
+
+
+def test_adapter_preserves_p1_timeframe_identity_case_insensitively(tmp_path, admin_user):
+    repo = FileBackedProject1IntegrationRepository(str(tmp_path / "timeframe_identity.json"))
+    gateway = Project1IntegrationGatewayService(repository=repo)
+    now = time.time()
+    repo.save_record({
+        "integration_id": "user:tf", "user_id": admin_user.user_id,
+        "command_type": "EMIT_SIGNAL", "symbol": "XAUUSD", "timeframe": "1H",
+        "signal_type": "buy", "timestamp": now - 10, "lifecycle_state": "STAGED",
+        "signal_id": "p1_tf_identity", "metadata": {
+            "provenance_type": "live_signal", "is_live": True, "produced_at": now - 1,
+        },
+    })
+    signal = Project1GatewayAdapter(gateway).fetch_latest_signal("XAUUSD", "1h", user_id=admin_user.user_id)
+    assert signal is not None
+    assert signal.timeframe == "1H"
+    assert Project1GatewayAdapter(gateway).fetch_latest_signal("XAUUSD", "1m", user_id=admin_user.user_id) is None
+
+
+def test_anonymous_adapter_scope_excludes_tenant_and_tenantless_records(tmp_path):
+    repo = FileBackedProject1IntegrationRepository(str(tmp_path / "anonymous_scope.json"))
+    gateway = Project1IntegrationGatewayService(repository=repo)
+    now = time.time()
+    base = {
+        "command_type": "EMIT_SIGNAL", "symbol": "XAUUSD", "timeframe": "5m",
+        "signal_type": "buy", "timestamp": now - 1, "lifecycle_state": "STAGED",
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now},
+    }
+    for ident, owner in (("private", "tenant-private"), ("ambiguous", None), ("published", "p1_service_ingest")):
+        repo.save_record({
+            **base, "integration_id": f"{owner}:{ident}" if owner else ident,
+            "user_id": owner, "signal_id": ident,
+        })
+    signal = Project1GatewayAdapter(gateway).fetch_latest_signal("XAUUSD", "5m")
+    assert signal is not None
+    assert signal.signal_id == "published"
+    assert Project1GatewayAdapter(gateway).describe()["received_records_count"] == 1

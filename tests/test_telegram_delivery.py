@@ -23,7 +23,7 @@ def _signal():
         confidence=0.90,
         strategy_name="Momentum",
         timeframe="1h",
-        metadata={"provenance_type": "live_signal"},
+        metadata={"provenance_type": "live_signal", "is_live": True},
     )
 
 

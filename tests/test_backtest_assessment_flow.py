@@ -200,7 +200,7 @@ def test_presenter_snapshot_backtest_integration_user_isolation(provider_operati
                 confidence=0.85,
                 strategy_name="GoldTrendv1",
                 timeframe=timeframe,
-                metadata={"provenance_type": "live_signal"},
+                metadata={"provenance_type": "live_signal", "is_live": True},
             )
         def describe(self):
             return {"name": "MockConnectedPort", "port": "Project1IntegrationPort", "connected": True}

@@ -82,6 +82,8 @@ def sample_p1_mtf_payload():
         },
         "provenance": {
             "provenance_type": "live_signal",
+            "is_live": True,
+            "produced_at": "2026-03-30T12:00:00Z",
             "research_evidence_id": "ev_mtf_001",
             "research_fingerprint": "fp_res_mtf",
         },

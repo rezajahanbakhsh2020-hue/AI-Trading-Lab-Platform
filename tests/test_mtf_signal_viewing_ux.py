@@ -43,7 +43,7 @@ def test_exact_timeframe_isolation_and_no_cross_timeframe_fallback():
         confidence=0.85,
         strategy_name="P1MultiTFStrategy",
         timeframe="5m",
-        metadata={"provenance_type": "live_signal", "is_live": True},
+        metadata={"provenance_type": "live_signal", "is_live": True, "produced_at": time.time()},
     )
 
     port = MockMultiTimeframePort({("XAUUSD", "5m"): tf_5m_signal})
@@ -82,8 +82,7 @@ def test_live_buy_and_sell_semantics_for_selected_timeframe():
         strategy_name="GoldTrend",
         timeframe="15m",
         metadata={
-            "provenance_type": "live_signal",
-            "is_live": True,
+            "provenance_type": "live_signal", "is_live": True,
             "publication_id": "pub_buy_15m",
             "decision_id": "dec_buy_15m",
         },
@@ -100,8 +99,7 @@ def test_live_buy_and_sell_semantics_for_selected_timeframe():
         strategy_name="GoldTrend",
         timeframe="1h",
         metadata={
-            "provenance_type": "live_signal",
-            "is_live": True,
+            "provenance_type": "live_signal", "is_live": True,
             "publication_id": "pub_sell_1h",
             "decision_id": "dec_sell_1h",
         },
@@ -143,8 +141,7 @@ def test_live_authoritative_no_trade_preservation():
         strategy_name="P1MTFStrategy",
         timeframe="30m",
         metadata={
-            "provenance_type": "live_signal",
-            "is_live": True,
+            "provenance_type": "live_signal", "is_live": True,
             "publication_id": "pub_nt_30m",
             "decision_id": "dec_nt_30m",
             "mtf": {
@@ -196,7 +193,7 @@ def test_stale_signal_remains_fail_closed():
         confidence=0.80,
         strategy_name="GoldTrend",
         timeframe="1h",
-        metadata={"provenance_type": "live_signal", "is_live": True},
+        metadata={"provenance_type": "live_signal", "is_live": True, "produced_at": time.time()},
     )
 
     port = MockMultiTimeframePort({("XAUUSD", "1h"): stale_sig})
@@ -271,8 +268,7 @@ def test_p1_mtf_metadata_and_lineage_preservation_without_p2_recomputation(tmp_p
             ],
         },
         "metadata": {
-            "provenance_type": "live_signal",
-            "is_live": True,
+            "provenance_type": "live_signal", "is_live": True, "produced_at": now_ts - 5.0,
         },
     }
 

@@ -40,7 +40,7 @@ class DummyGatewayRepo:
     def __init__(self, records=None) -> None:
         self.records = records or []
 
-    def list_records_for_user(self, user_id=None, symbol=None, lifecycle_state=None, limit=500, allow_system=False):
+    def list_records_for_user(self, user_id=None, symbol=None, lifecycle_state=None, limit=500, allow_system=False, publication_order=False):
         res = []
         for r in self.records:
             if symbol and r.get("symbol") and r.get("symbol").upper() != symbol.upper():
@@ -66,7 +66,7 @@ def test_live_signal_authenticity_eligibility():
     valid_sig = {
         "symbol": "XAUUSD",
         "timestamp": now_ts - 50.0,
-        "metadata": {"provenance_type": "live_signal", "is_live": True},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now_ts - 50.0},
     }
     is_live, reason = _evaluate_signal_live_status(valid_sig, requested_symbol="XAUUSD", clock=clk)
     assert is_live is True
@@ -86,7 +86,7 @@ def test_live_signal_authenticity_eligibility():
     older_sig = {
         "symbol": "XAUUSD",
         "timestamp": now_ts - 350.0,
-        "metadata": {"provenance_type": "live_signal", "is_live": True},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now_ts - 350.0},
     }
     is_live, reason = _evaluate_signal_live_status(older_sig, requested_symbol="XAUUSD", clock=clk)
     assert is_live is True
@@ -95,7 +95,7 @@ def test_live_signal_authenticity_eligibility():
     future_sig = {
         "symbol": "XAUUSD",
         "timestamp": now_ts + 100.0,
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now_ts + 100.0},
     }
     is_live, reason = _evaluate_signal_live_status(future_sig, requested_symbol="XAUUSD", clock=clk)
     assert is_live is False
@@ -105,7 +105,7 @@ def test_live_signal_authenticity_eligibility():
     mismatch_sig = {
         "symbol": "EURUSD",
         "timestamp": now_ts - 10.0,
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now_ts - 10.0},
     }
     is_live, reason = _evaluate_signal_live_status(mismatch_sig, requested_symbol="XAUUSD", clock=clk)
     assert is_live is False
@@ -120,25 +120,27 @@ def test_event_time_ordering_over_insertion_order():
             {
                 "signal_id": "sig_newer_event",
                 "symbol": "XAUUSD",
+                "timeframe": "1h",
                 "signal_type": "buy",
                 "timestamp": now_ts - 10.0,  # Newer event time
                 "entry_price": 2650.0,
                 "created_at": now_ts - 5.0,
-                "metadata": {"provenance_type": "live_signal"},
+                "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now_ts - 10.0},
             },
             {
                 "signal_id": "sig_older_event_inserted_later",
                 "symbol": "XAUUSD",
+                "timeframe": "1h",
                 "signal_type": "sell",
                 "timestamp": now_ts - 200.0,  # Older event time
                 "entry_price": 2640.0,
                 "created_at": now_ts - 1.0,  # Inserted later
-                "metadata": {"provenance_type": "live_signal"},
+                "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now_ts - 200.0},
             },
         ]
     )
     adapter = Project1GatewayAdapter(gateway_service=DummyGatewayService(repo))
-    fetched = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h")
+    fetched = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h", user_id="owner_1")
 
     assert fetched is not None
     assert fetched.signal_id == "sig_newer_event"
@@ -154,12 +156,13 @@ def test_market_price_purity_no_signal_entry_fallback():
             {
                 "signal_id": "p1_xauusd_live",
                 "symbol": "XAUUSD",
+                "timeframe": "1h",
                 "signal_type": "buy",
                 "timestamp": now_ts - 20.0,
                 "entry_price": 2650.50,
                 "stop_loss": 2635.00,
                 "take_profit_1": 2670.00,
-                "metadata": {"provenance_type": "live_signal"},
+                "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now_ts - 20.0},
             }
         ]
     )
@@ -198,7 +201,7 @@ def test_timeline_consistency_live_signal_only():
             "timestamp": str(now_ts - 30.0),
             "status": "active",
             "strategyName": "GoldTrend",
-            "metadata": {"provenance_type": "live_signal"},
+            "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": str(now_ts - 30.0)},
         },
     }
     items = timeline_service.build_timeline(user=user, snapshot=active_snapshot)
@@ -243,7 +246,8 @@ def test_cross_layer_xauusd_consistency_trace(tmp_path):
 
     # Ingest Contract v1.0 payload
     ingest_record = {
-        "integration_id": "ingest_001",
+        "integration_id": "owner_1:ingest_001",
+        "user_id": "owner_1",
         "command_type": "EMIT_SIGNAL",
         "signal_id": "sig_xauusd_cross_layer_001",
         "symbol": "XAUUSD",
@@ -257,7 +261,7 @@ def test_cross_layer_xauusd_consistency_trace(tmp_path):
         "take_profit_2": 2690.00,
         "take_profit_3": 2710.00,
         "confidence": 0.88,
-        "metadata": {"provenance_type": "live_signal", "is_live": True},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now_ts - 25.0},
     }
     repo.save_record(record=ingest_record)
 
@@ -267,7 +271,7 @@ def test_cross_layer_xauusd_consistency_trace(tmp_path):
 
     # 2. Project1GatewayAdapter
     adapter = Project1GatewayAdapter(gateway_service=gw_service)
-    latest_sig = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h")
+    latest_sig = adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="1h", user_id="owner_1")
 
     assert latest_sig is not None
     assert latest_sig.signal_id == "sig_xauusd_cross_layer_001"

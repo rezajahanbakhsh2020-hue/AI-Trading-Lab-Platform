@@ -72,8 +72,10 @@ def _evaluate_signal_live_status(
     if prov != "live_signal":
         return False, f"Signal provenance '{prov}' is not an authorized live signal."
 
-    if "is_live" in meta and not meta["is_live"]:
+    if meta.get("is_live") is False:
         return False, "Signal metadata explicitly marks signal as non-live."
+    if meta.get("is_live") is not True:
+        return False, "Signal metadata does not authoritatively mark the publication as live."
 
     # Determine publication / production timestamp vs market/bar timestamp
     pub_ts: Optional[float] = None

@@ -71,7 +71,7 @@ def test_cross_user_tenant_signal_isolation(gateway_svc, user_a, user_b):
         "take_profit_1": 2730.0,
         "confidence": 0.85,
         "strategy_name": "GoldStrategyA",
-        "metadata": {"provenance_type": "live_signal"},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": now_ts},
     }
 
     # Ingest for User A

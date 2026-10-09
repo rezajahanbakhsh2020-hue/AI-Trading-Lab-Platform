@@ -267,12 +267,16 @@ class Project1GatewayAdapter(Project1IntegrationPort):
 
             # Authoritative publication timestamp derivation
             pub_ts = None
-            raw_pub_ts = (
-                raw_meta.get("produced_at")
-                or raw_meta.get("authorized_at_utc")
-                or raw_meta.get("publication_timestamp")
-                or rec.get("produced_at")
-            )
+            raw_pub_ts = None
+            for source, key in (
+                (raw_meta, "produced_at"),
+                (raw_meta, "authorized_at_utc"),
+                (raw_meta, "publication_timestamp"),
+                (rec, "produced_at"),
+            ):
+                if key in source and source[key] is not None:
+                    raw_pub_ts = source[key]
+                    break
             if raw_pub_ts is not None:
                 if isinstance(raw_pub_ts, (int, float)) and not isinstance(raw_pub_ts, bool):
                     pub_ts = float(raw_pub_ts)
@@ -285,7 +289,7 @@ class Project1GatewayAdapter(Project1IntegrationPort):
 
             # Event/candle time identifies market data; it cannot stand in for
             # authoritative publication ordering when publication time is absent.
-            if pub_ts is None or not math.isfinite(pub_ts) or pub_ts > now_ts + 5.0:
+            if pub_ts is None or not math.isfinite(pub_ts) or pub_ts <= 0 or pub_ts > now_ts + 5.0:
                 continue
             candidates.append((pub_ts, sig_event_ts, rec))
 

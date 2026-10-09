@@ -49,7 +49,7 @@ ALLOWED_LIFECYCLE_STATES: Tuple[str, ...] = (
     "EXECUTED",
 )
 
-ALLOWED_MTF_TIMEFRAMES: Tuple[str, ...] = ("5m", "15m", "30m", "1H", "4H", "1D")
+ALLOWED_MTF_TIMEFRAMES: Tuple[str, ...] = ("1m", "5m", "15m", "30m", "1H", "4H", "1D")
 
 ALLOWED_MTF_CLASSIFICATIONS: Tuple[str, ...] = (
     "ALIGNED",

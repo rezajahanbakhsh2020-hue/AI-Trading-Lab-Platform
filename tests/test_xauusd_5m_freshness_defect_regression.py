@@ -351,3 +351,50 @@ def test_missing_is_live_flag_fails_closed():
     is_live, reason = _evaluate_signal_live_status(sig_dict, requested_symbol="XAUUSD")
     assert is_live is False
     assert "does not authoritatively mark" in reason
+
+
+def test_malformed_publication_timestamp_fails_closed():
+    now_ts = time.time()
+    sig_dict = {
+        "symbol": "XAUUSD",
+        "timestamp": now_ts - 10.0,
+        "metadata": {
+            "provenance_type": "live_signal",
+            "is_live": True,
+            "produced_at": "not-an-iso-timestamp",
+        },
+    }
+    is_live, reason = _evaluate_signal_live_status(sig_dict, requested_symbol="XAUUSD")
+    assert is_live is False
+    assert reason == "Signal missing valid authoritative publication timestamp."
+
+
+def test_malformed_primary_publication_timestamp_cannot_fall_back_to_another_clock():
+    from src.platform.adapters.project1_adapter import Project1GatewayAdapter
+
+    now_ts = time.time()
+    record = {
+        "command_type": "EMIT_SIGNAL",
+        "symbol": "XAUUSD",
+        "timeframe": "5m",
+        "signal_type": "BUY",
+        "timestamp": now_ts - 3600.0,
+        "lifecycle_state": "STAGED",
+        "signal_id": "sig_bad_publication_clock",
+        "metadata": {
+            "provenance_type": "live_signal",
+            "is_live": True,
+            "produced_at": "not-an-iso-timestamp",
+            "authorized_at_utc": now_ts - 10.0,
+        },
+    }
+
+    class FakeRepo:
+        def list_records_for_user(self, **kwargs):
+            return [record]
+
+    class FakeGateway:
+        _repo = FakeRepo()
+
+    adapter = Project1GatewayAdapter(FakeGateway())
+    assert adapter.fetch_latest_signal(symbol="XAUUSD", timeframe="5m") is None

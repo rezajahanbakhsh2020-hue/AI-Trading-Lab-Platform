@@ -123,7 +123,7 @@ describe("InteractiveChart Component", () => {
       </I18nProvider>
     );
     const values = Array.from(container.querySelectorAll("[aria-label=\"Timeframe selector\"] button"), (button) => button.textContent);
-    expect(values).toEqual(["5m", "15m", "30m", "1H", "4H", "1D"]);
+    expect(values).toEqual(["1m", "5m", "15m", "30m", "1H", "4H", "1D"]);
   });
 
   it("triggers onTimeframeChange callback when timeframe button is clicked", () => {

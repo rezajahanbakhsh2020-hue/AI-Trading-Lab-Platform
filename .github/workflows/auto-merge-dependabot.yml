@@ -1,40 +1,57 @@
 name: Auto-merge Dependabot PRs
 
+# Tests execute untrusted PR code in the read-only pull_request workflow.
+# This privileged workflow only runs after that workflow succeeds and never
+# checks out or executes the PR head.
 on:
-  pull_request_target:
-    types: [opened, synchronize, labeled, ready_for_review]
+  workflow_run:
+    workflows: ["Production Release Verification & Platform Tests"]
+    types: [completed]
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: write
 
 jobs:
-  auto-merge:
-    name: Test and auto-merge Dependabot PR
-    if: github.actor == 'dependabot[bot]' && contains(github.event.pull_request.labels.*.name, 'dependencies')
+  enable-auto-merge:
+    name: Enable auto-merge after successful tests
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout head ref
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.11"
-
-      - name: Install test dependencies
-        run: python -m pip install --upgrade pip pytest
-
-      - name: Run tests
-        run: python -m pytest -q
-
-      - name: Enable auto-merge for Dependabot PR
-        if: success()
-        uses: peter-evans/enable-pull-request-automerge@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          pull-request-number: ${{ github.event.pull_request.number }}
-          merge-method: squash
+      - name: Verify associated PR is the tested Dependabot head
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          BASE_BRANCH: ${{ github.event.workflow_run.pull_requests[0].base.ref }}
+          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+        run: |
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No associated pull request; skipping."
+            exit 0
+          fi
+          pr_json=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER")
+          author=$(printf '%s' "$pr_json" | jq -r '.user.login')
+          head_sha=$(printf '%s' "$pr_json" | jq -r '.head.sha')
+          has_dependency_label=$(printf '%s' "$pr_json" | jq -r '[.labels[].name] | any(. == "dependencies")')
+          if [ "$author" != "dependabot[bot]" ] || [ "$head_sha" != "$HEAD_SHA" ] || [ "$has_dependency_label" != "true" ]; then
+            echo "PR is not the tested Dependabot dependency head; skipping."
+            exit 0
+          fi
+          if ! protection=$(gh api "repos/$GH_REPO/branches/$BASE_BRANCH/protection" 2>/dev/null); then
+            echo "Branch protection could not be verified; refusing auto-merge."
+            exit 0
+          fi
+          required_checks=$(printf '%s' "$protection" | jq '(.required_status_checks.contexts | length) + (.required_status_checks.checks | length)')
+          if [ "$required_checks" -lt 1 ]; then
+            echo "No required status checks are configured; refusing auto-merge."
+            exit 0
+          fi
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+      - name: Enable auto-merge
+        if: steps.pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: gh pr merge --auto --squash "$PR_NUMBER"

@@ -472,12 +472,12 @@ export function createHostSnapshotFromProject1(
 
   // Extract publication/production timestamp strictly (never fallback to sigTs)
   let pubTs: number | null = null;
-  const rawPubTs = meta.produced_at || meta.authorized_at_utc || meta.publication_timestamp;
-  if (typeof rawPubTs === "number" && !isNaN(rawPubTs)) {
+  const rawPubTs = meta.produced_at ?? meta.authorized_at_utc ?? meta.publication_timestamp;
+  if (typeof rawPubTs === "number" && Number.isFinite(rawPubTs) && rawPubTs > 0) {
     pubTs = rawPubTs;
   } else if (typeof rawPubTs === "string" && rawPubTs.trim()) {
     const parsed = Date.parse(rawPubTs);
-    if (!isNaN(parsed)) pubTs = parsed / 1000;
+    if (!isNaN(parsed) && parsed > 0) pubTs = parsed / 1000;
   }
 
   // Check explicit valid_until / expires_at if provided
@@ -501,7 +501,8 @@ export function createHostSnapshotFromProject1(
     signal &&
     sigTs > 0 &&
     sigTs <= nowSec + 5.0 &&
-    (pubTs === null || pubTs <= nowSec + 5.0) &&
+    pubTs !== null &&
+    pubTs <= nowSec + 5.0 &&
     provenance === "live_signal" &&
     !isHistorical &&
     meta.is_live !== false &&

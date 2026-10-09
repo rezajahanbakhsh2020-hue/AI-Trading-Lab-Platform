@@ -30,6 +30,7 @@ describe("SignalCard UI Component", () => {
         metadata: {
           provenance_type: "live_signal",
           is_live: true,
+          produced_at: nowSec - 10,
           mtf: {
             star_representation: "⭐⭐⭐⭐⭐",
             alignment_coverage: 5,
@@ -71,6 +72,7 @@ describe("SignalCard UI Component", () => {
         metadata: {
           provenance_type: "live_signal",
           is_live: true,
+          produced_at: nowSec - 10,
           mtf: {
             star_representation: "⭐⭐☆☆☆",
             alignment_coverage: 2,

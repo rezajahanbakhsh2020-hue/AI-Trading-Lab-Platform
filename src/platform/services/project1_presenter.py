@@ -16,6 +16,7 @@ Rules:
 
 from typing import Any, Dict, Optional, Tuple
 
+import math
 import time
 from src.platform.domain.security import Permission
 from src.platform.domain.user_authorization import UserAuthorization
@@ -29,8 +30,6 @@ from src.platform.services.project1_gateway import Project1IntegrationGatewaySer
 from src.platform.services.provider_operations import ProviderOperations
 from src.platform.services.market_overview import MarketOverviewService
 from src.platform.services.security import SecretSanitizer, SecurityBoundaryService
-
-LIVE_SIGNAL_MAX_AGE_SECONDS = 300.0  # 5 minutes currentness threshold for live signals
 
 
 def _evaluate_signal_live_status(
@@ -56,8 +55,11 @@ def _evaluate_signal_live_status(
         if sig_symbol != req_sym:
             return False, f"Signal symbol '{sig_symbol}' does not match requested market symbol '{req_sym}'."
 
-    sig_ts = float(sig_dict.get("timestamp") or 0.0)
-    if sig_ts <= 0:
+    try:
+        sig_ts = float(sig_dict.get("timestamp") or 0.0)
+    except (TypeError, ValueError, OverflowError):
+        return False, "Signal missing valid event timestamp."
+    if not math.isfinite(sig_ts) or sig_ts <= 0:
         return False, "Signal missing valid event timestamp."
 
     if sig_ts > now_ts + 5.0:
@@ -79,21 +81,29 @@ def _evaluate_signal_live_status(
 
     # Determine publication / production timestamp vs market/bar timestamp
     pub_ts: Optional[float] = None
-    raw_pub_ts = (
-        meta.get("produced_at")
-        or meta.get("authorized_at_utc")
-        or meta.get("publication_timestamp")
-        or sig_dict.get("produced_at")
-    )
+    raw_pub_ts = None
+    for source, key in (
+        (meta, "produced_at"),
+        (meta, "authorized_at_utc"),
+        (meta, "publication_timestamp"),
+        (sig_dict, "produced_at"),
+    ):
+        if key in source and source[key] is not None:
+            raw_pub_ts = source[key]
+            break
     if raw_pub_ts is not None:
         if isinstance(raw_pub_ts, (int, float)) and not isinstance(raw_pub_ts, bool):
-            pub_ts = float(raw_pub_ts)
+            candidate_pub_ts = float(raw_pub_ts)
+            pub_ts = candidate_pub_ts if math.isfinite(candidate_pub_ts) and candidate_pub_ts > 0 else None
         elif isinstance(raw_pub_ts, str) and raw_pub_ts.strip():
             try:
                 from src.platform.domain.project1_contract import parse_iso8601_to_utc_epoch
                 pub_ts = parse_iso8601_to_utc_epoch(raw_pub_ts, max_future_skew_seconds=5.0, current_time_fn=clk.get_current_timestamp)
             except Exception:
                 pub_ts = None
+
+    if pub_ts is None:
+        return False, "Signal missing valid authoritative publication timestamp."
 
     # Check explicit expiration / validity bounds if provided in contract
     raw_valid_until = meta.get("valid_until") or meta.get("expires_at") or sig_dict.get("valid_until") or sig_dict.get("expires_at")

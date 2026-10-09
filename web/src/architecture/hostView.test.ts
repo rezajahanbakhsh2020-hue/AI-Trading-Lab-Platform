@@ -110,6 +110,35 @@ describe("connected Project 1 host snapshot", () => {
     expect(snapshot.risk.status).toBe("unavailable");
   });
 
+
+  it("keeps an authoritative publication older than 300s visible with the LIVE badge off", () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const oldLiveSignal = {
+      ...SAMPLE_REAL_PROJECT1_SIGNAL,
+      signal_id: "p1_old_live_publication",
+      timestamp: nowSec - 3600,
+      metadata: {
+        provenance_type: "live_signal",
+        is_live: true,
+        produced_at: nowSec - 301,
+        publication_id: "pub_old_live_001",
+      },
+    };
+
+    const snapshot = createHostSnapshotFromProject1(
+      SAMPLE_CONNECTED_PORT,
+      oldLiveSignal,
+      "XAUUSD",
+      "1h"
+    );
+
+    expect(snapshot.signal.signalId).toBe("p1_old_live_publication");
+    expect(snapshot.signal.action).toBe("BUY");
+    expect(snapshot.signal.status).toBe("active");
+    expect(snapshot.signal.metadata?.show_live_badge).toBe(false);
+    expect(snapshot.monitoring.status).toBe("available");
+  });
+
   it("falls back to disconnected snapshot if port is reported disconnected", () => {
     const snapshot = createHostSnapshotFromProject1(
       { name: "DisconnectedAdapter", port: "Project1IntegrationPort", connected: false },
@@ -121,7 +150,27 @@ describe("connected Project 1 host snapshot", () => {
     expect(snapshot.signal.action).toBeNull();
   });
 
-  it("returns truthful no-signal status and holds risk levels when historical/stale XAUUSD signal (>300s old or lab_artifact) is passed", () => {
+  it("rejects malformed publication timestamps without converting the event time into a fallback", () => {
+    const invalidPublication = {
+      ...SAMPLE_REAL_PROJECT1_SIGNAL,
+      timestamp: Math.floor(Date.now() / 1000),
+      metadata: {
+        provenance_type: "live_signal",
+        is_live: true,
+        produced_at: "not-an-iso-timestamp",
+      },
+    };
+    const snapshot = createHostSnapshotFromProject1(
+      SAMPLE_CONNECTED_PORT,
+      invalidPublication,
+      "XAUUSD",
+      "1h"
+    );
+    expect(snapshot.signal.action).toBe("NO SIGNAL");
+    expect(snapshot.signal.status).toBe("no-signal");
+  });
+
+  it("returns truthful no-signal status for historical lab artifacts", () => {
     const staleSignal = {
       signal_id: "p1_xauusd_1h_1700000000",
       symbol: "XAUUSD",

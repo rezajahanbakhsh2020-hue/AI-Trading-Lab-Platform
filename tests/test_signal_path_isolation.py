@@ -185,7 +185,7 @@ def test_hard_5_minute_freshness_boundary(tmp_path, mock_admin_user):
         "timeframe": "1h",
         "signal_type": "buy",
         "timestamp": sig_fresh_ts,
-        "metadata": {"provenance_type": "live_signal", "is_live": True},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": sig_fresh_ts},
     }
     is_live_fresh, _ = _evaluate_signal_live_status(sig_fresh_dict, clock=clk)
     assert is_live_fresh is True
@@ -198,7 +198,7 @@ def test_hard_5_minute_freshness_boundary(tmp_path, mock_admin_user):
         "timeframe": "1h",
         "signal_type": "buy",
         "timestamp": sig_stale_ts,
-        "metadata": {"provenance_type": "live_signal", "is_live": True},
+        "metadata": {"provenance_type": "live_signal", "is_live": True, "produced_at": sig_stale_ts},
     }
     is_live_stale, _ = _evaluate_signal_live_status(sig_stale_dict, clock=clk)
     assert is_live_stale is True

@@ -11,8 +11,8 @@ Supported Scope:
 Rules:
 - Level 3 deployed-runtime proof is OUT OF SCOPE and CANNOT be produced by repository code or tests.
 - Localhost/loopback/test-server evidence strictly classifies as LEVEL_2_LOCAL_HTTP or LEVEL_1_CODE_CONTRACT.
-- Canonical production timeframes are strictly: "5m", "15m", "30m", "1H", "4H", "1D".
-  Aliases "1h", "4h", "1d" map to "1H", "4H", "1D". "1m" is explicitly rejected.
+- Canonical production timeframes are strictly: "1m", "5m", "15m", "30m", "1H", "4H", "1D".
+  Aliases "1h", "4h", "1d" map to "1H", "4H", "1D".
 """
 
 from dataclasses import dataclass, field
@@ -29,9 +29,10 @@ from typing import Any, Callable, Dict, Optional, Tuple
 VERIFIER_ID: str = "P2_AUTHORITATIVE_RUNTIME_VERIFIER"
 VERIFIER_VERSION: str = "1.0.0"
 
-CANONICAL_PRODUCTION_TIMEFRAMES: Tuple[str, ...] = ("5m", "15m", "30m", "1H", "4H", "1D")
+CANONICAL_PRODUCTION_TIMEFRAMES: Tuple[str, ...] = ("1m", "5m", "15m", "30m", "1H", "4H", "1D")
 
 TIMEFRAME_ALIAS_MAP: Dict[str, str] = {
+    "1m": "1m",
     "5m": "5m",
     "15m": "15m",
     "30m": "30m",
@@ -54,11 +55,10 @@ LOOPBACK_HOST_PATTERNS = (
 def canonicalize_timeframe(raw_tf: Any) -> str:
     """Canonicalize a raw timeframe string into the canonical production timeframe set.
 
-    Canonical set: ("5m", "15m", "30m", "1H", "4H", "1D")
+    Canonical set: ("1m", "5m", "15m", "30m", "1H", "4H", "1D")
     - "1h" -> "1H"
     - "4h" -> "4H"
     - "1d" -> "1D"
-    - "1m" -> Raises ValueError (not in canonical production timeframe set)
     """
     if not isinstance(raw_tf, str) or not raw_tf.strip():
         raise ValueError("Timeframe must be a non-empty string.")

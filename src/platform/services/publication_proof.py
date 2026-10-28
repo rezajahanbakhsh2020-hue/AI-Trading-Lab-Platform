@@ -24,6 +24,9 @@ INGEST_PATH = "/api/v1/integration/project1/ingest"
 SNAPSHOT_PATH = "/api/v1/snapshot"
 
 
+ACCEPTED_LIVE_PROVENANCE_TYPES = ("live_signal", "direct_strategy_signal")
+
+
 def build_p1_contract_v1_payload(
     *,
     symbol: str = "XAUUSD",
@@ -33,6 +36,7 @@ def build_p1_contract_v1_payload(
     stop_loss: float = 2680.0,
     take_profit: Optional[float] = 2720.0,
     strategy_name: str = "local_connectivity_proof",
+    provenance_type: str = "live_signal",
     reference_now: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Build a P1 Contract v1.0 payload in the canonical nested layout.
@@ -47,6 +51,12 @@ def build_p1_contract_v1_payload(
     clean_decision = str(decision).strip().lower()
     if clean_decision not in ("buy", "sell", "no-trade", "no-signal", "hold"):
         raise ValueError(f"Unsupported proof decision '{decision}'.")
+    clean_provenance = str(provenance_type).strip()
+    if clean_provenance not in ACCEPTED_LIVE_PROVENANCE_TYPES:
+        raise ValueError(
+            f"Unsupported proof provenance_type '{provenance_type}'. "
+            f"Accepted live-signal provenance types: {ACCEPTED_LIVE_PROVENANCE_TYPES}."
+        )
 
     now_ts = reference_now if reference_now is not None else time.time()
     now_dt = datetime.fromtimestamp(now_ts, tz=timezone.utc)
@@ -76,7 +86,7 @@ def build_p1_contract_v1_payload(
         },
         "provenance": {
             "source": "local_publication_proof",
-            "provenance_type": "live_signal",
+            "provenance_type": clean_provenance,
             "is_live": True,
             "produced_at": publication_ts.isoformat(),
         },
@@ -103,6 +113,7 @@ def run_publication_proof(
     symbol: str = "XAUUSD",
     timeframe: str = "1H",
     decision: str = "buy",
+    provenance_type: str = "live_signal",
     timeout_seconds: float = 10.0,
     transport_post=None,
     transport_get=None,
@@ -122,7 +133,12 @@ def run_publication_proof(
     clean_base = str(base_url).strip().rstrip("/")
     key_clean = str(service_key).strip()
 
-    payload = build_p1_contract_v1_payload(symbol=symbol, timeframe=timeframe, decision=decision)
+    payload = build_p1_contract_v1_payload(
+        symbol=symbol,
+        timeframe=timeframe,
+        decision=decision,
+        provenance_type=provenance_type,
+    )
     event_id = payload["event_id"]
 
     def post(req: urllib.request.Request) -> Dict[str, Any]:
@@ -229,6 +245,7 @@ def main(argv=None) -> int:
     parser.add_argument("--symbol", default="XAUUSD")
     parser.add_argument("--timeframe", default="1H")
     parser.add_argument("--decision", default="buy")
+    parser.add_argument("--provenance-type", default="live_signal")
     args = parser.parse_args(argv)
 
     service_key = os.getenv("PROJECT2_API_KEY") or os.getenv("PROJECT1_SERVICE_KEY") or ""
@@ -243,6 +260,7 @@ def main(argv=None) -> int:
         symbol=args.symbol,
         timeframe=args.timeframe,
         decision=args.decision,
+        provenance_type=args.provenance_type,
     )
     out = {k: v for k, v in result.items() if k != "snapshot_signal"}
     print(json.dumps(out, indent=2, default=str))

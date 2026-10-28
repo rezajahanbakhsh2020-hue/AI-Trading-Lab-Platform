@@ -27,6 +27,7 @@ from src.platform.services.publication_proof import (
     run_publication_proof,
 )
 from src.platform.domain.project1_contract import (
+    ALLOWED_MTF_TIMEFRAMES,
     parse_iso8601_to_utc_epoch,
     validate_project1_contract_payload,
 )
@@ -209,3 +210,82 @@ def test_presented_p1_xauusd_signal_visible_after_300s_and_ui_security_block_mat
     }
     is_live, reason = _evaluate_signal_live_status(sig_dict, requested_symbol="XAUUSD")
     assert is_live is True, reason
+
+
+def test_direct_strategy_provenance_accepted_end_to_end_over_http(proof_base_url):
+    """Canonical P1 direct-strategy live signals (provenance_type
+    'direct_strategy_signal') must flow through the real authenticated HTTP
+    ingest and remain retrievable through the real snapshot path."""
+    base_url, cfg = proof_base_url
+    result = run_publication_proof(
+        base_url=base_url,
+        service_key=cfg.project1_service_key,
+        symbol="XAUUSD",
+        timeframe="15m",
+        decision="buy",
+        provenance_type="direct_strategy_signal",
+    )
+    assert result["success"] is True, result.get("reason")
+    assert result["action"] == "BUY"
+    assert str(result["timeframe"]) == "15m"
+    assert result["risk"]["entry"] == 2700.0
+    assert result["security_viewer_id"] == "guest_user"
+
+
+def test_proof_builder_rejects_unsupported_provenance_type():
+    with pytest.raises(ValueError):
+        build_p1_contract_v1_payload(provenance_type="lab_artifact")
+
+
+def test_all_seven_timeframes_exact_identity_no_cross_timeframe_fallback(proof_base_url):
+    """Each canonical P1 timeframe (1m, 5m, 15m, 30m, 1H, 4H, 1D) published through
+    the real authenticated HTTP ingest must be retrievable only through its own
+    exact timeframe snapshot query, with canonical identity preserved and no
+    cross-timeframe fallback."""
+    base_url, cfg = proof_base_url
+    now_ts = time.time()
+    published_ids = {}
+
+    for idx, tf in enumerate(ALLOWED_MTF_TIMEFRAMES):
+        payload = build_p1_contract_v1_payload(
+            timeframe=tf,
+            decision="buy",
+            provenance_type="direct_strategy_signal",
+            reference_now=now_ts - 10.0 - idx,
+        )
+        event_id = payload["event_id"]
+        req = urllib.request.Request(
+            f"{base_url}/api/v1/integration/project1/ingest",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {cfg.project1_service_key}",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req) as resp:
+            ack = json.loads(resp.read().decode("utf-8"))
+        assert ack.get("success") is True, f"{tf}: ingest rejected: {ack}"
+        assert ack.get("status") == "INGESTED", f"{tf}: {ack}"
+        assert ack.get("publication_id") == event_id
+        published_ids[tf] = event_id
+
+    for idx, tf in enumerate(ALLOWED_MTF_TIMEFRAMES):
+        snap_req = urllib.request.Request(
+            f"{base_url}/api/v1/snapshot?symbol=XAUUSD&timeframe={tf.lower()}",
+            headers={"Content-Type": "application/json"},
+            method="GET",
+        )
+        with urllib.request.urlopen(snap_req) as resp:
+            snap = json.loads(resp.read().decode("utf-8"))
+        sig = snap["signal"]
+        assert sig["timeframe"] == tf, (
+            f"Snapshot timeframe identity for '{tf.lower()}' must remain canonically '{tf}' (got '{sig['timeframe']}')"
+        )
+        assert sig["signalId"] == published_ids[tf], (
+            f"Snapshot for '{tf.lower()}' must return only the '{tf}' record, not another timeframe's signal"
+        )
+        assert sig["status"] == "active", f"{tf}: {sig}"
+        assert sig["action"] == "BUY"
+        other_ids = [eid for other_tf, eid in published_ids.items() if other_tf != tf]
+        assert sig["signalId"] not in other_ids, f"{tf}: cross-timeframe fallback detected"

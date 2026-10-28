@@ -49,7 +49,7 @@ ALLOWED_LIFECYCLE_STATES: Tuple[str, ...] = (
     "EXECUTED",
 )
 
-ALLOWED_MTF_TIMEFRAMES: Tuple[str, ...] = ("5m", "15m", "30m", "1H", "4H", "1D")
+ALLOWED_MTF_TIMEFRAMES: Tuple[str, ...] = ("1m", "5m", "15m", "30m", "1H", "4H", "1D")
 
 ALLOWED_MTF_CLASSIFICATIONS: Tuple[str, ...] = (
     "ALIGNED",
@@ -333,8 +333,8 @@ def parse_iso8601_to_utc_epoch(
 
     utc_epoch = dt.astimezone(timezone.utc).timestamp()
 
-    if not math.isfinite(utc_epoch) or utc_epoch < 0:
-        raise ValueError(f"Timestamp '{clean_str}' resulted in invalid non-finite epoch value {utc_epoch}.")
+    if not math.isfinite(utc_epoch) or utc_epoch <= 0:
+        raise ValueError(f"Timestamp '{clean_str}' resulted in invalid epoch value {utc_epoch}. Zero, negative, and non-finite epochs are rejected.")
 
     now_ts = current_time_fn() if current_time_fn is not None else time.time()
     if utc_epoch > now_ts + max_future_skew_seconds:
@@ -730,8 +730,8 @@ def validate_project1_contract_payload(
             errors.append("timestamp must be numeric or ISO-8601 string.")
         else:
             ts_f = float(raw_ts)
-            if ts_f < 0 or not math.isfinite(ts_f):
-                errors.append("timestamp must be a non-negative finite number.")
+            if ts_f <= 0 or not math.isfinite(ts_f):
+                errors.append("timestamp must be a positive finite number. Zero, negative, and non-finite values are rejected.")
             else:
                 now_ts = current_time_fn() if current_time_fn is not None else time.time()
                 if ts_f > now_ts + 5.0:

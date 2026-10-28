@@ -10,6 +10,9 @@ Rules:
 - Enforces user isolation, RBAC, least privilege, and audit control plane logging.
 """
 
+import base64
+import json
+import math
 import time
 import uuid
 from typing import Any, Dict, List, Optional
@@ -576,8 +579,13 @@ class Project1IntegrationGatewayService:
         symbol: Optional[str] = None,
         lifecycle_state: Optional[str] = None,
         limit: int = 100,
+        timeframe: Optional[str] = None,
+        from_timestamp: Optional[float] = None,
+        to_timestamp: Optional[float] = None,
+        signal_type: Optional[str] = None,
+        cursor: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """List integration records for the authorized user."""
+        """List integration records for the authorized user with exact filters and keyset pagination."""
         if user is None:
             return {
                 "success": False,
@@ -595,19 +603,58 @@ class Project1IntegrationGatewayService:
                 "message": f"Access denied: {reason}",
             }
 
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1 or limit > 500:
+            return {"success": False, "error_code": "INVALID_LIMIT", "records": [], "message": "limit must be between 1 and 500."}
+        if timeframe is not None:
+            from src.platform.domain.project1_contract import ALLOWED_MTF_TIMEFRAMES
+            canonical = {value.lower(): value.lower() for value in ALLOWED_MTF_TIMEFRAMES}
+            aliases = {"1h": "1h", "4h": "4h", "1d": "1d"}
+            timeframe = (canonical | aliases).get(timeframe.strip().lower())
+            if timeframe is None:
+                return {"success": False, "error_code": "INVALID_TIMEFRAME", "records": [], "message": "Unsupported timeframe filter."}
+        for bound_name, bound in (("from_timestamp", from_timestamp), ("to_timestamp", to_timestamp)):
+            if bound is not None and (isinstance(bound, bool) or not isinstance(bound, (int, float)) or not math.isfinite(float(bound))):
+                return {"success": False, "error_code": "INVALID_DATE_RANGE", "records": [], "message": f"{bound_name} must be a finite Unix timestamp."}
+        if from_timestamp is not None and to_timestamp is not None and from_timestamp > to_timestamp:
+            return {"success": False, "error_code": "INVALID_DATE_RANGE", "records": [], "message": "from_timestamp must not exceed to_timestamp."}
+
+        before_timestamp = None
+        before_id = None
+        if cursor:
+            try:
+                cursor_payload = json.loads(base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)).decode("utf-8"))
+                before_timestamp = float(cursor_payload["timestamp"])
+                before_id = str(cursor_payload["integration_id"])
+                if not math.isfinite(before_timestamp) or not before_id:
+                    raise ValueError("invalid cursor fields")
+            except Exception:
+                return {"success": False, "error_code": "INVALID_CURSOR", "records": [], "message": "cursor is malformed."}
+
         effective_user_id = None if user.is_admin else user.user_id
         records = self._repo.list_records_for_user(
             user_id=effective_user_id,
             symbol=symbol,
             lifecycle_state=lifecycle_state,
-            limit=limit,
+            limit=limit + 1,
             allow_system=True,
+            timeframe=timeframe,
+            from_timestamp=float(from_timestamp) if from_timestamp is not None else None,
+            to_timestamp=float(to_timestamp) if to_timestamp is not None else None,
+            signal_type=signal_type,
+            before_timestamp=before_timestamp,
+            before_integration_id=before_id,
         )
-
-        sanitized_records = [SecretSanitizer.sanitize_data(r) for r in records]
+        has_more = len(records) > limit
+        page = records[:limit]
+        next_cursor = None
+        if has_more and page:
+            last = page[-1]
+            next_cursor = base64.urlsafe_b64encode(json.dumps({"timestamp": float(last["timestamp"]), "integration_id": str(last["integration_id"])}, separators=(",", ":")).encode("utf-8")).decode("ascii").rstrip("=")
+        sanitized_records = [SecretSanitizer.sanitize_data(r) for r in page]
 
         return {
             "success": True,
             "records": sanitized_records,
             "count": len(sanitized_records),
+            "next_cursor": next_cursor,
         }

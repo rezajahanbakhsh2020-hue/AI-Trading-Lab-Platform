@@ -657,19 +657,31 @@ class PlatformRequestHandler(BaseHTTPRequestHandler):
                 query_params = urllib.parse.parse_qs(parsed_url.query)
                 symbol = query_params.get("symbol", [None])[0]
                 lifecycle_state = query_params.get("lifecycle_state", [None])[0]
+                timeframe = query_params.get("timeframe", [None])[0]
+                signal_type = query_params.get("signal_type", [None])[0]
+                cursor = query_params.get("cursor", [None])[0]
                 limit_str = query_params.get("limit", ["100"])[0]
                 try:
                     limit = int(limit_str)
-                except ValueError:
-                    limit = 100
+                    from_timestamp = float(query_params["from_timestamp"][0]) if "from_timestamp" in query_params else None
+                    to_timestamp = float(query_params["to_timestamp"][0]) if "to_timestamp" in query_params else None
+                except (ValueError, OverflowError):
+                    self._send_error_response(400, "Invalid Query", "limit and date bounds must be numeric.", "Use limit 1-500 and Unix epoch seconds for date bounds.", origin=origin)
+                    return
 
                 res = self.gateway_service.list_records(
                     user=user,
                     symbol=symbol,
                     lifecycle_state=lifecycle_state,
                     limit=limit,
+                    timeframe=timeframe,
+                    from_timestamp=from_timestamp,
+                    to_timestamp=to_timestamp,
+                    signal_type=signal_type,
+                    cursor=cursor,
                 )
-                self._send_json_response(200, res, origin=origin)
+                status_code = 200 if res.get("success") else (401 if res.get("error_code") == "UNAUTHENTICATED" else 400)
+                self._send_json_response(status_code, res, origin=origin)
                 return
 
             if path in ("/api/v1/execution/intents", "/api/v1/intents"):

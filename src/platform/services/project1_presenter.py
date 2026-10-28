@@ -16,6 +16,7 @@ Rules:
 
 from typing import Any, Dict, Optional, Tuple
 
+import math
 import time
 from src.platform.domain.security import Permission
 from src.platform.domain.user_authorization import UserAuthorization
@@ -29,8 +30,6 @@ from src.platform.services.project1_gateway import Project1IntegrationGatewaySer
 from src.platform.services.provider_operations import ProviderOperations
 from src.platform.services.market_overview import MarketOverviewService
 from src.platform.services.security import SecretSanitizer, SecurityBoundaryService
-
-LIVE_SIGNAL_MAX_AGE_SECONDS = 300.0  # 5 minutes currentness threshold for live signals
 
 
 def _evaluate_signal_live_status(
@@ -56,8 +55,11 @@ def _evaluate_signal_live_status(
         if sig_symbol != req_sym:
             return False, f"Signal symbol '{sig_symbol}' does not match requested market symbol '{req_sym}'."
 
-    sig_ts = float(sig_dict.get("timestamp") or 0.0)
-    if sig_ts <= 0:
+    try:
+        sig_ts = float(sig_dict.get("timestamp") or 0.0)
+    except (TypeError, ValueError, OverflowError):
+        return False, "Signal missing valid event timestamp."
+    if not math.isfinite(sig_ts) or sig_ts <= 0:
         return False, "Signal missing valid event timestamp."
 
     if sig_ts > now_ts + 5.0:
@@ -69,8 +71,8 @@ def _evaluate_signal_live_status(
     if prov in ("lab_artifact", "historical_snapshot", "backtest_record") or meta.get("is_historical"):
         return False, f"Signal is a historical artifact ({prov or 'historical'}, emitted at timestamp {sig_ts})."
 
-    if prov != "live_signal":
-        return False, f"Signal provenance '{prov}' is not an authorized live signal."
+    if prov not in ("live_signal", "direct_strategy_signal"):
+        return False, f"Signal provenance '{prov}' is not an accepted live-signal source."
 
     if meta.get("is_live") is False:
         return False, "Signal metadata explicitly marks signal as non-live."
@@ -79,21 +81,29 @@ def _evaluate_signal_live_status(
 
     # Determine publication / production timestamp vs market/bar timestamp
     pub_ts: Optional[float] = None
-    raw_pub_ts = (
-        meta.get("produced_at")
-        or meta.get("authorized_at_utc")
-        or meta.get("publication_timestamp")
-        or sig_dict.get("produced_at")
-    )
+    raw_pub_ts = None
+    for source, key in (
+        (meta, "produced_at"),
+        (meta, "authorized_at_utc"),
+        (meta, "publication_timestamp"),
+        (sig_dict, "produced_at"),
+    ):
+        if key in source and source[key] is not None:
+            raw_pub_ts = source[key]
+            break
     if raw_pub_ts is not None:
         if isinstance(raw_pub_ts, (int, float)) and not isinstance(raw_pub_ts, bool):
-            pub_ts = float(raw_pub_ts)
+            candidate_pub_ts = float(raw_pub_ts)
+            pub_ts = candidate_pub_ts if math.isfinite(candidate_pub_ts) and candidate_pub_ts > 0 else None
         elif isinstance(raw_pub_ts, str) and raw_pub_ts.strip():
             try:
                 from src.platform.domain.project1_contract import parse_iso8601_to_utc_epoch
                 pub_ts = parse_iso8601_to_utc_epoch(raw_pub_ts, max_future_skew_seconds=5.0, current_time_fn=clk.get_current_timestamp)
             except Exception:
                 pub_ts = None
+
+    if pub_ts is None:
+        return False, "Signal missing valid authoritative publication timestamp."
 
     # Check explicit expiration / validity bounds if provided in contract
     raw_valid_until = meta.get("valid_until") or meta.get("expires_at") or sig_dict.get("valid_until") or sig_dict.get("expires_at")
@@ -425,6 +435,35 @@ class Project1SignalPresenter:
             timestamp=timestamp,
         )
 
+    def _snapshot_security_block(self, user: Optional[UserAuthorization]) -> Dict[str, Any]:
+        """Build the snapshot security identity block for a viewer.
+
+        This is the viewer identity marker consumed by the frontend host snapshot
+        selection check so that polled backend snapshots generated for the current
+        session are accepted (and never a different viewer's snapshot).
+        """
+        if user is None:
+            return {
+                "userId": "guest_user",
+                "role": "guest",
+                "isAdmin": False,
+                "permissions": [],
+                "status": "enforced",
+                "message": "Unauthenticated guest identity; protected resources remain restricted.",
+            }
+        return {
+            "userId": user.user_id,
+            "role": user.role.value,
+            "isAdmin": bool(user.is_admin),
+            "permissions": [p.value for p in user.permissions],
+            "status": "permanent_admin" if user.is_permanent_admin else "active",
+            "message": (
+                "Permanent Owner/Admin authentication active."
+                if user.is_permanent_admin
+                else f"Authenticated session active for {user.user_id}"
+            ),
+        }
+
     def build_host_snapshot(
         self,
         symbol: str = "XAUUSD",
@@ -440,11 +479,13 @@ class Project1SignalPresenter:
         desc = pres["port"]
         is_connected = pres["connected"]
         signal_dict = pres["signal"]
+        security_block = self._snapshot_security_block(user)
 
         if pres["status"] == "unauthorized":
             return {
-                "generatedAt": None,
-                "platform": {
+            "generatedAt": None,
+            "security": security_block,
+            "platform": {
                     "name": "AI Trading Lab Platform",
                     "role": "Host application for AI-Trading-Lab",
                     "status": "ready",
@@ -519,8 +560,9 @@ class Project1SignalPresenter:
 
         if not is_connected:
             return {
-                "generatedAt": None,
-                "platform": {
+            "generatedAt": None,
+            "security": security_block,
+            "platform": {
                     "name": "AI Trading Lab Platform",
                     "role": "Host application for AI-Trading-Lab",
                     "status": "ready",
@@ -583,8 +625,9 @@ class Project1SignalPresenter:
 
         if signal_dict is None:
             return {
-                "generatedAt": None,
-                "platform": {
+            "generatedAt": None,
+            "security": security_block,
+            "platform": {
                     "name": "AI Trading Lab Platform",
                     "role": "Host application for AI-Trading-Lab",
                     "status": "ready",
@@ -807,6 +850,7 @@ class Project1SignalPresenter:
 
         return {
             "generatedAt": signal_dict.get("timestamp"),
+            "security": security_block,
             "platform": {
                 "name": "AI Trading Lab Platform",
                 "role": "Host application for AI-Trading-Lab",

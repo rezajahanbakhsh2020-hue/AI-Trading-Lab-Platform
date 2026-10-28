@@ -165,6 +165,12 @@ class Project1IntegrationRepositoryPort(ABC):
         limit: int = 100,
         allow_system: bool = False,
         publication_order: bool = False,
+        timeframe: Optional[str] = None,
+        from_timestamp: Optional[float] = None,
+        to_timestamp: Optional[float] = None,
+        signal_type: Optional[str] = None,
+        before_timestamp: Optional[float] = None,
+        before_integration_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """List scoped records, optionally ordered by authoritative publication time before limiting."""
         raise NotImplementedError
@@ -785,6 +791,12 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
         limit: int = 100,
         allow_system: bool = False,
         publication_order: bool = False,
+        timeframe: Optional[str] = None,
+        from_timestamp: Optional[float] = None,
+        to_timestamp: Optional[float] = None,
+        signal_type: Optional[str] = None,
+        before_timestamp: Optional[float] = None,
+        before_integration_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         if self._is_unavailable:
             raise StorageUnavailableError("Storage or process lock unavailable.")
@@ -805,8 +817,30 @@ class FileBackedProject1IntegrationRepository(Project1IntegrationRepositoryPort)
                         continue
                     if lifecycle_state is not None and rec.get("lifecycle_state") != lifecycle_state.strip().upper():
                         continue
+                    if timeframe is not None:
+                        rec_tf = str(rec.get("timeframe") or "").strip().lower()
+                        requested_tf = timeframe.strip().lower()
+                        if rec_tf != requested_tf:
+                            continue
+                    if signal_type is not None and str(rec.get("signal_type") or "").strip().lower() != signal_type.strip().lower():
+                        continue
+                    event_ts = rec.get("timestamp")
+                    if any(bound is not None for bound in (from_timestamp, to_timestamp, before_timestamp)):
+                        if isinstance(event_ts, bool) or not isinstance(event_ts, (int, float)):
+                            continue
+                        event_ts = float(event_ts)
+                        if from_timestamp is not None and event_ts < from_timestamp:
+                            continue
+                        if to_timestamp is not None and event_ts > to_timestamp:
+                            continue
+                        if before_timestamp is not None:
+                            rec_id = str(rec.get("integration_id") or "")
+                            if event_ts > before_timestamp or (event_ts == before_timestamp and rec_id >= str(before_integration_id or "")):
+                                continue
                     filtered.append(dict(rec))
-                if publication_order:
+                if timeframe is not None or from_timestamp is not None or to_timestamp is not None or before_timestamp is not None or signal_type is not None:
+                    filtered.sort(key=lambda r: (float(r.get("timestamp") or 0.0), str(r.get("integration_id") or "")), reverse=True)
+                elif publication_order:
                     # Apply the bounded window only after valid authoritative publication-time
                     # ordering, so late or malformed records cannot hide the newest publication.
                     import math

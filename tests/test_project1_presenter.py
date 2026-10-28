@@ -95,7 +95,8 @@ class MockLiveSignalPort(Project1IntegrationPort):
         }
 
 
-def test_presenter_with_genuinely_live_signal():
+@pytest.mark.parametrize("provenance", ["live_signal", "direct_strategy_signal"])
+def test_presenter_with_genuinely_live_signal(provenance):
     import time
     from src.platform.domain.presented_signal import PresentedSignal
 
@@ -111,7 +112,7 @@ def test_presenter_with_genuinely_live_signal():
         confidence=0.88,
         strategy_name="GoldTrendv1",
         timeframe="1h",
-        metadata={"provenance_type": "live_signal", "is_live": True},
+        metadata={"provenance_type": provenance, "is_live": True, "produced_at": now_ts},
     )
 
     port = MockLiveSignalPort(live_signal)
@@ -185,7 +186,7 @@ def test_presenter_preserves_real_data_without_fabrication():
         confidence=0.72,
         strategy_name="MeanReversion_Custom",
         timeframe="4h",
-        metadata={"provenance_type": "live_signal", "is_live": True},
+        metadata={"provenance_type": "live_signal", "is_live": True, "produced_at": now_ts},
     )
     port = MockLiveSignalPort(live_signal)
     presenter = Project1SignalPresenter(port)
@@ -353,6 +354,7 @@ def test_presenter_truthful_project1_authorization_boundary():
         metadata={
             "provenance_type": "live_signal",
             "is_live": True,
+            "produced_at": now_ts,
             "publication_id": "pub_p1_001",
             "decision_id": "dec_p1_100",
             "candidate_id": "cand_p1_200",
@@ -398,6 +400,7 @@ def test_presenter_truthful_project1_authorization_boundary():
         metadata={
             "provenance_type": "live_signal",
             "is_live": True,
+            "produced_at": now_ts,
             "publication_id": "pub_p1_002",
         },
     )

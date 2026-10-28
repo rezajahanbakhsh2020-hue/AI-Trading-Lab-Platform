@@ -7,7 +7,7 @@ Verifies:
 4. Remote target observations strictly return LEVEL_3_OUT_OF_SCOPE (no LEVEL_3_PROVEN possible).
 5. Canonical production timeframe set ('5m', '15m', '30m', '1H', '4H', '1D') is enforced.
 6. Timeframe aliases '1h', '4h', '1d' canonicalize to '1H', '4H', '1D'.
-7. Disallowed timeframe '1m' is strictly rejected.
+7. Canonical timeframe '1m' is preserved and unsupported intervals fail closed.
 8. Anti-regression invariant: NO PATH OR MOCK CAN EVER PRODUCE LEVEL_3_PROVEN.
 """
 
@@ -123,15 +123,17 @@ def test_6_timeframe_canonicalization_rules():
     assert canonicalize_timeframe("1h") == "1H"
     assert canonicalize_timeframe("4h") == "4H"
     assert canonicalize_timeframe("1d") == "1D"
+    assert canonicalize_timeframe("1m") == "1m"
     assert canonicalize_timeframe("5m") == "5m"
     assert canonicalize_timeframe("15m") == "15m"
     assert canonicalize_timeframe("30m") == "30m"
 
 
-def test_7_timeframe_1m_strictly_rejected():
-    """Timeframe Rules: 1m is strictly rejected."""
+def test_7_timeframe_1m_is_canonical_and_not_substituted():
+    """1m belongs to the exact identity contract; unrecognized intervals still fail closed."""
+    assert canonicalize_timeframe("1m") == "1m"
     with pytest.raises(ValueError, match="not supported"):
-        canonicalize_timeframe("1m")
+        canonicalize_timeframe("2m")
 
 
 def test_8_invalid_verifier_id_fails_closed():

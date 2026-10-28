@@ -8,8 +8,9 @@ import {
   fetchHostSnapshot,
   createLatestRequestSequence,
   hostSnapshotMatchesSelection,
-  marketDataMatchesSelection,
-} from "./hostView";
+   marketDataMatchesSelection,
+ } from "./hostView";
+import type { HostSnapshot } from "./hostView";
 import { SAMPLE_CONNECTED_PORT, SAMPLE_REAL_PROJECT1_SIGNAL } from "./testFixtures";
 import { SAMPLE_BIQUOTE_PROVIDER, SAMPLE_BIQUOTE_QUOTE_XAUUSD, SAMPLE_BIQUOTE_CANDLES_XAUUSD } from "./marketData";
 
@@ -110,6 +111,35 @@ describe("connected Project 1 host snapshot", () => {
     expect(snapshot.risk.status).toBe("unavailable");
   });
 
+
+  it.each(["live_signal", "direct_strategy_signal"])("keeps an authoritative publication older than 300s visible with the LIVE badge off (%s)", (provenance) => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const oldLiveSignal = {
+      ...SAMPLE_REAL_PROJECT1_SIGNAL,
+      signal_id: "p1_old_live_publication",
+      timestamp: nowSec - 3600,
+      metadata: {
+        provenance_type: provenance,
+        is_live: true,
+        produced_at: nowSec - 301,
+        publication_id: "pub_old_live_001",
+      },
+    };
+
+    const snapshot = createHostSnapshotFromProject1(
+      SAMPLE_CONNECTED_PORT,
+      oldLiveSignal,
+      "XAUUSD",
+      "1h"
+    );
+
+    expect(snapshot.signal.signalId).toBe("p1_old_live_publication");
+    expect(snapshot.signal.action).toBe("BUY");
+    expect(snapshot.signal.status).toBe("active");
+    expect(snapshot.signal.metadata?.show_live_badge).toBe(false);
+    expect(snapshot.monitoring.status).toBe("available");
+  });
+
   it("falls back to disconnected snapshot if port is reported disconnected", () => {
     const snapshot = createHostSnapshotFromProject1(
       { name: "DisconnectedAdapter", port: "Project1IntegrationPort", connected: false },
@@ -121,7 +151,27 @@ describe("connected Project 1 host snapshot", () => {
     expect(snapshot.signal.action).toBeNull();
   });
 
-  it("returns truthful no-signal status and holds risk levels when historical/stale XAUUSD signal (>300s old or lab_artifact) is passed", () => {
+  it("rejects malformed publication timestamps without converting the event time into a fallback", () => {
+    const invalidPublication = {
+      ...SAMPLE_REAL_PROJECT1_SIGNAL,
+      timestamp: Math.floor(Date.now() / 1000),
+      metadata: {
+        provenance_type: "live_signal",
+        is_live: true,
+        produced_at: "not-an-iso-timestamp",
+      },
+    };
+    const snapshot = createHostSnapshotFromProject1(
+      SAMPLE_CONNECTED_PORT,
+      invalidPublication,
+      "XAUUSD",
+      "1h"
+    );
+    expect(snapshot.signal.action).toBe("NO SIGNAL");
+    expect(snapshot.signal.status).toBe("no-signal");
+  });
+
+  it("returns truthful no-signal status for historical lab artifacts", () => {
     const staleSignal = {
       signal_id: "p1_xauusd_1h_1700000000",
       symbol: "XAUUSD",
@@ -328,6 +378,31 @@ describe("snapshot selection identity", () => {
     expect(hostSnapshotMatchesSelection(current, "EURUSD", "1H", "tenant-a-user")).toBe(false);
     expect(hostSnapshotMatchesSelection(current, "EURUSD", "15m", "tenant-b-user")).toBe(false);
     expect(hostSnapshotMatchesSelection(null, "EURUSD", "15m", "tenant-a-user")).toBe(false);
+  });
+
+  it("accepts real backend polled snapshots for the guest viewer", () => {
+    // Regression: backend snapshots built by Project1SignalPresenter.build_host_snapshot
+    // carry a viewer security identity block; polled snapshots produced for the
+    // current guest session must be accepted so real ingested signals can render
+    // instead of the local NO-SIGNAL fallback.
+    const backendSnapshot: HostSnapshot = {
+      ...createDisconnectedHostSnapshot("XAUUSD", "1h"),
+      security: {
+        userId: "guest_user",
+        role: "guest",
+        isAdmin: false,
+        permissions: [],
+        status: "enforced",
+        message: "Unauthenticated guest identity; protected resources remain restricted.",
+      },
+      generatedAt: "2026-01-02T03:00:00Z",
+    };
+    expect(
+      hostSnapshotMatchesSelection(backendSnapshot, "XAUUSD", "1h", "guest_user")
+    ).toBe(true);
+    expect(
+      hostSnapshotMatchesSelection(backendSnapshot, "XAUUSD", "1h", "tenant-a-user")
+    ).toBe(false);
   });
 });
 

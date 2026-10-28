@@ -85,6 +85,7 @@ def test_live_buy_and_sell_semantics_for_selected_timeframe():
             "provenance_type": "live_signal", "is_live": True,
             "publication_id": "pub_buy_15m",
             "decision_id": "dec_buy_15m",
+            "produced_at": now_ts,
         },
     )
     sell_sig = PresentedSignal(
@@ -102,6 +103,7 @@ def test_live_buy_and_sell_semantics_for_selected_timeframe():
             "provenance_type": "live_signal", "is_live": True,
             "publication_id": "pub_sell_1h",
             "decision_id": "dec_sell_1h",
+            "produced_at": now_ts,
         },
     )
 
@@ -144,6 +146,7 @@ def test_live_authoritative_no_trade_preservation():
             "provenance_type": "live_signal", "is_live": True,
             "publication_id": "pub_nt_30m",
             "decision_id": "dec_nt_30m",
+            "produced_at": now_ts,
             "mtf": {
                 "symbol": "XAUUSD",
                 "local_timeframe": "30m",

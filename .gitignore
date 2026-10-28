@@ -7,3 +7,8 @@ __pycache__/
 htmlcov/
 web/node_modules/
 web/dist/
+
+# Local runtime persistence / generated proof artifacts
+.data/
+.data-*/
+data/

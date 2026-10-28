@@ -161,6 +161,45 @@ def test_gateway_ingest_and_retrieve(temp_repo_path, mock_users):
     assert records_res["records"][0]["signal_id"] == "sig_cust_101"
 
 
+def test_gateway_archive_filters_and_keyset_cursor(temp_repo_path, mock_users):
+    repo = FileBackedProject1IntegrationRepository(temp_repo_path)
+    service = Project1IntegrationGatewayService(repository=repo)
+    customer = mock_users["customer"]
+
+    for signal_id, publication_id, tf, direction, timestamp in (
+        ("sig_old", "pub_old", "1h", "sell", "2025-01-01T00:00:00Z"),
+        ("sig_new_5m", "pub_new_5m", "5m", "sell", "2025-06-01T00:00:00Z"),
+        ("sig_new_1h", "pub_new_1h", "1h", "sell", "2025-06-01T00:00:00Z"),
+    ):
+        payload = _make_canonical_v1_payload(
+            publication_id=publication_id,
+            signal_id=signal_id,
+            decision=direction,
+            timestamp=timestamp,
+        )
+        payload["instrument"]["interval"] = tf
+        assert service.ingest_signal_payload(user=customer, payload=payload)["success"] is True
+
+    first = service.list_records(
+        user=customer, timeframe="1h", from_timestamp=1735689600,
+        to_timestamp=1750000000, signal_type="sell", limit=1,
+    )
+    assert first["success"] is True
+    assert first["count"] == 1
+    assert first["records"][0]["signal_id"] == "sig_new_1h"
+    assert first["next_cursor"]
+
+    second = service.list_records(
+        user=customer, timeframe="1h", from_timestamp=1735689600,
+        to_timestamp=1750000000, signal_type="sell", limit=1,
+        cursor=first["next_cursor"],
+    )
+    assert second["success"] is True
+    assert second["count"] == 1
+    assert second["records"][0]["signal_id"] == "sig_old"
+    assert second["next_cursor"] is None
+
+
 def test_gateway_customer_isolation_idor(temp_repo_path, mock_users):
     repo = FileBackedProject1IntegrationRepository(temp_repo_path)
     service = Project1IntegrationGatewayService(repository=repo)

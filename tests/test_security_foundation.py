@@ -102,6 +102,7 @@ class MockProject1Port(Project1IntegrationPort):
                 "normal_field": "public_data",
                 "provenance_type": "live_signal",
                 "is_live": True,
+                "produced_at": time.time(),
             },
         )
 
@@ -296,7 +297,7 @@ def test_telegram_delivery_enforces_trade_setup_permission():
         stop_loss=2680.0,
         take_profits=(2730.0, 2750.0),
         strategy_name="GoldTrend",
-        metadata={"provenance_type": "live_signal", "is_live": True},
+        metadata={"provenance_type": "live_signal", "is_live": True, "produced_at": time.time()},
     )
 
     # Deliver to user with full permissions

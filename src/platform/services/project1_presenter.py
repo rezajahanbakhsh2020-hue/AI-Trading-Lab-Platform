@@ -435,6 +435,35 @@ class Project1SignalPresenter:
             timestamp=timestamp,
         )
 
+    def _snapshot_security_block(self, user: Optional[UserAuthorization]) -> Dict[str, Any]:
+        """Build the snapshot security identity block for a viewer.
+
+        This is the viewer identity marker consumed by the frontend host snapshot
+        selection check so that polled backend snapshots generated for the current
+        session are accepted (and never a different viewer's snapshot).
+        """
+        if user is None:
+            return {
+                "userId": "guest_user",
+                "role": "guest",
+                "isAdmin": False,
+                "permissions": [],
+                "status": "enforced",
+                "message": "Unauthenticated guest identity; protected resources remain restricted.",
+            }
+        return {
+            "userId": user.user_id,
+            "role": user.role.value,
+            "isAdmin": bool(user.is_admin),
+            "permissions": [p.value for p in user.permissions],
+            "status": "permanent_admin" if user.is_permanent_admin else "active",
+            "message": (
+                "Permanent Owner/Admin authentication active."
+                if user.is_permanent_admin
+                else f"Authenticated session active for {user.user_id}"
+            ),
+        }
+
     def build_host_snapshot(
         self,
         symbol: str = "XAUUSD",
@@ -450,11 +479,13 @@ class Project1SignalPresenter:
         desc = pres["port"]
         is_connected = pres["connected"]
         signal_dict = pres["signal"]
+        security_block = self._snapshot_security_block(user)
 
         if pres["status"] == "unauthorized":
             return {
-                "generatedAt": None,
-                "platform": {
+            "generatedAt": None,
+            "security": security_block,
+            "platform": {
                     "name": "AI Trading Lab Platform",
                     "role": "Host application for AI-Trading-Lab",
                     "status": "ready",
@@ -529,8 +560,9 @@ class Project1SignalPresenter:
 
         if not is_connected:
             return {
-                "generatedAt": None,
-                "platform": {
+            "generatedAt": None,
+            "security": security_block,
+            "platform": {
                     "name": "AI Trading Lab Platform",
                     "role": "Host application for AI-Trading-Lab",
                     "status": "ready",
@@ -593,8 +625,9 @@ class Project1SignalPresenter:
 
         if signal_dict is None:
             return {
-                "generatedAt": None,
-                "platform": {
+            "generatedAt": None,
+            "security": security_block,
+            "platform": {
                     "name": "AI Trading Lab Platform",
                     "role": "Host application for AI-Trading-Lab",
                     "status": "ready",
@@ -817,6 +850,7 @@ class Project1SignalPresenter:
 
         return {
             "generatedAt": signal_dict.get("timestamp"),
+            "security": security_block,
             "platform": {
                 "name": "AI Trading Lab Platform",
                 "role": "Host application for AI-Trading-Lab",

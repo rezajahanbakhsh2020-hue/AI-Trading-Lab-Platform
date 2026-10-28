@@ -8,8 +8,9 @@ import {
   fetchHostSnapshot,
   createLatestRequestSequence,
   hostSnapshotMatchesSelection,
-  marketDataMatchesSelection,
-} from "./hostView";
+   marketDataMatchesSelection,
+ } from "./hostView";
+import type { HostSnapshot } from "./hostView";
 import { SAMPLE_CONNECTED_PORT, SAMPLE_REAL_PROJECT1_SIGNAL } from "./testFixtures";
 import { SAMPLE_BIQUOTE_PROVIDER, SAMPLE_BIQUOTE_QUOTE_XAUUSD, SAMPLE_BIQUOTE_CANDLES_XAUUSD } from "./marketData";
 
@@ -377,6 +378,31 @@ describe("snapshot selection identity", () => {
     expect(hostSnapshotMatchesSelection(current, "EURUSD", "1H", "tenant-a-user")).toBe(false);
     expect(hostSnapshotMatchesSelection(current, "EURUSD", "15m", "tenant-b-user")).toBe(false);
     expect(hostSnapshotMatchesSelection(null, "EURUSD", "15m", "tenant-a-user")).toBe(false);
+  });
+
+  it("accepts real backend polled snapshots for the guest viewer", () => {
+    // Regression: backend snapshots built by Project1SignalPresenter.build_host_snapshot
+    // carry a viewer security identity block; polled snapshots produced for the
+    // current guest session must be accepted so real ingested signals can render
+    // instead of the local NO-SIGNAL fallback.
+    const backendSnapshot: HostSnapshot = {
+      ...createDisconnectedHostSnapshot("XAUUSD", "1h"),
+      security: {
+        userId: "guest_user",
+        role: "guest",
+        isAdmin: false,
+        permissions: [],
+        status: "enforced",
+        message: "Unauthenticated guest identity; protected resources remain restricted.",
+      },
+      generatedAt: "2026-01-02T03:00:00Z",
+    };
+    expect(
+      hostSnapshotMatchesSelection(backendSnapshot, "XAUUSD", "1h", "guest_user")
+    ).toBe(true);
+    expect(
+      hostSnapshotMatchesSelection(backendSnapshot, "XAUUSD", "1h", "tenant-a-user")
+    ).toBe(false);
   });
 });
 

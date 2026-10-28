@@ -71,8 +71,8 @@ def _evaluate_signal_live_status(
     if prov in ("lab_artifact", "historical_snapshot", "backtest_record") or meta.get("is_historical"):
         return False, f"Signal is a historical artifact ({prov or 'historical'}, emitted at timestamp {sig_ts})."
 
-    if prov != "live_signal":
-        return False, f"Signal provenance '{prov}' is not an authorized live signal."
+    if prov not in ("live_signal", "direct_strategy_signal"):
+        return False, f"Signal provenance '{prov}' is not an accepted live-signal source."
 
     if meta.get("is_live") is False:
         return False, "Signal metadata explicitly marks signal as non-live."

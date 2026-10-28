@@ -95,7 +95,8 @@ class MockLiveSignalPort(Project1IntegrationPort):
         }
 
 
-def test_presenter_with_genuinely_live_signal():
+@pytest.mark.parametrize("provenance", ["live_signal", "direct_strategy_signal"])
+def test_presenter_with_genuinely_live_signal(provenance):
     import time
     from src.platform.domain.presented_signal import PresentedSignal
 
@@ -111,7 +112,7 @@ def test_presenter_with_genuinely_live_signal():
         confidence=0.88,
         strategy_name="GoldTrendv1",
         timeframe="1h",
-        metadata={"provenance_type": "live_signal", "is_live": True, "produced_at": now_ts},
+        metadata={"provenance_type": provenance, "is_live": True, "produced_at": now_ts},
     )
 
     port = MockLiveSignalPort(live_signal)

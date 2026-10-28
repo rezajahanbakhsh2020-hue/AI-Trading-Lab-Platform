@@ -259,7 +259,7 @@ class Project1GatewayAdapter(Project1IntegrationPort):
                 continue
 
             prov = raw_meta.get("provenance_type")
-            if prov != "live_signal" or raw_meta.get("is_live") is not True:
+            if prov not in ("live_signal", "direct_strategy_signal") or raw_meta.get("is_live") is not True:
                 continue
 
             if raw_meta.get("is_historical") is True:

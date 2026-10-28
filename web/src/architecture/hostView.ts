@@ -503,7 +503,7 @@ export function createHostSnapshotFromProject1(
     sigTs <= nowSec + 5.0 &&
     pubTs !== null &&
     pubTs <= nowSec + 5.0 &&
-    provenance === "live_signal" &&
+    (provenance === "live_signal" || provenance === "direct_strategy_signal") &&
     !isHistorical &&
     meta.is_live !== false &&
     !isExpired &&

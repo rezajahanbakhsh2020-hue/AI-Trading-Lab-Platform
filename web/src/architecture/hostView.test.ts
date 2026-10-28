@@ -112,14 +112,14 @@ describe("connected Project 1 host snapshot", () => {
   });
 
 
-  it("keeps an authoritative publication older than 300s visible with the LIVE badge off", () => {
+  it.each(["live_signal", "direct_strategy_signal"])("keeps an authoritative publication older than 300s visible with the LIVE badge off (%s)", (provenance) => {
     const nowSec = Math.floor(Date.now() / 1000);
     const oldLiveSignal = {
       ...SAMPLE_REAL_PROJECT1_SIGNAL,
       signal_id: "p1_old_live_publication",
       timestamp: nowSec - 3600,
       metadata: {
-        provenance_type: "live_signal",
+        provenance_type: provenance,
         is_live: true,
         produced_at: nowSec - 301,
         publication_id: "pub_old_live_001",
